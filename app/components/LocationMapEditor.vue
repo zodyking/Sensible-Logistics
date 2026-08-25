@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { BoundingBox } from '#shared/utils/geo'
-import { isValidBbox } from '#shared/utils/geo'
+import { bboxSizeMeters, isValidBbox } from '#shared/utils/geo'
 import type { OsmWay } from '#shared/utils/osm-ways'
 
 const props = defineProps<{
@@ -175,6 +175,12 @@ function useVisibleMap() {
     north: bounds.getNorth(),
   }
   if (!isValidBbox(box)) return
+  const size = bboxSizeMeters(box)
+  if (size.width > 2500 || size.height > 2500) {
+    errorMessage.value = 'Zoom in on the yard first. The fence should cover the site, not the whole map.'
+    return
+  }
+  errorMessage.value = ''
   applyBox(box, false)
   emit('update:bbox', box)
 }

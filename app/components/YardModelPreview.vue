@@ -21,6 +21,10 @@ const caption = computed(() => {
   if (props.model.sidewalkCount) bits.push(`${props.model.sidewalkCount} sidewalk${props.model.sidewalkCount === 1 ? '' : 's'}`)
   return bits.join(' · ')
 })
+
+const streetStroke = computed(() => Math.max(3.5, (props.model?.planeWidth ?? 80) * 0.01))
+const sidewalkStroke = computed(() => Math.max(2, (props.model?.planeWidth ?? 80) * 0.0055))
+const walkStroke = computed(() => Math.max(1.6, (props.model?.planeWidth ?? 80) * 0.004))
 </script>
 
 <template>
@@ -58,7 +62,7 @@ const caption = computed(() => {
             :points="pathPoints(model, obj.path)"
             fill="none"
             stroke="#E8D9B0"
-            stroke-width="2.4"
+            :stroke-width="sidewalkStroke"
             stroke-linecap="round"
             stroke-linejoin="round"
           />
@@ -67,7 +71,7 @@ const caption = computed(() => {
             :points="pathPoints(model, obj.path)"
             fill="none"
             stroke="#C4B48A"
-            stroke-width="1.6"
+            :stroke-width="walkStroke"
             stroke-linecap="round"
             stroke-linejoin="round"
           />
@@ -76,7 +80,7 @@ const caption = computed(() => {
             :points="pathPoints(model, obj.path)"
             fill="none"
             stroke="#5C6670"
-            stroke-width="4"
+            :stroke-width="streetStroke"
             stroke-linecap="round"
             stroke-linejoin="round"
           />
