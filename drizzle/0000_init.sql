@@ -237,13 +237,23 @@ CREATE TABLE "drivers" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "email_verification_tokens" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"user_id" uuid NOT NULL,
+	"token_hash" text NOT NULL,
+	"sent_to_email" text NOT NULL,
+	"expires_at" timestamp with time zone NOT NULL,
+	"consumed_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "location_zones" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"company_id" uuid NOT NULL,
 	"location_id" uuid NOT NULL,
 	"name" text NOT NULL,
 	"purpose" text,
-	"boundary" geometry(Polygon,4326),
+	"boundary" jsonb,
 	"local_geometry" jsonb,
 	"capacity" integer,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
@@ -265,8 +275,7 @@ CREATE TABLE "locations" (
 	"normalized_address" text,
 	"latitude" numeric(10, 7),
 	"longitude" numeric(10, 7),
-	"boundary" geometry(Polygon,4326),
-	"centroid" geometry(Point,4326),
+	"boundary" jsonb,
 	"timezone" text DEFAULT 'America/New_York' NOT NULL,
 	"hours" text,
 	"appointment_required" boolean DEFAULT false NOT NULL,
@@ -492,6 +501,7 @@ ALTER TABLE "driver_timecards" ADD CONSTRAINT "driver_timecards_company_id_compa
 ALTER TABLE "driver_timecards" ADD CONSTRAINT "driver_timecards_driver_id_drivers_id_fk" FOREIGN KEY ("driver_id") REFERENCES "public"."drivers"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "drivers" ADD CONSTRAINT "drivers_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "drivers" ADD CONSTRAINT "drivers_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "email_verification_tokens" ADD CONSTRAINT "email_verification_tokens_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "location_zones" ADD CONSTRAINT "location_zones_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "location_zones" ADD CONSTRAINT "location_zones_location_id_locations_id_fk" FOREIGN KEY ("location_id") REFERENCES "public"."locations"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "locations" ADD CONSTRAINT "locations_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -538,6 +548,8 @@ CREATE UNIQUE INDEX "driver_timecards_driver_date_key" ON "driver_timecards" USI
 CREATE INDEX "driver_timecards_company_date_idx" ON "driver_timecards" USING btree ("company_id","work_date");--> statement-breakpoint
 CREATE UNIQUE INDEX "drivers_company_user_key" ON "drivers" USING btree ("company_id","user_id");--> statement-breakpoint
 CREATE INDEX "drivers_company_idx" ON "drivers" USING btree ("company_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "email_verification_tokens_hash_key" ON "email_verification_tokens" USING btree ("token_hash");--> statement-breakpoint
+CREATE INDEX "email_verification_tokens_user_idx" ON "email_verification_tokens" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "location_zones_location_idx" ON "location_zones" USING btree ("location_id");--> statement-breakpoint
 CREATE INDEX "locations_company_idx" ON "locations" USING btree ("company_id");--> statement-breakpoint
 CREATE INDEX "locations_company_name_idx" ON "locations" USING btree ("company_id","name");--> statement-breakpoint

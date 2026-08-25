@@ -1,4 +1,3 @@
-import { sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { locations } from '../../database/schema'
 import { findDuplicateCandidates, normalizeAddress } from '../../services/geocoding'
@@ -33,8 +32,8 @@ const schema = z.object({
  * Create a location in the shared pool.
  *
  * Duplicate prevention runs first (spec 7.1): normalised address, name and
- * PostGIS proximity are compared and returned as suggestions before a second
- * yard or customer record is allowed.
+ * proximity are compared and returned as suggestions before a second yard or
+ * customer record is allowed.
  *
  * TODO(Phase 2): geocode via self-hosted Nominatim and capture the operational
  * boundary polygon with MapLibre + Terra Draw.
@@ -60,8 +59,6 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  const hasPoint = body.latitude != null && body.longitude != null
-
   const [created] = await db
     .insert(locations)
     .values({
@@ -78,10 +75,6 @@ export default defineEventHandler(async (event) => {
       normalizedAddress,
       latitude: body.latitude != null ? String(body.latitude) : null,
       longitude: body.longitude != null ? String(body.longitude) : null,
-      // PostGIS literal; the custom column type exchanges geometry as text.
-      centroid: hasPoint
-        ? (sql`ST_SetSRID(ST_MakePoint(${body.longitude}, ${body.latitude}), 4326)` as unknown as string)
-        : null,
       capacity: body.capacity ?? null,
       hours: body.hours ?? null,
       appointmentRequired: body.appointmentRequired,

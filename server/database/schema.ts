@@ -1,5 +1,5 @@
 /**
- * Container Tracker — PostgreSQL/PostGIS schema (Drizzle ORM).
+ * Container Tracker — PostgreSQL schema (Drizzle ORM).
  *
  * Design rules enforced here (spec 17, 18):
  *  - Every tenant-scoped table carries `company_id`.
@@ -13,7 +13,6 @@
 import { sql } from 'drizzle-orm'
 import {
   boolean,
-  customType,
   date,
   index,
   integer,
@@ -29,18 +28,17 @@ import {
 } from 'drizzle-orm/pg-core'
 
 /* ============================================================
-   PostGIS column types
-   Values are exchanged as GeoJSON strings; the service layer wraps
-   reads/writes in ST_AsGeoJSON / ST_GeomFromGeoJSON.
+   Geospatial storage
+   Boundaries are GeoJSON polygons in `jsonb` and points are plain
+   latitude/longitude columns, so the app runs on a stock PostgreSQL server
+   with no extensions. Distances are computed with the haversine formula.
    ============================================================ */
 
-const geometryPolygon = customType<{ data: string, driverData: string }>({
-  dataType: () => 'geometry(Polygon,4326)',
-})
-
-const geometryPoint = customType<{ data: string, driverData: string }>({
-  dataType: () => 'geometry(Point,4326)',
-})
+/** GeoJSON Polygon: rings of [longitude, latitude] pairs, WGS 84. */
+export interface GeoJsonPolygon {
+  type: 'Polygon'
+  coordinates: [number, number][][]
+}
 
 const utc = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' })
 
@@ -297,11 +295,11 @@ export const locations = pgTable('locations', {
   /** Lower-cased, whitespace-collapsed address used for duplicate detection. */
   normalizedAddress: text('normalized_address'),
 
+  /** Site centre point. Proximity search reads these directly. */
   latitude: numeric('latitude', { precision: 10, scale: 7 }),
   longitude: numeric('longitude', { precision: 10, scale: 7 }),
   /** Operational perimeter drawn by the user. TODO(Phase 2): Terra Draw editor. */
-  boundary: geometryPolygon('boundary'),
-  centroid: geometryPoint('centroid'),
+  boundary: jsonb('boundary').$type<GeoJsonPolygon>(),
 
   timezone: text('timezone').notNull().default('America/New_York'),
   hours: text('hours'),
@@ -330,7 +328,7 @@ export const locationZones = pgTable('location_zones', {
   locationId: uuid('location_id').notNull().references(() => locations.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   purpose: text('purpose'),
-  boundary: geometryPolygon('boundary'),
+  boundary: jsonb('boundary').$type<GeoJsonPolygon>(),
   /** Local yard-plane rectangle, kept distinct from the geographic layer (spec 32.2). */
   localGeometry: jsonb('local_geometry').$type<Record<string, unknown>>(),
   capacity: integer('capacity'),
@@ -347,7 +345,7 @@ export const yardLayouts = pgTable('yard_layouts', {
   /** Yard-plane extents in local units. */
   planeWidth: real('plane_width').notNull().default(1000),
   planeHeight: real('plane_height').notNull().default(700),
-  /** Affine transform between the PostGIS boundary and the local plane. */
+  /** Affine transform between the geographic boundary and the local plane. */
   geoTransform: jsonb('geo_transform').$type<Record<string, number>>(),
   supportsStacking: boolean('supports_stacking').notNull().default(false),
   createdByUserId: uuid('created_by_user_id'),

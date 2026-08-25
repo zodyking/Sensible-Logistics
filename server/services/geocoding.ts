@@ -83,12 +83,38 @@ export interface DuplicateSuggestion {
   distanceMeters: number | null
 }
 
+/** Mean Earth radius in metres (WGS 84 authalic radius). */
+const EARTH_RADIUS_METERS = 6371008.8
+
+/**
+ * Great-circle distance in metres between a stored location and a point.
+ *
+ * The haversine formula keeps proximity search on plain PostgreSQL — no PostGIS
+ * or earthdistance extension — which matters because the database is operator
+ * supplied. Accuracy is well inside the tolerance of duplicate detection at
+ * yard scale. Latitude/longitude are `numeric`, and the trigonometric functions
+ * only accept double precision, hence the casts.
+ */
+function haversineMeters(latitude: number, longitude: number) {
+  const lat = sql`${latitude}::double precision`
+  const lon = sql`${longitude}::double precision`
+  const rowLat = sql`${locations.latitude}::double precision`
+  const rowLon = sql`${locations.longitude}::double precision`
+
+  return sql<number>`
+    ${EARTH_RADIUS_METERS}::double precision * 2 * asin(sqrt(
+      power(sin(radians(${lat} - ${rowLat}) / 2), 2)
+      + cos(radians(${rowLat})) * cos(radians(${lat}))
+      * power(sin(radians(${lon} - ${rowLon}) / 2), 2)
+    ))`
+}
+
 /**
  * Surface likely existing locations before a user creates a duplicate yard or
  * customer record (spec 7.1, 24).
  *
  * Matches on the normalised address, then on name, then — when the new record
- * has coordinates — on PostGIS proximity within `radiusMeters`.
+ * has coordinates — on distance within `radiusMeters`.
  */
 export async function findDuplicateCandidates(
   db: DbExecutor,
@@ -123,19 +149,21 @@ export async function findDuplicateCandidates(
   }
 
   if (input.latitude != null && input.longitude != null) {
-    const point = sql`ST_SetSRID(ST_MakePoint(${input.longitude}, ${input.latitude}), 4326)::geography`
+    const distance = haversineMeters(input.latitude, input.longitude)
     const nearby = await db
       .select({
         id: locations.id,
         name: locations.name,
-        distance: sql<number>`ST_Distance(${locations.centroid}::geography, ${point})`,
+        distance,
       })
       .from(locations)
       .where(and(
         eq(locations.companyId, companyId),
-        isNotNull(locations.centroid),
-        sql`ST_DWithin(${locations.centroid}::geography, ${point}, ${radiusMeters})`,
+        isNotNull(locations.latitude),
+        isNotNull(locations.longitude),
+        sql`${distance} <= ${radiusMeters}`,
       ))
+      .orderBy(distance)
       .limit(5)
 
     for (const row of nearby) {

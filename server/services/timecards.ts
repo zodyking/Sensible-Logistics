@@ -304,8 +304,8 @@ export async function clockOut(db: Database, auth: AuthContext & { driverId: str
         companyId: auth.companyId,
         timecardId: card.id,
         priorOffDutyMinutes: priorOffDuty,
-        // TODO(Phase 2): derive from PostGIS distance between the reporting
-        // location and every recorded stop on the day's trips.
+        // TODO(Phase 2): derive from the great-circle distance between the
+        // reporting location and every recorded stop on the day's trips.
         maxRecordedAirMiles: null,
         returnedToReportingLocation: null,
         releasedWithin14Hours: evaluation.releasedWithin14Hours,
