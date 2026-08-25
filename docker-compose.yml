@@ -1,18 +1,43 @@
 # Container Tracker — Dokploy-ready Compose stack.
 #
-# Postgres is external. Create it in Dokploy (Database service) or point
-# DATABASE_URL at any PostGIS instance. This file does not start a database.
+# The stack ships its own PostGIS database. The schema uses `geometry` columns,
+# so a plain PostgreSQL server (including Dokploy's default Postgres template)
+# cannot host it — the migrator aborts on purpose rather than half-applying.
 #
 # Dokploy usage:
 #   1. Point the project at this compose file and set env vars in the UI.
-#   2. Do not publish host ports — Traefik routes via the Domains tab.
+#   2. Leave DATABASE_URL unset to use the bundled `postgres` service. Set it
+#      only when the target server already has the postgis extension.
+#   3. Do not publish host ports — Traefik routes via the Domains tab.
 #      Set the domain container port to 3847 (the app listen port).
-#   3. `seaweedfs` stays on the internal `container-tracker` network —
-#      do not publish its ports.
-#   4. App health is defined on the image (Dockerfile HEALTHCHECK),
+#   4. `postgres` and `seaweedfs` stay on the internal `container-tracker`
+#      network — do not publish their ports.
+#   5. App health is defined on the image (Dockerfile HEALTHCHECK),
 #      not duplicated here.
 
 services:
+  postgres:
+    # PostGIS build of Postgres 17. The plain `postgres` image cannot create the
+    # extension the schema needs.
+    image: postgis/postgis:17-3.5
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: container_tracker
+      POSTGRES_DB: container_tracker
+      # Reachable only from this compose network; the port is never published.
+      # Changing it after the first deploy requires deleting `postgres-data`.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-container_tracker}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U container_tracker -d container_tracker"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - container-tracker
+
   seaweedfs:
     image: chrislusf/seaweedfs:latest
     restart: unless-stopped
@@ -33,6 +58,11 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
+    # The migrator retries the connection on its own, but waiting for the
+    # bundled database keeps the first boot free of failed attempts.
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       # Always 3847 inside the container. Do not interpolate PORT from env —
@@ -61,9 +91,9 @@ services:
       NUXT_COMPANY_USDOT_NUMBER: ${NUXT_COMPANY_USDOT_NUMBER:-}
       NUXT_COMPANY_TIMEZONE: ${NUXT_COMPANY_TIMEZONE:-America/New_York}
       NUXT_COMPANY_CYCLE_TYPE: ${NUXT_COMPANY_CYCLE_TYPE:-SEVENTY_EIGHT}
-      # External PostGIS. Paste the full connection string from Dokploy or
-      # any other Postgres host — this stack does not create a database.
-      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
+      # Defaults to the bundled `postgres` service above. Override only with a
+      # connection string whose database already has the postgis extension.
+      DATABASE_URL: ${DATABASE_URL:-postgresql://container_tracker:${POSTGRES_PASSWORD:-container_tracker}@postgres:5432/container_tracker}
       NUXT_DATABASE_SSL: ${NUXT_DATABASE_SSL:-false}
       NUXT_S3_ENDPOINT: ${NUXT_S3_ENDPOINT:-http://seaweedfs:8333}
       NUXT_S3_REGION: ${NUXT_S3_REGION:-us-east-1}
@@ -80,6 +110,7 @@ services:
       - container-tracker
 
 volumes:
+  postgres-data:
   seaweed-data:
 
 networks:

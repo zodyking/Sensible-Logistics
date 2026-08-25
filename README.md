@@ -46,7 +46,7 @@ Taken verbatim from `package.json`.
 | Component | Image / version |
 | --- | --- |
 | Node.js | 22 (`node:22-alpine`) |
-| PostgreSQL + PostGIS | External (operator-provided). App reads `DATABASE_URL` |
+| PostgreSQL + PostGIS | `postgis/postgis:17-3.5` (bundled in compose; override with `DATABASE_URL`) |
 | Object storage | `chrislusf/seaweedfs:latest` (S3-compatible mode) |
 
 Install with the exact versions above:
@@ -63,7 +63,9 @@ peer dependency tree. Without it, install fails with `Cannot read properties of 
 
 ## Local development
 
-Requires Node.js 22+ and an external PostGIS instance. The app does not start Postgres.
+Requires Node.js 22+ and a PostGIS instance. `npm run dev` runs outside the compose network, so
+local development needs its own database — the schema uses `geometry` columns and will not migrate
+against plain PostgreSQL.
 
 ```bash
 # 1. Environment
@@ -71,7 +73,7 @@ cp .env.example .env          # PowerShell: Copy-Item .env.example .env
 # Set NUXT_SESSION_PASSWORD to 32+ characters, DATABASE_URL to your PostGIS
 # connection string, and NUXT_SMTP_FROM_EMAIL to the From email (not the SMTP login).
 
-# 2. Database — provide your own PostGIS and point DATABASE_URL at it, e.g.:
+# 2. Database — must be PostGIS, not plain Postgres:
 #   docker run -d --name ct-db -p 5432:5432 \
 #     -e POSTGRES_USER=tracker -e POSTGRES_PASSWORD=tracker \
 #     -e POSTGRES_DB=container_tracker postgis/postgis:17-3.5
@@ -142,7 +144,8 @@ are no metered or paid dependencies anywhere in the stack — see [Self-hosting]
 | `NUXT_COMPANY_USDOT_NUMBER` | no | — | USDOT number on the DOT time record |
 | `NUXT_COMPANY_TIMEZONE` | no | `America/New_York` | IANA zone for timecard days and the roadside PDF |
 | `NUXT_COMPANY_CYCLE_TYPE` | no | `SEVENTY_EIGHT` | `SEVENTY_EIGHT` (70h/8d) or `SIXTY_SEVEN` (60h/7d) |
-| `DATABASE_URL` | **yes** | — | External PostGIS connection string. The app does not create Postgres |
+| `POSTGRES_PASSWORD` | no | `container_tracker` | Password for the bundled `postgres` service. Set it before the first deploy |
+| `DATABASE_URL` | no | bundled `postgres` service | PostGIS connection string. Set it only to use your own PostGIS server |
 | `NUXT_DATABASE_SSL` | no | `false` | `true` for managed Postgres requiring TLS |
 | `NUXT_S3_ENDPOINT` | no | `http://seaweedfs:8333` | Your SeaweedFS container. Not Amazon — see below |
 | `NUXT_S3_REGION` | no | `us-east-1` | Protocol formality SeaweedFS ignores |
@@ -288,30 +291,39 @@ API leaks your operational footprint. Run your own containers instead.
 
 ## Dokploy deployment
 
-1. **Create Postgres outside the app.** In Dokploy add a **Database** (Postgres / PostGIS)
-   service, or use any existing PostGIS host. Copy its connection string.
-2. **Create the app.** Add a **Compose** application and point it at this repository. Dokploy
-   builds `app` from the `Dockerfile` and starts `seaweedfs` alongside it. It does **not**
-   start a database.
-3. **Set environment variables.** Paste the keys from `.env.example` into the Dokploy environment
-   UI. At minimum set `NUXT_SESSION_PASSWORD` (32+ characters), `DATABASE_URL` (the external
-   connection string), `NUXT_SMTP_FROM_EMAIL` (From email — not the SMTP login), and
+1. **Create the app.** Add a **Compose** application and point it at this repository. Dokploy
+   builds `app` from the `Dockerfile` and starts `postgres` (PostGIS) and `seaweedfs` alongside it.
+2. **Set environment variables.** Paste the keys from `.env.example` into the Dokploy environment
+   UI. At minimum set `NUXT_SESSION_PASSWORD` (32+ characters), `POSTGRES_PASSWORD`,
+   `NUXT_APP_URL`, `NUXT_SMTP_FROM_EMAIL` (From email — not the SMTP login), and
    `NUXT_SMTP_USER` / `NUXT_SMTP_PASSWORD` if the relay requires auth.
-4. **Do not publish host ports.** Compose does not map 3000 (Dokploy's panel). Traffic
+   **Leave `DATABASE_URL` unset** unless you are supplying your own PostGIS server — a
+   `DATABASE_URL` pointing at plain PostgreSQL fails migration (see below).
+3. **Do not publish host ports.** Compose does not map 3000 (Dokploy's panel). Traffic
    comes through the reverse proxy.
-5. **Attach a domain.** In Dokploy's **Domains** tab, map your hostname to the `app` service on
+4. **Attach a domain.** In Dokploy's **Domains** tab, map your hostname to the `app` service on
    container port `3847` and enable Let's Encrypt. Remove any leftover `APP_PORT=3000` from
    the Environment tab — it is unused.
-6. **Deploy.** The entrypoint runs Drizzle migrations (with connection retry and
-   `CREATE EXTENSION IF NOT EXISTS postgis`) against `DATABASE_URL` before the Nitro server
-   starts. The image's `HEALTHCHECK` polls `/api/health`, so Dokploy will not route traffic to
-   an unhealthy container.
-7. **Seed (optional).** For a demo environment, exec into the app container and run the seed
+5. **Deploy.** The entrypoint runs Drizzle migrations (with connection retry) against
+   `DATABASE_URL` before the Nitro server starts, and refuses to start the server if they fail.
+   The image's `HEALTHCHECK` polls `/api/health`, so Dokploy will not route traffic to an
+   unhealthy container.
+6. **Seed (optional).** For a demo environment, exec into the app container and run the seed
    against `DATABASE_URL`. Skip this for production.
 
-`seaweedfs` stays on the internal `container-tracker` bridge network and publishes no ports.
-Object-storage data lives in the `seaweed-data` named volume. Postgres data lives on the
-external database, not in this compose file.
+`postgres` and `seaweedfs` stay on the internal `container-tracker` bridge network and publish no
+ports. Database data lives in the `postgres-data` named volume, object storage in `seaweed-data`.
+
+### PostGIS is required
+
+`locations` and `yards` hold `geometry(Point,4326)` / `geometry(Polygon,4326)` columns, so the
+target database must have the postgis extension. The bundled `postgres` service already does.
+
+Pointing `DATABASE_URL` at a plain PostgreSQL server — Dokploy's default Postgres template
+included — stops the deploy with `extension "postgis" is not available`, and the container
+restarts until it is fixed. To use your own server, either install PostGIS on it (
+`postgis/postgis:17-3.5` for Docker) and run `CREATE EXTENSION postgis;` once as an admin if the
+app role is not a superuser, or unset `DATABASE_URL` and use the bundled service.
 
 ---
 
