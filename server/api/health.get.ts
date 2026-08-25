@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm'
+import { useMail } from '../services/mail'
 import { useOcrService } from '../services/ocr'
 import { useObjectStorage } from '../services/storage'
 
@@ -17,6 +18,20 @@ export default defineEventHandler(async (event) => {
   }
   catch (error) {
     checks.database = { status: 'error', detail: error instanceof Error ? error.message : 'unreachable' }
+  }
+
+  // Configuration only — an SMTP handshake on every probe would open a
+  // connection every 30 seconds. `POST /api/admin/smtp-test` does the live check.
+  try {
+    checks.mail = useMail().isConfigured()
+      ? { status: 'ok', detail: 'SMTP configured. POST /api/admin/smtp-test to verify delivery.' }
+      : { status: 'degraded', detail: 'SMTP not configured; mail is logged to the console.' }
+  }
+  catch (error) {
+    checks.mail = {
+      status: 'degraded',
+      detail: error instanceof Error ? error.message : 'SMTP is not configured.',
+    }
   }
 
   const ocr = await useOcrService().healthCheck()

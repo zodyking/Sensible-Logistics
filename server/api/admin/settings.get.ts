@@ -1,9 +1,25 @@
 import { and, eq, sql } from 'drizzle-orm'
 import { companies, companyMemberships, containers, drivers, locations, trucks } from '../../database/schema'
 import { useGeocoder } from '../../services/geocoding'
+import { useMail } from '../../services/mail'
 import { useOcrService } from '../../services/ocr'
 import { useObjectStorage } from '../../services/storage'
 import { requireAdmin } from '../../utils/session'
+
+/**
+ * SMTP configuration state. Deliberately does not open a connection: this runs
+ * on every settings load, and a handshake belongs in the explicit test send.
+ */
+function mailStatus(): { healthy: boolean, message: string } {
+  try {
+    return useMail().isConfigured()
+      ? { healthy: true, message: 'SMTP configured. Send a test message to confirm delivery.' }
+      : { healthy: false, message: 'Not configured — verification mail is written to the server log.' }
+  }
+  catch (error) {
+    return { healthy: false, message: error instanceof Error ? error.message : 'SMTP is not configured.' }
+  }
+}
 
 /** Company settings plus the deployment status of each self-hosted subsystem. */
 export default defineEventHandler(async (event) => {
@@ -51,6 +67,7 @@ export default defineEventHandler(async (event) => {
       inviteCode: company.inviteCode,
     },
     counts: { ...counts, admins: adminCount?.value ?? 0 },
+    mail: mailStatus(),
     services: [
       { key: 'ocr', name: 'PaddleOCR (PP-OCRv6 Medium)', healthy: ocr.healthy, detail: ocr.message, phase: 'Phase 2' },
       { key: 'storage', name: 'SeaweedFS object storage', healthy: storage.healthy, detail: storage.message, phase: 'Phase 2' },

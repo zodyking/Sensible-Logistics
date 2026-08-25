@@ -30,6 +30,34 @@ onBeforeUnmount(() => {
   if (copyTimer) clearTimeout(copyTimer)
 })
 
+/* --- Email delivery test ------------------------------------------- */
+const testRecipient = ref('')
+const testing = ref(false)
+const testResult = ref<{ ok: boolean, message: string } | null>(null)
+
+async function sendTestEmail() {
+  if (testing.value) return
+  testing.value = true
+  testResult.value = null
+
+  try {
+    const result = await $fetch('/api/admin/smtp-test', {
+      method: 'POST',
+      body: { to: testRecipient.value.trim() || null },
+    })
+    testResult.value = { ok: result.delivered, message: result.message }
+  }
+  catch (error) {
+    // The endpoint answers 502 with the provider's own refusal, which is the
+    // only text that tells the operator which variable is wrong.
+    const detail = (error as { data?: { message?: string } }).data?.message
+    testResult.value = { ok: false, message: detail || apiErrorMessage(error, 'Could not send the test email.') }
+  }
+  finally {
+    testing.value = false
+  }
+}
+
 const countCards = computed(() => {
   const counts = data.value?.counts
   if (!counts) return []
@@ -188,6 +216,65 @@ const countCards = computed(() => {
           <b>{{ stat.value }}</b>
         </div>
       </div>
+
+      <!-- ── Email delivery ──────────────────────────────────────── -->
+      <div class="section-label">
+        <span>Email delivery</span>
+      </div>
+      <section class="card p-5">
+        <div class="flex flex-wrap items-center gap-3">
+          <StatusChip
+            :variant="data.mail.healthy ? 'ok' : 'warn'"
+            :label="data.mail.healthy ? 'SMTP configured' : 'Not configured'"
+          />
+          <span class="text-sm text-[var(--color-ink-500)]">{{ data.mail.message }}</span>
+        </div>
+
+        <p class="field-hint mt-3">
+          Driver signup cannot finish without outbound email. A test send reports the mail
+          server's own answer, so a rejected login or blocked port is named rather than guessed.
+        </p>
+
+        <form
+          class="mt-4 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end"
+          @submit.prevent="sendTestEmail"
+        >
+          <div>
+            <label
+              class="eyebrow block"
+              for="smtp-test-to"
+            >
+              Send to
+            </label>
+            <input
+              id="smtp-test-to"
+              v-model="testRecipient"
+              class="input mt-1"
+              type="email"
+              autocomplete="email"
+              inputmode="email"
+              placeholder="Your own address"
+            >
+          </div>
+          <button
+            class="btn-primary-action"
+            type="submit"
+            :disabled="testing"
+          >
+            {{ testing ? 'Sending…' : 'Send test email' }}
+          </button>
+        </form>
+
+        <p
+          v-if="testResult"
+          class="banner mt-4 mb-0"
+          :class="testResult.ok ? 'ok' : 'err'"
+          role="status"
+        >
+          <span aria-hidden="true">{{ testResult.ok ? '✓' : '✕' }}</span>
+          <span class="break-words">{{ testResult.message }}</span>
+        </p>
+      </section>
 
       <!-- ── Self-hosted services ─────────────────────────────────── -->
       <div class="section-label">
