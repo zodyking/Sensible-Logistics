@@ -36,7 +36,8 @@ ENV PORT=3847
 ENV HOST=0.0.0.0
 
 # uid 1001: the base image already has `node` at uid 1000.
-RUN addgroup -g 1001 -S nodejs && adduser -S -u 1001 -G nodejs nuxt
+RUN addgroup -g 1001 -S nodejs && adduser -S -u 1001 -G nodejs nuxt \
+  && apk add --no-cache tesseract-ocr tesseract-ocr-data-eng
 
 WORKDIR /app
 

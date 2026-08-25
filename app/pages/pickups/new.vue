@@ -33,13 +33,21 @@ const originLocationId = ref<string | null>(null)
 const originLocation = computed(() =>
   locationData.value?.items.find(l => l.id === originLocationId.value) ?? null)
 
-const rawNumber = ref('')
+const route = useRoute()
+const rawNumber = ref(String(route.query.number ?? ''))
 const containerType = ref<ContainerType>('TROPICAL')
 const equipmentType = ref<EquipmentType>('HC_40')
 const chassisId = ref<string | null>(null)
 const isLoaded = ref(true)
 const sealNumber = ref('')
 const notes = ref('')
+
+watch(chassisData, (data) => {
+  const wanted = normalizeContainerNumber(String(route.query.chassis ?? ''))
+  if (!wanted || chassisId.value) return
+  const match = data?.items.find(c => normalizeContainerNumber(c.number) === wanted)
+  if (match) chassisId.value = match.id
+}, { immediate: true })
 
 const submitting = ref(false)
 const errorMessage = ref('')
@@ -498,7 +506,7 @@ const selectedChassis = computed(() =>
       </div>
 
       <p class="mt-4 text-sm text-[var(--color-ink-500)]">
-        Only available chassis are listed. Chassis OCR and known-record matching arrive in Phase 2.
+        Only available chassis are listed. Scan a plate from the Scan tab to jump here with it selected.
       </p>
     </template>
 

@@ -4,8 +4,8 @@ import { requireDriver } from '../../utils/session'
 import { validateContainerNumber } from '#shared/utils/iso6346'
 
 const schema = z.object({
-  /** Base64 data URL from the camera capture. Kept as evidence once storage lands. */
-  image: z.string().min(1).max(20_000_000).optional(),
+  /** JPEG/PNG data URL from the framed camera crop. */
+  image: z.string().min(32, 'Capture a frame from the camera first.').max(20_000_000),
   profile: z.enum(['container', 'chassis', 'seal']).default('container'),
 })
 
@@ -13,15 +13,15 @@ const schema = z.object({
  * Scene-text recognition for equipment photos.
  *
  * Returns candidate values and regions, never a single magic string (spec 34).
- * While the PaddleOCR service is undeployed this responds `available: false`
- * with a 200 so the Scan screen falls back to manual entry rather than erroring.
+ * Container crops are expected to already be rotated into a left-to-right line;
+ * chassis crops stay horizontal.
  */
 export default defineEventHandler(async (event) => {
   await requireDriver(event)
   const body = await readValidatedJson(event, schema)
 
   const ocr = useOcrService()
-  const buffer = body.image ? Buffer.from(body.image.replace(/^data:[^;]+;base64,/, ''), 'base64') : Buffer.alloc(0)
+  const buffer = Buffer.from(body.image.replace(/^data:[^;]+;base64,/, ''), 'base64')
   const result = await ocr.recognizeSceneText(buffer, { profile: body.profile })
 
   const candidates = rankCandidates(result.candidates).map(candidate => ({

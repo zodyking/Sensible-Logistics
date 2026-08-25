@@ -150,7 +150,7 @@ are no metered or paid dependencies anywhere in the stack — see [Self-hosting]
 | `NUXT_S3_BUCKET` | no | `container-tracker` | Private bucket for documents and photos |
 | `NUXT_S3_ACCESS_KEY_ID` | no | — | Key you invent for your SeaweedFS container (Phase 2) |
 | `NUXT_S3_SECRET_ACCESS_KEY` | no | — | Secret you invent for your SeaweedFS container (Phase 2) |
-| `NUXT_OCR_SERVICE_URL` | no | — | Self-hosted PaddleOCR service (Phase 2) |
+| `NUXT_OCR_SERVICE_URL` | no | — | Unused. Container/chassis OCR runs Tesseract inside the app image |
 | `NUXT_PUBLIC_MAP_TILES_URL` | no | — | Self-hosted tile server (Phase 2) |
 | `NUXT_PUBLIC_GEOCODER_URL` | no | — | Self-hosted Nominatim (Phase 2) |
 | `SKIP_MIGRATIONS` | no | `false` | `true` boots the container without migrating |
@@ -300,7 +300,7 @@ API leaks your operational footprint. Run your own containers instead.
 
 | Service | Self-hosted component |
 | --- | --- |
-| OCR | PaddleOCR PP-OCRv6 Medium + PP-StructureV3 |
+| OCR | Tesseract in the app image (container + chassis numbers) |
 | Map tiles | PMTiles archive generated locally with Planetiler |
 | Geocoding | Nominatim with only your operating region imported |
 | Background jobs | pg-boss, backed by the same Postgres |
@@ -381,7 +381,7 @@ PostGIS, so the operator-supplied database can be any PostgreSQL 14+ server.
 
 | Subsystem | Interface | Behaviour today |
 | --- | --- | --- |
-| OCR | `server/services/ocr.ts` (`recognizeSceneText`, `recognizeDocument`, `healthCheck`, `engineVersion`) | Returns not-implemented gracefully. The `/scan` camera shell and manual-entry fallback are fully usable |
+| OCR | `server/services/ocr.ts` (`recognizeSceneText`, `recognizeDocument`, `healthCheck`, `engineVersion`) | Tesseract in the app image. `/scan` frames container numbers vertically and chassis plates horizontally |
 | Object storage | `server/services/storage.ts` | `NotConfiguredStorageService`; upload validation and key generation are implemented |
 | Geocoding | `server/services/geocoding.ts` | `NotConfiguredGeocoder`; address normalisation and duplicate detection are implemented |
 | Yard editor | `app/components/YardMapPlaceholder.vue` | Schematic placeholder. Drop-off stores a placeholder placement when yard positioning is selected |

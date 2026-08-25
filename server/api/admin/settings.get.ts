@@ -69,7 +69,7 @@ export default defineEventHandler(async (event) => {
     counts: { ...counts, admins: adminCount?.value ?? 0 },
     mail: mailStatus(),
     services: [
-      { key: 'ocr', name: 'PaddleOCR (PP-OCRv6 Medium)', healthy: ocr.healthy, detail: ocr.message, phase: 'Phase 2' },
+      { key: 'ocr', name: 'Tesseract OCR', healthy: ocr.healthy, detail: ocr.message, phase: 'Phase 1' },
       { key: 'storage', name: 'SeaweedFS object storage', healthy: storage.healthy, detail: storage.message, phase: 'Phase 2' },
       { key: 'geocoder', name: 'Self-hosted Nominatim', healthy: geocoder.healthy, detail: geocoder.message, phase: 'Phase 2' },
       { key: 'tiles', name: 'Planetiler / PMTiles vector tiles', healthy: false, detail: 'Regional tile archive not generated yet.', phase: 'Phase 2' },

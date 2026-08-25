@@ -3,7 +3,12 @@ import { formatContainerNumber, normalizeContainerNumber, validateContainerNumbe
 
 useHead({ title: 'Scan' })
 
+type ScanProfile = 'container' | 'chassis'
+
+const profile = ref<ScanProfile>('container')
+
 const videoEl = ref<HTMLVideoElement | null>(null)
+const guideEl = ref<HTMLElement | null>(null)
 const cameraState = ref<'idle' | 'starting' | 'live' | 'denied' | 'unsupported'>('idle')
 const cameraMessage = ref('')
 let stream: MediaStream | null = null
@@ -41,45 +46,155 @@ function stopCamera() {
 
 onBeforeUnmount(stopCamera)
 
-/* --- OCR (Phase 2 service) --------------------------------------- */
+/**
+ * Map the on-screen guide rectangle back onto the camera buffer, accounting
+ * for `object-cover` centering. Container markings are stacked top-to-bottom,
+ * so that crop is rotated 90° CCW into a left-to-right line before OCR.
+ */
+function captureGuide(): string {
+  const video = videoEl.value
+  const guide = guideEl.value
+  if (!video || !guide || video.videoWidth < 2 || video.videoHeight < 2) {
+    throw new Error('Camera is not ready.')
+  }
+
+  const vRect = video.getBoundingClientRect()
+  const gRect = guide.getBoundingClientRect()
+  const scale = Math.max(vRect.width / video.videoWidth, vRect.height / video.videoHeight)
+  const displayedW = video.videoWidth * scale
+  const displayedH = video.videoHeight * scale
+  const originX = vRect.left - (displayedW - vRect.width) / 2
+  const originY = vRect.top - (displayedH - vRect.height) / 2
+
+  let sx = (gRect.left - originX) / scale
+  let sy = (gRect.top - originY) / scale
+  let sw = gRect.width / scale
+  let sh = gRect.height / scale
+
+  sx = Math.max(0, Math.min(video.videoWidth - 1, sx))
+  sy = Math.max(0, Math.min(video.videoHeight - 1, sy))
+  sw = Math.max(8, Math.min(video.videoWidth - sx, sw))
+  sh = Math.max(8, Math.min(video.videoHeight - sy, sh))
+
+  const rotate = profile.value === 'container'
+  const canvas = document.createElement('canvas')
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('Could not capture a frame.')
+
+  if (rotate) {
+    canvas.width = Math.round(sh)
+    canvas.height = Math.round(sw)
+    ctx.translate(0, canvas.height)
+    ctx.rotate(-Math.PI / 2)
+    ctx.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh)
+  }
+  else {
+    canvas.width = Math.round(sw)
+    canvas.height = Math.round(sh)
+    ctx.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh)
+  }
+
+  // Upscale tiny crops so Tesseract has enough pixels for a stencil.
+  const minWidth = 480
+  if (canvas.width < minWidth) {
+    const factor = minWidth / canvas.width
+    const scaled = document.createElement('canvas')
+    scaled.width = minWidth
+    scaled.height = Math.round(canvas.height * factor)
+    const scaledCtx = scaled.getContext('2d')
+    if (scaledCtx) {
+      scaledCtx.imageSmoothingEnabled = false
+      scaledCtx.drawImage(canvas, 0, 0, scaled.width, scaled.height)
+      return scaled.toDataURL('image/jpeg', 0.92)
+    }
+  }
+
+  return canvas.toDataURL('image/jpeg', 0.92)
+}
+
 const recognizing = ref(false)
-const ocrMessage = ref('')
-const candidates = ref<Array<{ value: string, confidence: number, band: string }>>([])
+const ocrError = ref('')
+const ocrHint = ref('')
+const candidates = ref<Array<{ value: string, confidence: number, band: string, checkDigitValid: boolean }>>([])
 
 async function recognize() {
+  if (recognizing.value) return
   recognizing.value = true
-  ocrMessage.value = ''
+  ocrError.value = ''
+  ocrHint.value = ''
   candidates.value = []
 
   try {
+    if (cameraState.value !== 'live') {
+      throw new Error('Start the camera, frame the number, then tap Read number.')
+    }
+
+    const image = captureGuide()
     const result = await $fetch('/api/scan/recognize', {
       method: 'POST',
-      body: { profile: 'container' },
+      body: { profile: profile.value, image },
     })
-    candidates.value = result.candidates.map(c => ({ value: c.value, confidence: c.confidence, band: c.band }))
-    ocrMessage.value = result.message ?? ''
+
+    candidates.value = result.candidates.map(c => ({
+      value: c.value,
+      confidence: c.confidence,
+      band: c.band,
+      checkDigitValid: c.checkDigitValid,
+    }))
+
+    if (result.available === false) {
+      ocrError.value = result.message || 'The number could not be read.'
+    }
+    else if (!candidates.value.length) {
+      ocrHint.value = result.message || 'No number found in the frame. Reposition and try again, or type it below.'
+    }
+    else {
+      applyCandidate(candidates.value[0]!.value)
+    }
   }
   catch (error) {
-    ocrMessage.value = apiErrorMessage(error, 'Recognition failed. Use manual entry.')
+    ocrError.value = apiErrorMessage(error, 'Recognition failed. Use manual entry.')
   }
   finally {
     recognizing.value = false
   }
 }
 
+function applyCandidate(value: string) {
+  manual.value = value
+}
+
+watch(profile, () => {
+  candidates.value = []
+  ocrError.value = ''
+  ocrHint.value = ''
+  lookupState.value = 'idle'
+})
+
 /* --- Manual entry, always available ------------------------------ */
 const manual = ref('')
 const normalized = computed(() => normalizeContainerNumber(manual.value))
 const validation = computed(() => validateContainerNumber(manual.value))
-const showValidation = computed(() => normalized.value.length >= 11)
+const showContainerValidation = computed(() => profile.value === 'container' && normalized.value.length >= 11)
+const chassisReady = computed(() => profile.value === 'chassis' && normalized.value.length >= 4)
 
 const lookupState = ref<'idle' | 'searching' | 'missing'>('idle')
 
 async function lookup() {
-  if (normalized.value.length !== 11) return
   lookupState.value = 'searching'
 
   try {
+    if (profile.value === 'chassis') {
+      const result = await $fetch('/api/chassis', { query: { q: normalized.value, limit: 1 } })
+      const match = result.items[0]
+      if (match) {
+        await navigateTo({ path: '/pickups/new', query: { chassis: match.number } })
+        return
+      }
+      lookupState.value = 'missing'
+      return
+    }
+
     const result = await $fetch('/api/containers', { query: { q: normalized.value, scope: 'all', limit: 1 } })
     const match = result.items[0]
     if (match) {
@@ -92,18 +207,46 @@ async function lookup() {
     lookupState.value = 'missing'
   }
 }
+
+const pickupQuery = computed(() =>
+  profile.value === 'chassis'
+    ? { chassis: normalized.value }
+    : { number: normalized.value },
+)
 </script>
 
 <template>
   <section class="d-page">
     <PageHeader
       eyebrow="Capture"
-      title="Scan a container"
+      :title="profile === 'chassis' ? 'Scan a chassis' : 'Scan a container'"
     />
+
+    <fieldset class="scan-target">
+      <legend class="sr-only">
+        What are you scanning?
+      </legend>
+      <button
+        type="button"
+        :aria-pressed="profile === 'container'"
+        @click="profile = 'container'"
+      >
+        <b>Container</b>
+        <small>Vertical number</small>
+      </button>
+      <button
+        type="button"
+        :aria-pressed="profile === 'chassis'"
+        @click="profile = 'chassis'"
+      >
+        <b>Chassis</b>
+        <small>Horizontal plate</small>
+      </button>
+    </fieldset>
 
     <!-- ── Camera ──────────────────────────────────────────────── -->
     <div class="card overflow-hidden">
-      <div class="relative aspect-[4/3] bg-[var(--color-navy-950)]">
+      <div class="relative aspect-[3/4] bg-[var(--color-navy-950)] sm:aspect-[4/3]">
         <video
           ref="videoEl"
           class="size-full object-cover"
@@ -111,14 +254,14 @@ async function lookup() {
           muted
         />
 
-        <!-- Framing guide sized for container identification markings -->
         <div
-          v-if="cameraState === 'live'"
-          class="pointer-events-none absolute inset-x-6 top-1/2 h-20 -translate-y-1/2 rounded border-2 border-[var(--color-amber-500)]"
+          ref="guideEl"
+          class="scan-guide"
+          :class="profile === 'container' ? 'vertical' : 'horizontal'"
           aria-hidden="true"
         >
-          <span class="absolute -top-6 left-0 text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--color-amber-500)]">
-            Frame the number
+          <span class="scan-guide-label">
+            {{ profile === 'container' ? 'Frame the vertical number' : 'Frame the chassis plate' }}
           </span>
         </div>
 
@@ -132,7 +275,9 @@ async function lookup() {
               aria-hidden="true"
             >⊙</span>
             <p class="text-sm text-white/70">
-              {{ cameraMessage || 'Start the camera to capture the container number.' }}
+              {{ cameraMessage || (profile === 'container'
+                ? 'Start the camera and stand the phone so the stacked container number fills the tall frame.'
+                : 'Start the camera and fill the wide frame with the chassis plate.') }}
             </p>
           </div>
         </div>
@@ -166,15 +311,21 @@ async function lookup() {
     </div>
 
     <p
-      v-if="ocrMessage"
+      v-if="ocrError"
       class="banner warn mt-4"
       role="status"
     >
       <span aria-hidden="true">!</span>
-      <span>
-        <b>OCR unavailable</b>
-        {{ ocrMessage }}
-      </span>
+      <span>{{ ocrError }}</span>
+    </p>
+
+    <p
+      v-else-if="ocrHint"
+      class="banner info mt-4"
+      role="status"
+    >
+      <span aria-hidden="true">▸</span>
+      <span>{{ ocrHint }}</span>
     </p>
 
     <div
@@ -190,11 +341,16 @@ async function lookup() {
           :key="candidate.value"
           type="button"
           class="row"
-          @click="manual = candidate.value"
+          @click="applyCandidate(candidate.value)"
         >
           <span class="row-main">
-            <b class="mono">{{ formatContainerNumber(candidate.value) }}</b>
-            <small>{{ candidate.band }} confidence · {{ Math.round(candidate.confidence * 100) }}%</small>
+            <b class="mono">{{ profile === 'container' ? formatContainerNumber(candidate.value) : candidate.value }}</b>
+            <small>
+              {{ candidate.band }} confidence · {{ Math.round(candidate.confidence * 100) }}%
+              <template v-if="profile === 'container'">
+                · {{ candidate.checkDigitValid ? 'check digit ok' : 'check digit failed' }}
+              </template>
+            </small>
           </span>
           <span
             class="row-end"
@@ -211,16 +367,16 @@ async function lookup() {
 
     <div class="card p-4">
       <label class="field">
-        <span>Container number</span>
+        <span>{{ profile === 'chassis' ? 'Chassis number' : 'Container number' }}</span>
         <input
           v-model="manual"
           class="input mono"
-          :class="{ invalid: showValidation && !validation.structureValid }"
-          placeholder="MSCU4521894"
+          :class="{ invalid: showContainerValidation && !validation.structureValid }"
+          :placeholder="profile === 'chassis' ? 'ABCZ1234567' : 'MSCU4521894'"
           autocapitalize="characters"
           autocomplete="off"
           spellcheck="false"
-          maxlength="15"
+          maxlength="17"
           aria-describedby="scan-validation"
         >
       </label>
@@ -230,14 +386,14 @@ async function lookup() {
         aria-live="polite"
       >
         <p
-          v-if="showValidation && validation.valid"
+          v-if="showContainerValidation && validation.valid"
           class="banner ok mb-3"
         >
           <span aria-hidden="true">✓</span>
           <span><b>{{ formatContainerNumber(normalized) }}</b> Check digit is valid.</span>
         </p>
         <p
-          v-else-if="showValidation"
+          v-else-if="showContainerValidation"
           class="banner warn mb-3"
         >
           <span aria-hidden="true">!</span>
@@ -247,10 +403,14 @@ async function lookup() {
 
       <button
         class="btn-dark"
-        :disabled="normalized.length !== 11 || lookupState === 'searching'"
+        :disabled="profile === 'container'
+          ? normalized.length !== 11 || lookupState === 'searching'
+          : !chassisReady || lookupState === 'searching'"
         @click="lookup"
       >
-        {{ lookupState === 'searching' ? 'Looking up…' : 'Open container record' }}
+        {{ lookupState === 'searching'
+          ? 'Looking up…'
+          : profile === 'chassis' ? 'Open chassis on pickup' : 'Open container record' }}
       </button>
 
       <p
@@ -265,15 +425,16 @@ async function lookup() {
     </div>
 
     <NuxtLink
-      to="/pickups/new"
+      :to="{ path: '/pickups/new', query: pickupQuery }"
       class="btn-primary-action mt-4"
     >
       Start a pickup with this number
     </NuxtLink>
 
     <p class="mt-6 text-xs text-[var(--color-ink-500)]">
-      Container photos are never sent to a third-party OCR service. Recognition runs on self-hosted
-      PaddleOCR, and every reading is confirmed by you before it becomes a custody event.
+      Photos stay on this server. Recognition runs with Tesseract inside the app container —
+      nothing is sent to a third-party OCR API. Confirm every reading before it becomes a
+      custody event.
     </p>
   </section>
 </template>

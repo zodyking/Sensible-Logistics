@@ -1,15 +1,17 @@
+import { spawn } from 'node:child_process'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { parseEquipmentReadings } from '#shared/utils/ocr-parse'
 import { generateCorrectionCandidates, validateContainerNumber } from '#shared/utils/iso6346'
 
 /**
  * Local OCR engine boundary (spec 30.7, 34).
  *
- * The engine interface is defined *before* any model-specific inference code so
- * the PaddleOCR service can be swapped or upgraded without touching workflow
- * code. Inference never runs inside Nuxt or the browser — it lives in a separate
- * container reached over this internal contract.
- *
- * Phase 1 ships {@link NotImplementedOcrService}, which degrades gracefully to
- * the manual-entry path. OCR accelerates the workflow but must never block it.
+ * Inference never runs in the browser. The engine is Tesseract, installed in
+ * the application image, so "Read number" works without a second container.
+ * `NUXT_OCR_SERVICE_URL` remains an optional override for a future PaddleOCR
+ * sidecar — when it is unset, Tesseract is the engine.
  */
 
 export interface OcrRegion {
@@ -67,54 +69,231 @@ export interface OcrService {
   engineVersion(): Promise<string | null>
 }
 
-const ENGINE = 'paddleocr'
+const ENGINE = 'tesseract'
+const WHITELIST = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
 
-/**
- * Phase 1 implementation. Reports `available: false` rather than throwing, so
- * the Scan screen can fall back to manual entry without an error state.
- *
- * TODO(Phase 2): replace with `HttpOcrService` posting to
- * `NUXT_OCR_SERVICE_URL` (Dockerised PaddleOCR PP-OCRv6 Medium + OpenCV).
- * Preserve this interface exactly so no workflow code changes.
- */
-export class NotImplementedOcrService implements OcrService {
-  async recognizeSceneText(): Promise<SceneTextResult> {
-    return {
-      available: false,
-      engine: ENGINE,
-      engineVersion: null,
-      modelName: null,
-      preprocessingProfile: null,
-      regions: [],
-      candidates: [],
-      latencyMs: 0,
-      message: 'The OCR service is not deployed yet. Enter the number manually — validation still applies.',
+function imageExtension(buffer: Buffer): 'jpg' | 'png' | 'webp' {
+  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8) return 'jpg'
+  if (buffer.length >= 8 && buffer[0] === 0x89 && buffer[1] === 0x50) return 'png'
+  if (buffer.length >= 12 && buffer.subarray(8, 12).toString('ascii') === 'WEBP') return 'webp'
+  return 'jpg'
+}
+
+function runCommand(command: string, args: string[], timeoutMs = 20_000): Promise<{ stdout: string, stderr: string, code: number | null }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] })
+    let stdout = ''
+    let stderr = ''
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL')
+      reject(new Error(`${command} timed out after ${timeoutMs}ms`))
+    }, timeoutMs)
+
+    child.stdout.on('data', (chunk: Buffer) => {
+      stdout += chunk.toString('utf8')
+    })
+    child.stderr.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString('utf8')
+    })
+    child.on('error', (error) => {
+      clearTimeout(timer)
+      reject(error)
+    })
+    child.on('close', (code) => {
+      clearTimeout(timer)
+      resolve({ stdout, stderr, code })
+    })
+  })
+}
+
+let resolvedBinary: string | null | undefined
+let resolvedVersion: string | null | undefined
+
+async function tesseractBinary(): Promise<string | null> {
+  if (resolvedBinary !== undefined) return resolvedBinary
+  try {
+    const result = await runCommand('tesseract', ['--version'], 5_000)
+    if (result.code === 0) {
+      resolvedBinary = 'tesseract'
+      const match = result.stdout.match(/tesseract\s+([0-9.]+)/i) ?? result.stderr.match(/tesseract\s+([0-9.]+)/i)
+      resolvedVersion = match?.[1] ?? result.stdout.trim().split('\n')[0] ?? null
+      return resolvedBinary
+    }
+  }
+  catch {
+    // fall through
+  }
+  resolvedBinary = null
+  resolvedVersion = null
+  return null
+}
+
+async function readVersion(): Promise<string | null> {
+  await tesseractBinary()
+  return resolvedVersion ?? null
+}
+
+function parseTsv(tsv: string): OcrRegion[] {
+  const lines = tsv.split(/\r?\n/).slice(1)
+  const regions: OcrRegion[] = []
+  for (const line of lines) {
+    if (!line.trim()) continue
+    const cols = line.split('\t')
+    if (cols.length < 12) continue
+    const level = Number(cols[0])
+    // Level 5 is a word.
+    if (level !== 5) continue
+    const text = (cols[11] ?? '').trim()
+    if (!text) continue
+    const conf = Number(cols[10])
+    regions.push({
+      text,
+      confidence: Number.isFinite(conf) ? Math.max(0, Math.min(1, conf / 100)) : 0,
+      box: [Number(cols[6]) || 0, Number(cols[7]) || 0, Number(cols[8]) || 0, Number(cols[9]) || 0],
+    })
+  }
+  return regions
+}
+
+async function ocrFile(imagePath: string, psm: number): Promise<{ text: string, regions: OcrRegion[] }> {
+  const binary = await tesseractBinary()
+  if (!binary) throw new Error('tesseract is not installed')
+
+  const args = [
+    imagePath, 'stdout',
+    '--psm', String(psm),
+    '-l', 'eng',
+    '-c', `tessedit_char_whitelist=${WHITELIST}`,
+    '-c', 'load_system_dawg=0',
+    '-c', 'load_freq_dawg=0',
+    'tsv',
+  ]
+
+  const result = await runCommand(binary, args)
+  if (result.code !== 0) {
+    throw new Error(result.stderr.trim() || `tesseract exited ${result.code}`)
+  }
+
+  const regions = parseTsv(result.stdout)
+  const text = regions.map(r => r.text).join(' ') || result.stdout
+  return { text, regions }
+}
+
+class TesseractOcrService implements OcrService {
+  async recognizeSceneText(image: Buffer, options?: { profile?: 'container' | 'chassis' | 'seal' }): Promise<SceneTextResult> {
+    const started = Date.now()
+    const profile = options?.profile ?? 'container'
+    const version = await readVersion()
+
+    if (!image.length) {
+      return {
+        available: false,
+        engine: ENGINE,
+        engineVersion: version,
+        modelName: null,
+        preprocessingProfile: profile,
+        regions: [],
+        candidates: [],
+        latencyMs: Date.now() - started,
+        message: 'No photo was captured. Start the camera, frame the number, then tap Read number.',
+      }
+    }
+
+    if (!await tesseractBinary()) {
+      return {
+        available: false,
+        engine: ENGINE,
+        engineVersion: null,
+        modelName: null,
+        preprocessingProfile: profile,
+        regions: [],
+        candidates: [],
+        latencyMs: Date.now() - started,
+        message: 'Tesseract is not installed in this image, so the number cannot be read. Enter it manually.',
+      }
+    }
+
+    const dir = await mkdtemp(join(tmpdir(), 'ocr-'))
+    const imagePath = join(dir, `frame.${imageExtension(image)}`)
+
+    try {
+      await writeFile(imagePath, image)
+      // Container numbers arrive pre-rotated to a single line. Chassis plates
+      // are already a line. PSM 7 is "treat the image as a single text line";
+      // PSM 6 is the fallback for a wrapped stencil.
+      const passes = profile === 'container' ? [7, 6, 5] : [7, 6]
+      const texts: string[] = []
+      let regions: OcrRegion[] = []
+
+      for (const psm of passes) {
+        try {
+          const pass = await ocrFile(imagePath, psm)
+          if (pass.text.trim()) texts.push(pass.text)
+          if (pass.regions.length > regions.length) regions = pass.regions
+        }
+        catch (error) {
+          console.warn(`[ocr] tesseract psm ${psm} failed:`, error instanceof Error ? error.message : error)
+        }
+      }
+
+      const meanConf = regions.length
+        ? regions.reduce((sum, r) => sum + r.confidence, 0) / regions.length
+        : 0.65
+
+      const candidates = parseEquipmentReadings(texts, profile, meanConf)
+
+      return {
+        available: true,
+        engine: ENGINE,
+        engineVersion: version,
+        modelName: 'eng',
+        preprocessingProfile: profile,
+        regions,
+        candidates,
+        latencyMs: Date.now() - started,
+        message: candidates.length
+          ? undefined
+          : 'No equipment number could be read. Re-frame the marking, or enter it manually.',
+      }
+    }
+    finally {
+      await rm(dir, { recursive: true, force: true })
     }
   }
 
   async recognizeDocument(): Promise<DocumentOcrResult> {
+    const version = await readVersion()
     return {
-      available: false,
+      available: Boolean(await tesseractBinary()),
       engine: ENGINE,
-      engineVersion: null,
+      engineVersion: version,
       text: '',
       fields: {},
       latencyMs: 0,
-      message: 'Document parsing runs asynchronously once the PP-StructureV3 service is deployed.',
+      message: 'Document field parsing is not enabled. Scene-text reading for container and chassis numbers is.',
     }
   }
 
   async healthCheck(): Promise<OcrHealth> {
+    const version = await readVersion()
+    if (!version) {
+      return {
+        healthy: false,
+        engine: ENGINE,
+        engineVersion: null,
+        message: 'Tesseract is not installed in this image.',
+      }
+    }
     return {
-      healthy: false,
+      healthy: true,
       engine: ENGINE,
-      engineVersion: null,
-      message: 'Not configured. Set NUXT_OCR_SERVICE_URL and deploy the PaddleOCR container.',
+      engineVersion: version,
+      message: `Tesseract ${version} ready.`,
     }
   }
 
   async engineVersion(): Promise<string | null> {
-    return null
+    return readVersion()
   }
 }
 
@@ -122,7 +301,7 @@ let instance: OcrService | undefined
 
 /** Resolve the configured engine. Swap the implementation here, nowhere else. */
 export function useOcrService(): OcrService {
-  if (!instance) instance = new NotImplementedOcrService()
+  if (!instance) instance = new TesseractOcrService()
   return instance
 }
 
@@ -154,7 +333,6 @@ export function rankCandidates(candidates: OcrCandidate[]): OcrCandidate[] {
     for (const alternative of generateCorrectionCandidates(candidate.value, candidate.lowConfidenceIndexes)) {
       expanded.push({
         value: alternative,
-        // Corrected readings are ranked below what the engine actually saw.
         confidence: candidate.confidence * 0.8,
         checkDigitValid: true,
         lowConfidenceIndexes: candidate.lowConfidenceIndexes,
