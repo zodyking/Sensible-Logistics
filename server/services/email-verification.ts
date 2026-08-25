@@ -2,6 +2,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { and, desc, eq, gt, isNull } from 'drizzle-orm'
 import { emailVerificationTokens, users } from '../database/schema'
 import type { DbExecutor } from '../utils/db'
+import { readEmailBrand, verificationEmail } from './email'
 import { appBaseUrl, useMail } from './mail'
 
 /**
@@ -123,54 +124,16 @@ export async function consumeEmailVerification(
   return { userId: user.id, email: user.email }
 }
 
-function buildMessage(firstName: string, link: string, expiresAt: Date) {
+function buildMessage(user: { firstName: string, email: string }, link: string, expiresAt: Date) {
   const hours = Math.round(TOKEN_TTL_MINUTES / 60)
-  const appName = String(useRuntimeConfig().public.appName || 'Driver Portal')
-  const subject = `Confirm your ${appName} email`
-
-  const text = [
-    `Hi ${firstName},`,
-    '',
-    `Confirm your email address to activate your ${appName} driver account:`,
-    '',
-    link,
-    '',
-    `This link expires in ${hours} hours. If you did not create an account, ignore this email.`,
-  ].join('\n')
-
-  const html = `<!doctype html>
-<html lang="en">
-  <body style="margin:0;padding:24px;background:#EDF0F2;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#0C1E30;">
-    <table role="presentation" cellpadding="0" cellspacing="0" style="max-width:520px;margin:0 auto;background:#FFFFFF;border-radius:16px;overflow:hidden;">
-      <tr>
-        <td style="background:#0C1E30;padding:20px 24px;">
-          <span style="color:#FFFFFF;font-weight:700;letter-spacing:0.08em;font-size:14px;">${appName.toUpperCase()}</span>
-        </td>
-      </tr>
-      <tr>
-        <td style="padding:28px 24px;">
-          <p style="margin:0 0 16px;font-size:16px;">Hi ${firstName},</p>
-          <p style="margin:0 0 24px;font-size:16px;line-height:1.5;">
-            Confirm your email address to activate your driver account.
-          </p>
-          <a href="${link}" style="display:block;background:#F0A422;color:#0C1E30;text-decoration:none;font-weight:700;font-size:16px;text-align:center;padding:16px 24px;border-radius:12px;">
-            Confirm email address
-          </a>
-          <p style="margin:24px 0 0;font-size:13px;line-height:1.5;color:#5B6B7C;">
-            This link expires in ${hours} hours. If the button does not work, paste this address
-            into your browser:<br>
-            <span style="word-break:break-all;color:#2C5075;">${link}</span>
-          </p>
-          <p style="margin:16px 0 0;font-size:13px;color:#5B6B7C;">
-            If you did not create an account, you can ignore this email.
-          </p>
-        </td>
-      </tr>
-    </table>
-  </body>
-</html>`
-
-  return { subject, text, html, expiresAt }
+  return verificationEmail({
+    brand: readEmailBrand(),
+    firstName: user.firstName,
+    email: user.email,
+    confirmUrl: link,
+    expiresAt,
+    ttlHours: hours,
+  })
 }
 
 /**
@@ -184,13 +147,14 @@ export async function sendEmailVerification(
   const { token, expiresAt } = await issueEmailVerification(db, user.id, user.email)
   const link = `${appBaseUrl()}/verify-email?token=${encodeURIComponent(token)}`
   const mail = useMail()
-  const message = buildMessage(user.firstName, link, expiresAt)
+  const message = buildMessage(user, link, expiresAt)
 
   await mail.send({
     to: user.email,
     subject: message.subject,
     text: message.text,
     html: message.html,
+    attachments: message.attachments,
   })
 
   return { devLink: mail.isConfigured() ? null : link }

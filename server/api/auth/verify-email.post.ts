@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { companies, companyMemberships, drivers, users } from '../../database/schema'
+import { sendWelcomeEmail } from '../../services/email'
 import { consumeEmailVerification } from '../../services/email-verification'
 
 const schema = z.object({
@@ -75,6 +76,19 @@ export default defineEventHandler(async (event) => {
   })
 
   await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, user.id))
+
+  try {
+    await sendWelcomeEmail({
+      email: user.email,
+      firstName: user.firstName,
+      companyName: membership.companyName,
+    })
+  }
+  catch (error) {
+    // The address is already confirmed and the session is issued. A welcome
+    // delivery failure must not send the driver back to the expired-link screen.
+    console.error('[verify-email] welcome email failed', error)
+  }
 
   return {
     ok: true,

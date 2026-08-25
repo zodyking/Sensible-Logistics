@@ -1,5 +1,6 @@
 import { z } from 'zod'
-import { resetMail, useMail } from '../../services/mail'
+import { readEmailBrand, smtpTestEmail } from '../../services/email'
+import { appBaseUrl, resetMail, useMail } from '../../services/mail'
 import { requireAdmin } from '../../utils/session'
 
 const schema = z.object({
@@ -30,19 +31,27 @@ export default defineEventHandler(async (event) => {
     return { ok: false, delivered: false, to, message: reachable.message }
   }
 
-  const appName = String(useRuntimeConfig().public.appName || 'Driver Portal')
+  let settingsUrl = ''
+  try {
+    settingsUrl = `${appBaseUrl()}/admin/settings`
+  }
+  catch {
+    // Logo still inlines via CID when the public origin is not configured.
+  }
+
+  const rendered = smtpTestEmail({
+    brand: readEmailBrand(),
+    email: to,
+    settingsUrl,
+  })
 
   try {
     await mail.send({
       to,
-      subject: `${appName} SMTP test`,
-      text: [
-        'This is a test message from your driver portal.',
-        '',
-        'If you are reading it, outbound email is working and driver verification links will be delivered.',
-      ].join('\n'),
-      html: '<p>This is a test message from your driver portal.</p>'
-        + '<p>If you are reading it, outbound email is working and driver verification links will be delivered.</p>',
+      subject: rendered.subject,
+      text: rendered.text,
+      html: rendered.html,
+      attachments: rendered.attachments,
     })
   }
   catch (error) {

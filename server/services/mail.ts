@@ -13,11 +13,21 @@ import { formatSmtpFromHeader, parseSmtpFromHeader, smtpFromDomain } from '#shar
  * sending from a bare application server.
  */
 
+export interface MailAttachment {
+  filename: string
+  path?: string
+  content?: Buffer | string
+  cid?: string
+  contentType?: string
+  contentDisposition?: 'inline' | 'attachment'
+}
+
 export interface MailMessage {
   to: string
   subject: string
   text: string
   html?: string
+  attachments?: MailAttachment[]
 }
 
 export interface MailService {
@@ -154,6 +164,7 @@ class SmtpMailService implements MailService {
         subject: message.subject.trim(),
         text: message.text,
         html: message.html,
+        attachments: message.attachments,
         // A stable, domain-matched Message-ID keeps transactional mail out of
         // spam and makes deliveries traceable in the provider's logs.
         messageId: `<mail.${randomUUID()}@${domain}>`,
