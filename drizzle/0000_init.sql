@@ -1,4 +1,3 @@
-CREATE EXTENSION IF NOT EXISTS postgis;--> statement-breakpoint
 CREATE TYPE "public"."active_pool_state" AS ENUM('INACTIVE', 'PICKUP_IN_PROGRESS', 'DRIVER_CUSTODY', 'AT_LOCATION', 'EXCEPTION');--> statement-breakpoint
 CREATE TYPE "public"."chassis_status" AS ENUM('AVAILABLE', 'IN_USE', 'OUT_OF_SERVICE');--> statement-breakpoint
 CREATE TYPE "public"."container_type" AS ENUM('TROPICAL', 'ZIM', 'CMA', 'KING_OCEAN');--> statement-breakpoint

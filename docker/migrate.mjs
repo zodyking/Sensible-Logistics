@@ -16,6 +16,9 @@ function logError(message) {
   console.error(`[migrate] ${message}`)
 }
 
+/** Operator-fixable misconfiguration: the guidance above it is the useful part, not a stack. */
+class ConfigurationError extends Error {}
+
 const databaseUrl = process.env.DATABASE_URL
 if (!databaseUrl) {
   logError('DATABASE_URL is not set. Refusing to run migrations.')
@@ -57,18 +60,52 @@ async function connectWithRetry() {
   throw lastError
 }
 
+async function postgisInstalled() {
+  try {
+    const { rows } = await pool.query('SELECT 1 FROM pg_extension WHERE extname = \'postgis\';')
+    return rows.length > 0
+  }
+  catch {
+    return false
+  }
+}
+
+/**
+ * The schema declares `geometry(Point,4326)` / `geometry(Polygon,4326)` columns,
+ * so PostGIS is a hard requirement rather than an optimisation. Install it here
+ * — outside the migration transaction — because a failed `CREATE EXTENSION`
+ * inside that transaction aborts every statement that follows it.
+ */
+async function ensurePostgis() {
+  try {
+    await pool.query('CREATE EXTENSION IF NOT EXISTS postgis;')
+    log('PostGIS extension is available.')
+    return
+  }
+  catch (error) {
+    const reason = error instanceof Error ? error.message : String(error)
+
+    // A restricted role may be unable to run CREATE EXTENSION even though the
+    // extension is already installed, which is fine.
+    if (await postgisInstalled()) {
+      log(`PostGIS is already installed (CREATE EXTENSION was rejected: ${reason}).`)
+      return
+    }
+
+    logError(`PostGIS is not installed and could not be created: ${reason}`)
+    logError('This schema stores geometry columns, so plain PostgreSQL cannot host it. Either:')
+    logError('  1. leave DATABASE_URL unset so the app uses the bundled `postgres` service '
+      + '(postgis/postgis:17-3.5) from docker-compose.yml, or')
+    logError('  2. point DATABASE_URL at a PostGIS-enabled server and, if the app role is not '
+      + 'a superuser, run `CREATE EXTENSION postgis;` on that database once as an admin.')
+    throw new ConfigurationError('PostGIS extension unavailable', { cause: error })
+  }
+}
+
 async function main() {
   try {
     await connectWithRetry()
-
-    try {
-      await pool.query('CREATE EXTENSION IF NOT EXISTS postgis;')
-      log('Ensured PostGIS extension is available.')
-    }
-    catch (error) {
-      const reason = error instanceof Error ? error.message : String(error)
-      logError(`Could not CREATE EXTENSION postgis (continuing): ${reason}`)
-    }
+    await ensurePostgis()
 
     log(`Running migrations from ${migrationsFolder}`)
     await migrate(db, { migrationsFolder })
@@ -78,7 +115,10 @@ async function main() {
     process.exit(0)
   }
   catch (error) {
-    const reason = error instanceof Error ? error.stack || error.message : String(error)
+    let reason
+    if (error instanceof ConfigurationError) reason = error.message
+    else if (error instanceof Error) reason = error.stack || error.message
+    else reason = String(error)
     logError(`Migration failed: ${reason}`)
     try {
       await pool.end()
