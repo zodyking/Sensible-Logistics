@@ -33,17 +33,23 @@ interface SmtpSettings {
 }
 
 /** Env values arrive via `destr`, so ports and booleans may not be strings. */
+function envelopeFrom(email: string, name: string): string {
+  if (!name) return email
+  return `${name} <${email}>`
+}
+
 function readSmtpSettings(): SmtpSettings | null {
   const config = useRuntimeConfig().smtp
   const host = String(config.host ?? '').trim()
   if (!host) return null
 
   const port = Number(config.port) || 587
-  const from = String(config.from ?? '').trim()
-  if (!from) {
+  const fromEmail = String(config.fromEmail ?? '').trim()
+  const fromName = String(config.fromName ?? '').trim()
+  if (!fromEmail) {
     throw createError({
       statusCode: 503,
-      statusMessage: 'NUXT_SMTP_FROM is not set. This is the From address shown to recipients and is separate from NUXT_SMTP_USER (SMTP login).',
+      statusMessage: 'NUXT_SMTP_FROM_EMAIL is not set. This is the From email shown to recipients and is separate from NUXT_SMTP_USER (SMTP login).',
     })
   }
 
@@ -54,7 +60,7 @@ function readSmtpSettings(): SmtpSettings | null {
     secure: String(config.secure ?? '').toLowerCase() === 'true' || port === 465,
     user: String(config.user ?? '').trim(),
     password: String(config.password ?? ''),
-    from,
+    from: envelopeFrom(fromEmail, fromName),
   }
 }
 
@@ -85,7 +91,7 @@ class SmtpMailService implements MailService {
     if (!this.settings.from) {
       throw createError({
         statusCode: 503,
-        statusMessage: 'NUXT_SMTP_FROM is not set. This is the From address shown to recipients and is separate from NUXT_SMTP_USER (SMTP login).',
+        statusMessage: 'NUXT_SMTP_FROM_EMAIL is not set. This is the From email shown to recipients and is separate from NUXT_SMTP_USER (SMTP login).',
       })
     }
 

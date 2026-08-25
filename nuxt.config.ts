@@ -58,11 +58,13 @@ export default defineNuxtConfig({
       host: '',
       port: '587',
       secure: '',
-      /** SMTP login. Not the From header — that is `from` / NUXT_SMTP_FROM. */
+      /** SMTP login only. Never used as the From address. */
       user: '',
       password: '',
-      /** Envelope / header From. Distinct from `user` / NUXT_SMTP_USER. */
-      from: '',
+      /** From email shown to recipients. Distinct from `user`. */
+      fromEmail: '',
+      /** Optional display name, e.g. Sensible Logistics. */
+      fromName: '',
     },
     ocrServiceUrl: '',
     s3Endpoint: '',

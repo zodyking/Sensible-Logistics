@@ -44,11 +44,12 @@ services:
       NUXT_SMTP_HOST: ${NUXT_SMTP_HOST:?set NUXT_SMTP_HOST}
       NUXT_SMTP_PORT: ${NUXT_SMTP_PORT:-587}
       NUXT_SMTP_SECURE: ${NUXT_SMTP_SECURE:-false}
-      # Login identity for the SMTP server — not the From header.
+      # SMTP login only — not the From email.
       NUXT_SMTP_USER: ${NUXT_SMTP_USER:-}
       NUXT_SMTP_PASSWORD: ${NUXT_SMTP_PASSWORD:-}
-      # Envelope / header From. Distinct from NUXT_SMTP_USER.
-      NUXT_SMTP_FROM: ${NUXT_SMTP_FROM:?set NUXT_SMTP_FROM}
+      # From email shown to recipients. Distinct from NUXT_SMTP_USER.
+      NUXT_SMTP_FROM_EMAIL: ${NUXT_SMTP_FROM_EMAIL:?set NUXT_SMTP_FROM_EMAIL}
+      NUXT_SMTP_FROM_NAME: ${NUXT_SMTP_FROM_NAME:-}
       NUXT_SESSION_PASSWORD: ${NUXT_SESSION_PASSWORD:?set NUXT_SESSION_PASSWORD}
       # Company identity — the invite code gates driver signup, so it is
       # operator-owned. Rotate by changing this value and redeploying.
