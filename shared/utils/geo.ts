@@ -88,3 +88,15 @@ export function bboxFromPolygon(polygon: GeoJsonPolygon | null | undefined): Bou
   }
   return isValidBbox(box) ? box : null
 }
+
+/** Project a WGS 84 point onto the local metre plane of `box` (origin SW). */
+export function projectToLocal(box: BoundingBox, latitude: number, longitude: number): [number, number] {
+  const latMid = (box.north + box.south) / 2
+  const x = (longitude - box.west) * Math.max(metersPerDegLon(latMid), 1)
+  const y = (latitude - box.south) * METERS_PER_DEG_LAT
+  return [x, y]
+}
+
+export function projectPolyline(box: BoundingBox, points: Array<{ lon: number, lat: number }>): Array<[number, number]> {
+  return points.map(p => projectToLocal(box, p.lat, p.lon))
+}

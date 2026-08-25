@@ -4,6 +4,7 @@ import {
   computeCheckDigit,
   formatContainerNumber,
   generateCorrectionCandidates,
+  hasIsoEquipmentCategory,
   isValidContainerNumber,
   normalizeContainerNumber,
   validateContainerNumber,
@@ -285,6 +286,11 @@ describe('isValidContainerNumber', () => {
 
   it('returns false for a wrong check digit', () => {
     expect(isValidContainerNumber('CSQU3054389')).toBe(false)
+  })
+
+  it('rejects English-word OCR junk even when the shape is 11 characters', () => {
+    expect(hasIsoEquipmentCategory('TEXT1100000')).toBe(false)
+    expect(hasIsoEquipmentCategory('MSCU4521894')).toBe(true)
   })
 
   it('returns false for empty and short input', () => {

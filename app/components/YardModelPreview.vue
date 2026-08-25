@@ -1,10 +1,26 @@
 <script setup lang="ts">
 import type { YardModel } from '#shared/utils/yard-model'
 
-defineProps<{
+const props = defineProps<{
   model: YardModel | null
   locationName?: string
 }>()
+
+function flip(model: YardModel, y: number, height = 0) {
+  return model.planeHeight - y - height
+}
+
+function pathPoints(model: YardModel, path: Array<[number, number]>) {
+  return path.map(([x, y]) => `${x},${flip(model, y)}`).join(' ')
+}
+
+const caption = computed(() => {
+  if (!props.model) return 'Draw a boundary first'
+  const bits = [`${props.model.placedSlots} slots`, `${Math.round(props.model.planeWidth)}×${Math.round(props.model.planeHeight)} m`]
+  if (props.model.streetCount) bits.push(`${props.model.streetCount} street${props.model.streetCount === 1 ? '' : 's'}`)
+  if (props.model.sidewalkCount) bits.push(`${props.model.sidewalkCount} sidewalk${props.model.sidewalkCount === 1 ? '' : 's'}`)
+  return bits.join(' · ')
+})
 </script>
 
 <template>
@@ -14,7 +30,7 @@ defineProps<{
         {{ locationName || 'Yard model' }}
       </b>
       <span class="text-xs text-[var(--color-ink-500)]">
-        {{ model ? `${model.placedSlots} slots · ${Math.round(model.planeWidth)}×${Math.round(model.planeHeight)} m` : 'Draw a boundary first' }}
+        {{ caption }}
       </span>
     </div>
 
@@ -37,10 +53,37 @@ defineProps<{
           v-for="(obj, index) in model.objects"
           :key="`${obj.type}-${index}`"
         >
+          <polyline
+            v-if="obj.path?.length && obj.kind === 'sidewalk'"
+            :points="pathPoints(model, obj.path)"
+            fill="none"
+            stroke="#E8D9B0"
+            stroke-width="2.4"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+          <polyline
+            v-else-if="obj.path?.length && (obj.kind === 'footway')"
+            :points="pathPoints(model, obj.path)"
+            fill="none"
+            stroke="#C4B48A"
+            stroke-width="1.6"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+          <polyline
+            v-else-if="obj.path?.length"
+            :points="pathPoints(model, obj.path)"
+            fill="none"
+            stroke="#5C6670"
+            stroke-width="4"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
           <rect
-            v-if="obj.type === 'ROAD'"
+            v-else-if="obj.type === 'ROAD'"
             :x="obj.x"
-            :y="model.planeHeight - obj.y - obj.height"
+            :y="flip(model, obj.y, obj.height)"
             :width="obj.width"
             :height="obj.height"
             fill="#5C6670"
@@ -58,7 +101,7 @@ defineProps<{
           <rect
             v-else-if="obj.type === 'GATE'"
             :x="obj.x"
-            :y="model.planeHeight - obj.y - obj.height"
+            :y="flip(model, obj.y, obj.height)"
             :width="obj.width"
             :height="obj.height"
             fill="#F0A422"
@@ -66,7 +109,7 @@ defineProps<{
           <rect
             v-else-if="obj.type === 'BUILDING'"
             :x="obj.x"
-            :y="model.planeHeight - obj.y - obj.height"
+            :y="flip(model, obj.y, obj.height)"
             :width="obj.width"
             :height="obj.height"
             fill="#3E4A52"
@@ -74,7 +117,7 @@ defineProps<{
           <rect
             v-else-if="obj.type === 'SLOT'"
             :x="obj.x"
-            :y="model.planeHeight - obj.y - obj.height"
+            :y="flip(model, obj.y, obj.height)"
             :width="obj.width"
             :height="obj.height"
             fill="#245C7A"

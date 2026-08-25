@@ -43,4 +43,36 @@ describe('generateYardModel', () => {
     expect(model.placedSlots).toBe(0)
     expect(model.objects.some(o => o.type === 'FENCE')).toBe(true)
   })
+
+  it('draws OSM streets and sidewalks as polylines when they are mapped', () => {
+    const box = bboxAround(26.09, -80.12, 200)
+    const model = generateYardModel(box, 4, [
+      {
+        id: 1,
+        kind: 'street',
+        name: 'Eller Drive',
+        highway: 'unclassified',
+        sidewalk: 'both',
+        points: [
+          { lon: box.west + 0.0002, lat: box.south + 0.0002 },
+          { lon: box.east - 0.0002, lat: box.south + 0.0004 },
+        ],
+      },
+      {
+        id: 2,
+        kind: 'sidewalk',
+        name: null,
+        highway: 'footway',
+        sidewalk: 'sidewalk',
+        points: [
+          { lon: box.west + 0.0003, lat: box.south + 0.0006 },
+          { lon: box.east - 0.0003, lat: box.south + 0.0007 },
+        ],
+      },
+    ])
+    expect(model.streetCount).toBe(1)
+    expect(model.sidewalkCount).toBeGreaterThan(0)
+    expect(model.objects.some(o => o.kind === 'street' && o.path && o.path.length >= 2)).toBe(true)
+    expect(model.objects.some(o => o.kind === 'sidewalk' && o.path && o.path.length >= 2)).toBe(true)
+  })
 })

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { formatContainerNumber, normalizeContainerNumber, validateContainerNumber } from '#shared/utils/iso6346'
+import { formatContainerNumber, hasIsoEquipmentCategory, normalizeContainerNumber, validateContainerNumber } from '#shared/utils/iso6346'
 
 useHead({ title: 'Scan' })
 
@@ -23,7 +23,11 @@ async function startCamera() {
   cameraState.value = 'starting'
   try {
     stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: 'environment' } },
+      video: {
+        facingMode: { ideal: 'environment' },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+      },
       audio: false,
     })
     if (videoEl.value) {
@@ -94,6 +98,8 @@ function captureGuide(): string {
     ctx.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh)
   }
 
+  contrastStretch(canvas)
+
   // Upscale tiny crops so Tesseract has enough pixels for a stencil.
   const minWidth = 480
   if (canvas.width < minWidth) {
@@ -110,6 +116,29 @@ function captureGuide(): string {
   }
 
   return canvas.toDataURL('image/jpeg', 0.92)
+}
+
+function contrastStretch(canvas: HTMLCanvasElement) {
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+  const image = ctx.getImageData(0, 0, canvas.width, canvas.height)
+  const data = image.data
+  let min = 255
+  let max = 0
+  for (let i = 0; i < data.length; i += 4) {
+    const y = 0.299 * data[i]! + 0.587 * data[i + 1]! + 0.114 * data[i + 2]!
+    if (y < min) min = y
+    if (y > max) max = y
+  }
+  const span = Math.max(1, max - min)
+  for (let i = 0; i < data.length; i += 4) {
+    const y = 0.299 * data[i]! + 0.587 * data[i + 1]! + 0.114 * data[i + 2]!
+    const stretched = Math.round(((y - min) / span) * 255)
+    data[i] = stretched
+    data[i + 1] = stretched
+    data[i + 2] = stretched
+  }
+  ctx.putImageData(image, 0, 0)
 }
 
 const recognizing = ref(false)
@@ -146,10 +175,14 @@ async function recognize() {
       ocrError.value = result.message || 'The number could not be read.'
     }
     else if (!candidates.value.length) {
-      ocrHint.value = result.message || 'No number found in the frame. Reposition and try again, or type it below.'
+      ocrHint.value = result.message || (profile.value === 'container'
+        ? 'No container number in the frame. Fill the tall box with the stacked letters and digits, then read again.'
+        : 'No chassis plate in the frame. Fill the wide box and read again.')
     }
     else {
-      applyCandidate(candidates.value[0]!.value)
+      const best = candidates.value.find(c => c.checkDigitValid) ?? (profile.value === 'chassis' ? candidates.value[0] : null)
+      if (best) applyCandidate(best.value)
+      else ocrHint.value = 'Nothing in the frame passed an ISO check digit. Re-frame the stacked number, or type it below.'
     }
   }
   catch (error) {
@@ -176,7 +209,8 @@ const manual = ref('')
 const normalized = computed(() => normalizeContainerNumber(manual.value))
 const validation = computed(() => validateContainerNumber(manual.value))
 const showContainerValidation = computed(() => profile.value === 'container' && normalized.value.length >= 11)
-const chassisReady = computed(() => profile.value === 'chassis' && normalized.value.length >= 4)
+const containerReady = computed(() => profile.value === 'container' && hasIsoEquipmentCategory(normalized.value))
+const chassisReady = computed(() => profile.value === 'chassis' && normalized.value.length >= 4 && /\d/.test(normalized.value))
 
 const lookupState = ref<'idle' | 'searching' | 'missing'>('idle')
 
@@ -404,7 +438,7 @@ const pickupQuery = computed(() =>
       <button
         class="btn-dark"
         :disabled="profile === 'container'
-          ? normalized.length !== 11 || lookupState === 'searching'
+          ? !containerReady || lookupState === 'searching'
           : !chassisReady || lookupState === 'searching'"
         @click="lookup"
       >
@@ -427,6 +461,7 @@ const pickupQuery = computed(() =>
     <NuxtLink
       :to="{ path: '/pickups/new', query: pickupQuery }"
       class="btn-primary-action mt-4"
+      :class="{ 'pointer-events-none opacity-40': profile === 'container' ? !containerReady : !chassisReady }"
     >
       Start a pickup with this number
     </NuxtLink>

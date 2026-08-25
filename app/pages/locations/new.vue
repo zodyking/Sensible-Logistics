@@ -3,6 +3,7 @@ import { LOCATION_GLYPH, LOCATION_TYPE_LABELS, LOCATION_TYPES } from '#shared/ut
 import type { LocationType } from '#shared/utils/domain'
 import { bboxAround, polygonFromBbox, type BoundingBox } from '#shared/utils/geo'
 import { generateYardModel } from '#shared/utils/yard-model'
+import type { OsmWay } from '#shared/utils/osm-ways'
 
 const { user } = useUserSession()
 setPageLayout(user.value?.role === 'ADMIN' ? 'admin' : 'default')
@@ -64,6 +65,38 @@ const form = reactive({
 const latitude = ref<number | null>(null)
 const longitude = ref<number | null>(null)
 const bbox = ref<BoundingBox | null>(null)
+const osmWays = ref<OsmWay[]>([])
+const streetPhoto = ref<{ thumbUrl: string, imageUrl: string, attribution: string } | null>(null)
+const mapContextError = ref('')
+let mapTimer: ReturnType<typeof setTimeout> | undefined
+
+async function loadMapContext(box: BoundingBox) {
+  mapContextError.value = ''
+  try {
+    const result = await $fetch('/api/map/context', {
+      query: { west: box.west, south: box.south, east: box.east, north: box.north },
+    })
+    osmWays.value = result.ways
+    streetPhoto.value = result.photo
+      ? { thumbUrl: result.photo.thumbUrl, imageUrl: result.photo.imageUrl, attribution: result.photo.attribution }
+      : null
+  }
+  catch (error) {
+    osmWays.value = []
+    streetPhoto.value = null
+    mapContextError.value = apiErrorMessage(error, 'Could not load streets for this fence.')
+  }
+}
+
+watch(bbox, (box) => {
+  clearTimeout(mapTimer)
+  if (!box) {
+    osmWays.value = []
+    streetPhoto.value = null
+    return
+  }
+  mapTimer = setTimeout(() => loadMapContext(box), 400)
+}, { deep: true })
 
 watch(() => form.type, (type, previous) => {
   if (form.capacity === DEFAULT_CAPACITY[previous]) {
@@ -85,7 +118,10 @@ watch(() => form.addressQuery, (value) => {
   searchTimer = setTimeout(() => lookupAddress(value.trim()), 350)
 })
 
-onBeforeUnmount(() => clearTimeout(searchTimer))
+onBeforeUnmount(() => {
+  clearTimeout(searchTimer)
+  clearTimeout(mapTimer)
+})
 
 async function lookupAddress(q: string) {
   searching.value = true
@@ -118,7 +154,7 @@ function applySuggestion(hit: PlaceHit) {
 
 const model = computed(() => {
   if (!bbox.value) return null
-  return generateYardModel(bbox.value, Number(form.capacity) || 0)
+  return generateYardModel(bbox.value, Number(form.capacity) || 0, osmWays.value)
 })
 
 const canAdvance = computed(() => {
@@ -367,16 +403,26 @@ function createAnyway() {
             inputmode="numeric"
           >
           <small class="field-hint">
-            Used to generate the 2D yard — rows of slots inside the fence you draw.
+            Used to generate the 2D yard — rows of slots, with mapped streets and sidewalks drawn when OSM has them.
           </small>
         </label>
       </div>
+
+      <p
+        v-if="mapContextError"
+        class="banner warn mb-3"
+      >
+        <span aria-hidden="true">!</span>
+        <span>{{ mapContextError }}</span>
+      </p>
 
       <ClientOnly>
         <LocationMapEditor
           :latitude="latitude"
           :longitude="longitude"
           :bbox="bbox"
+          :ways="osmWays"
+          :photo="streetPhoto"
           @update:bbox="bbox = $event"
         />
       </ClientOnly>

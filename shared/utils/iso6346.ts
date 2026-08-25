@@ -164,6 +164,17 @@ export function isValidContainerNumber(input: string): boolean {
   return validateContainerNumber(input).valid
 }
 
+/**
+ * True when the 11-character identifier uses ISO category U, J or Z.
+ * OCR often hallucinates English words like TEXT plus digits; those share the
+ * four-letter-plus-seven-digit shape but are not container numbers.
+ */
+export function hasIsoEquipmentCategory(input: string): boolean {
+  const normalized = normalizeContainerNumber(input)
+  return STRUCTURE_RE.test(normalized)
+    && (EQUIPMENT_CATEGORIES as readonly string[]).includes(normalized[3]!)
+}
+
 /** Display form: `MSCU 452189-4`. Falls back to the raw value when malformed. */
 export function formatContainerNumber(input: string): string {
   const normalized = normalizeContainerNumber(input)

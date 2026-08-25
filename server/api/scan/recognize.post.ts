@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { confidenceBand, rankCandidates, useOcrService } from '../../services/ocr'
 import { requireDriver } from '../../utils/session'
-import { validateContainerNumber } from '#shared/utils/iso6346'
+import { hasIsoEquipmentCategory, validateContainerNumber } from '#shared/utils/iso6346'
 
 const schema = z.object({
   /** JPEG/PNG data URL from the framed camera crop. */
@@ -24,7 +24,12 @@ export default defineEventHandler(async (event) => {
   const buffer = Buffer.from(body.image.replace(/^data:[^;]+;base64,/, ''), 'base64')
   const result = await ocr.recognizeSceneText(buffer, { profile: body.profile })
 
-  const candidates = rankCandidates(result.candidates).map(candidate => ({
+  const ranked = rankCandidates(result.candidates).filter((candidate) => {
+    if (body.profile === 'container') return hasIsoEquipmentCategory(candidate.value)
+    return /\d/.test(candidate.value)
+  })
+
+  const candidates = ranked.map(candidate => ({
     ...candidate,
     band: confidenceBand(candidate),
     validation: validateContainerNumber(candidate.value),

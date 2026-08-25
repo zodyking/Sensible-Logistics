@@ -146,13 +146,41 @@ function parseTsv(tsv: string): OcrRegion[] {
     const text = (cols[11] ?? '').trim()
     if (!text) continue
     const conf = Number(cols[10])
+    const confidence = Number.isFinite(conf) ? Math.max(0, Math.min(1, conf / 100)) : 0
+    if (confidence < 0.4) continue
     regions.push({
       text,
-      confidence: Number.isFinite(conf) ? Math.max(0, Math.min(1, conf / 100)) : 0,
+      confidence,
       box: [Number(cols[6]) || 0, Number(cols[7]) || 0, Number(cols[8]) || 0, Number(cols[9]) || 0],
     })
   }
   return regions
+}
+
+function lineFromRegions(regions: OcrRegion[]): string {
+  return [...regions]
+    .sort((a, b) => a.box[0] - b.box[0] || a.box[1] - b.box[1])
+    .map(r => r.text)
+    .join(' ')
+}
+
+async function preprocessImage(imagePath: string): Promise<string | null> {
+  const prepared = `${imagePath}.prep.png`
+  try {
+    const result = await runCommand('convert', [
+      imagePath,
+      '-colorspace', 'Gray',
+      '-normalize',
+      '-resize', '200%',
+      '-sharpen', '0x1.2',
+      '-contrast-stretch', '5%',
+      prepared,
+    ], 8_000)
+    return result.code === 0 ? prepared : null
+  }
+  catch {
+    return null
+  }
 }
 
 async function ocrFile(imagePath: string, psm: number): Promise<{ text: string, regions: OcrRegion[] }> {
@@ -218,21 +246,25 @@ class TesseractOcrService implements OcrService {
 
     try {
       await writeFile(imagePath, image)
-      // Container numbers arrive pre-rotated to a single line. Chassis plates
-      // are already a line. PSM 7 is "treat the image as a single text line";
-      // PSM 6 is the fallback for a wrapped stencil.
-      const passes = profile === 'container' ? [7, 6, 5] : [7, 6]
+      const prepared = await preprocessImage(imagePath)
+      const sources = [imagePath, prepared].filter((p): p is string => Boolean(p))
       const texts: string[] = []
       let regions: OcrRegion[] = []
 
-      for (const psm of passes) {
-        try {
-          const pass = await ocrFile(imagePath, psm)
-          if (pass.text.trim()) texts.push(pass.text)
-          if (pass.regions.length > regions.length) regions = pass.regions
-        }
-        catch (error) {
-          console.warn(`[ocr] tesseract psm ${psm} failed:`, error instanceof Error ? error.message : error)
+      for (const source of sources) {
+        // Single-line first — the crop is already rotated for containers.
+        for (const psm of [7, 8, 6]) {
+          try {
+            const pass = await ocrFile(source, psm)
+            const line = lineFromRegions(pass.regions) || pass.text
+            if (line.trim()) texts.push(line)
+            if (pass.regions.length > regions.length) regions = pass.regions
+            const parsed = parseEquipmentReadings([line], profile, 0.8)
+            if (profile === 'container' && parsed.some(c => c.checkDigitValid)) break
+          }
+          catch (error) {
+            console.warn(`[ocr] tesseract psm ${psm} failed:`, error instanceof Error ? error.message : error)
+          }
         }
       }
 
@@ -315,7 +347,8 @@ export type ConfidenceBand = 'HIGH' | 'MEDIUM' | 'LOW'
 
 export function confidenceBand(candidate: OcrCandidate): ConfidenceBand {
   if (candidate.checkDigitValid && candidate.confidence >= 0.9) return 'HIGH'
-  if (candidate.checkDigitValid || candidate.confidence >= 0.75) return 'MEDIUM'
+  if (candidate.checkDigitValid && candidate.confidence >= 0.6) return 'MEDIUM'
+  if (candidate.checkDigitValid) return 'LOW'
   return 'LOW'
 }
 

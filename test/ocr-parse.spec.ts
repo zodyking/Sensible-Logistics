@@ -42,6 +42,12 @@ describe('parseEquipmentReadings', () => {
     expect(ranked.map(c => c.value)).not.toContain('T000NLNTUWV')
   })
 
+  it('ignores English-word hallucinations like TEXT plus zeros', () => {
+    const ranked = parseEquipmentReadings(['TEXT 110000-0', 'TEXT1100000'], 'container')
+    expect(ranked.map(c => c.value)).not.toContain('TEXT1100000')
+    expect(ranked.every(c => c.value[3] === 'U' || c.value[3] === 'J' || c.value[3] === 'Z')).toBe(true)
+  })
+
   it('returns chassis tokens that are not ISO-shaped', () => {
     const ranked = parseEquipmentReadings(['TRLR88421'], 'chassis')
     expect(ranked.map(c => c.value)).toContain('TRLR88421')

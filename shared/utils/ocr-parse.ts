@@ -1,4 +1,4 @@
-import { generateCorrectionCandidates, validateContainerNumber } from './iso6346'
+import { generateCorrectionCandidates, hasIsoEquipmentCategory, validateContainerNumber } from './iso6346'
 
 /**
  * Turn raw OCR text into ranked equipment identifiers.
@@ -16,6 +16,7 @@ export interface ParsedOcrCandidate {
 }
 
 const ISO_WINDOW = /^[A-Z]{4}\d{7}$/
+const SERIAL_ALL_ZERO = /^[A-Z]{4}0{6,7}$/
 
 function compactAlnum(text: string): string {
   return (text ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '')
@@ -58,8 +59,12 @@ export function extractChassisTokens(text: string): string[] {
     found.push(value)
   }
 
-  if (compact.length >= 4 && compact.length <= 17) push(compact)
-  for (const token of tokens) push(token)
+  const usable = (value: string) => /\d/.test(value) && !/^(TEXT|TEST|STOP|READ|CAMERA|SCAN)$/.test(value)
+
+  if (compact.length >= 4 && compact.length <= 17 && usable(compact)) push(compact)
+  for (const token of tokens) {
+    if (usable(token)) push(token)
+  }
   for (const iso of extractIsoWindows(text)) push(iso)
   return found
 }
@@ -95,11 +100,26 @@ export function parseEquipmentReadings(
       if (compact.length >= 4 && compact.length <= 20) values.add(compact)
     }
     else {
-      for (const iso of extractIsoWindows(text)) values.add(iso)
       const compact = compactAlnum(text)
-      // Keep near-ISO 11-character readings (owner code intact) so confusable
-      // letters in the serial can still be corrected. Reject junk windows.
-      if (compact.length === 11 && /^[A-Z]{4}/.test(compact)) values.add(compact)
+      const seeds = new Set<string>(extractIsoWindows(text))
+      if (compact.length >= 11) {
+        const windowed = compact.length === 11
+          ? [compact]
+          : Array.from({ length: compact.length - 10 }, (_, i) => compact.slice(i, i + 11))
+        for (const slice of windowed) {
+          if (/^[A-Z]{3}[UJZ]/.test(slice)) seeds.add(slice)
+        }
+      }
+      for (const seed of seeds) {
+        if (SERIAL_ALL_ZERO.test(seed)) continue
+        if (hasIsoEquipmentCategory(seed) && ISO_WINDOW.test(seed)) {
+          values.add(seed)
+          continue
+        }
+        for (const alternative of generateCorrectionCandidates(seed)) {
+          if (hasIsoEquipmentCategory(alternative)) values.add(alternative)
+        }
+      }
     }
   }
 

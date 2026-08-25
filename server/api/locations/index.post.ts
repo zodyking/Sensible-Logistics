@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { locationZones, locations, yardLayouts, yardObjects } from '../../database/schema'
 import { findDuplicateCandidates, normalizeAddress } from '../../services/geocoding'
+import { loadMapContext } from '../../services/osm-map'
 import { requireAuth } from '../../utils/session'
 import { LOCATION_TYPES } from '#shared/utils/domain'
 import { bboxFromPolygon, isValidBbox } from '#shared/utils/geo'
@@ -64,6 +65,8 @@ export default defineEventHandler(async (event) => {
     }
   }
 
+  const mapContext = bbox ? await loadMapContext(bbox) : { ways: [], photo: null }
+
   const created = await db.transaction(async (tx) => {
     const [location] = await tx
       .insert(locations)
@@ -99,7 +102,7 @@ export default defineEventHandler(async (event) => {
     }
 
     if (bbox) {
-      const model = generateYardModel(bbox, body.capacity ?? 0)
+      const model = generateYardModel(bbox, body.capacity ?? 0, mapContext.ways)
 
       const [zone] = await tx
         .insert(locationZones)
@@ -146,6 +149,7 @@ export default defineEventHandler(async (event) => {
           width: obj.width,
           height: obj.height,
           zoneId: zone?.id ?? null,
+          style: obj.path ? { path: obj.path, kind: obj.kind ?? null } : null,
         })))
       }
     }
