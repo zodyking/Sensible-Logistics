@@ -11,8 +11,9 @@ import { randomUUID } from 'node:crypto'
 import process from 'node:process'
 import { Hash } from '@adonisjs/hash'
 import { Scrypt } from '@adonisjs/hash/drivers/scrypt'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/node-postgres'
+import type { NodePgDatabase } from 'drizzle-orm/node-postgres'
 import { Pool } from 'pg'
 import { computeCheckDigit, normalizeContainerNumber, validateContainerNumber } from '../../shared/utils/iso6346'
 import * as schema from './schema'
@@ -67,6 +68,34 @@ function isoDate(date: Date): string {
   return date.toISOString().slice(0, 10)
 }
 
+/**
+ * `users_email_key` is unique on `lower(email)`, and ON CONFLICT cannot target an
+ * expression index, so the demo accounts are matched case-insensitively by hand
+ * to keep re-runs idempotent.
+ */
+async function upsertUser(
+  db: NodePgDatabase<typeof schema>,
+  values: typeof schema.users.$inferInsert,
+) {
+  const [existing] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(sql`lower(${users.email}) = lower(${values.email})`)
+    .limit(1)
+
+  if (existing) {
+    const [updated] = await db
+      .update(users)
+      .set({ passwordHash: values.passwordHash, emailVerifiedAt: values.emailVerifiedAt })
+      .where(eq(users.id, existing.id))
+      .returning()
+    return updated
+  }
+
+  const [created] = await db.insert(users).values(values).returning()
+  return created
+}
+
 async function main() {
   const pool = new Pool({ connectionString })
   const db = drizzle(pool, { schema })
@@ -95,31 +124,23 @@ async function main() {
   // Demo accounts are pre-verified so they can sign in without SMTP.
   const verifiedAt = new Date()
 
-  const [admin] = await db
-    .insert(users)
-    .values({
-      email: ADMIN_EMAIL,
-      passwordHash,
-      firstName: 'Dana',
-      lastName: 'Reyes',
-      mobileNumber: '+19545550142',
-      emailVerifiedAt: verifiedAt,
-    })
-    .onConflictDoUpdate({ target: users.email, set: { passwordHash, emailVerifiedAt: verifiedAt } })
-    .returning()
+  const admin = await upsertUser(db, {
+    email: ADMIN_EMAIL,
+    passwordHash,
+    firstName: 'Dana',
+    lastName: 'Reyes',
+    mobileNumber: '+19545550142',
+    emailVerifiedAt: verifiedAt,
+  })
 
-  const [driverUser] = await db
-    .insert(users)
-    .values({
-      email: DRIVER_EMAIL,
-      passwordHash,
-      firstName: 'Marcus',
-      lastName: 'Vega',
-      mobileNumber: '+19545550187',
-      emailVerifiedAt: verifiedAt,
-    })
-    .onConflictDoUpdate({ target: users.email, set: { passwordHash, emailVerifiedAt: verifiedAt } })
-    .returning()
+  const driverUser = await upsertUser(db, {
+    email: DRIVER_EMAIL,
+    passwordHash,
+    firstName: 'Marcus',
+    lastName: 'Vega',
+    mobileNumber: '+19545550187',
+    emailVerifiedAt: verifiedAt,
+  })
 
   if (!admin || !driverUser) throw new Error('Failed to create the demo users.')
 
