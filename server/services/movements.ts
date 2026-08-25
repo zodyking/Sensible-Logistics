@@ -12,6 +12,7 @@ import type { Container, Trip } from '../database/schema'
 import { claimContainerForPickup, nextTripReference, releasePickupClaim } from './activePool'
 import { eventExists, recordEvent } from './events'
 import type { AuthContext } from '../utils/session'
+import { normalizeContainerNumber } from '#shared/utils/iso6346'
 
 /**
  * Driver-owned pickup and drop-off orchestration (spec 6.2, 6.3).
@@ -58,37 +59,49 @@ export async function startPickup(
       if (replayed) return { ...replayed, outcome: 'REUSE_ACTIVE' as const, replayed: true }
     }
 
-    const claim = await claimContainerForPickup(tx, {
-      companyId: auth.companyId,
-      driverId: auth.driverId,
-      userId: auth.userId,
-      rawNumber: input.containerNumber,
-      containerType: input.containerType,
-      equipmentType: input.equipmentType,
-    })
+    const numberNormalized = normalizeContainerNumber(input.containerNumber)
+    const [known] = numberNormalized
+      ? await tx
+          .select()
+          .from(containers)
+          .where(and(
+            eq(containers.companyId, auth.companyId),
+            eq(containers.numberNormalized, numberNormalized),
+          ))
+          .limit(1)
+      : []
 
-    const [liveForContainer] = await tx
-      .select()
-      .from(trips)
-      .where(and(
-        eq(trips.companyId, auth.companyId),
-        eq(trips.containerId, claim.container.id),
-        inArray(trips.status, [...LIVE_TRIP_STATUSES]),
-      ))
-      .limit(1)
+    if (known) {
+      const [liveForContainer] = await tx
+        .select()
+        .from(trips)
+        .where(and(
+          eq(trips.companyId, auth.companyId),
+          eq(trips.containerId, known.id),
+          inArray(trips.status, [...LIVE_TRIP_STATUSES]),
+        ))
+        .limit(1)
 
-    if (liveForContainer) {
-      if (liveForContainer.driverId !== auth.driverId) {
+      if (liveForContainer) {
+        if (liveForContainer.driverId !== auth.driverId) {
+          throw createError({
+            statusCode: 409,
+            statusMessage: 'This container already has an active movement with another driver.',
+          })
+        }
+        if (liveForContainer.status === 'PICKUP_IN_PROGRESS') {
+          return {
+            trip: liveForContainer,
+            container: known,
+            outcome: 'REUSE_ACTIVE',
+            replayed: true,
+          }
+        }
         throw createError({
           statusCode: 409,
-          statusMessage: 'This container already has an active movement with another driver.',
+          statusMessage: 'This container is already on an active movement. Finish or cancel it before starting another pickup.',
+          data: { tripId: liveForContainer.id, reference: liveForContainer.reference },
         })
-      }
-      return {
-        trip: liveForContainer,
-        container: claim.container,
-        outcome: claim.outcome,
-        replayed: true,
       }
     }
 
@@ -109,6 +122,15 @@ export async function startPickup(
         data: { tripId: driverLive.id, reference: driverLive.reference },
       })
     }
+
+    const claim = await claimContainerForPickup(tx, {
+      companyId: auth.companyId,
+      driverId: auth.driverId,
+      userId: auth.userId,
+      rawNumber: input.containerNumber,
+      containerType: input.containerType,
+      equipmentType: input.equipmentType,
+    })
 
     const previousState = claim.outcome === 'REACTIVATE' ? 'INACTIVE' : claim.container.activePoolState
 

@@ -193,9 +193,21 @@ async function startPickup() {
     const payload = error as { statusCode?: number, data?: { tripId?: string, data?: { tripId?: string } } }
     const resumeId = payload.data?.tripId ?? payload.data?.data?.tripId
     if (payload.statusCode === 409 && resumeId) {
-      errorMessage.value = apiErrorMessage(error, 'You already have a pickup in progress.')
       existingTripId.value = resumeId
-      return
+      try {
+        const data = await $fetch(`/api/trips/${resumeId}`)
+        if (data.trip.status === 'PICKUP_IN_PROGRESS') {
+          errorMessage.value = apiErrorMessage(error, 'You already have a pickup in progress.')
+          await hydrateFromTrip(resumeId)
+          return
+        }
+        await navigateTo(`/trips/${resumeId}`)
+        return
+      }
+      catch {
+        errorMessage.value = apiErrorMessage(error, 'You already have an active movement.')
+        return
+      }
     }
     errorMessage.value = apiErrorMessage(error, 'Could not start the pickup.')
   }
