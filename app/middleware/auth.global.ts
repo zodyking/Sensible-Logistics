@@ -24,12 +24,15 @@ export default defineNuxtRouteMiddleware((to) => {
   }
 
   const isAdminRoute = to.path.startsWith('/admin')
+  const locationPool = to.path === '/locations' || to.path.startsWith('/locations/')
 
   if (isAdminRoute && user.value?.role !== 'ADMIN') {
     return navigateTo('/')
   }
 
-  if (!isAdminRoute && user.value?.role === 'ADMIN') {
+  // Location records are a shared company asset — admins create them, drivers
+  // pick them. Pickup/scan remain driver-only.
+  if (!isAdminRoute && user.value?.role === 'ADMIN' && !locationPool) {
     return navigateTo('/admin/containers')
   }
 })

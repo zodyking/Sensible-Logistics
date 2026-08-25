@@ -1,29 +1,160 @@
 <script setup lang="ts">
-import { LOCATION_TYPES, LOCATION_TYPE_LABELS } from '#shared/utils/domain'
+import { LOCATION_GLYPH, LOCATION_TYPE_LABELS, LOCATION_TYPES } from '#shared/utils/domain'
+import type { LocationType } from '#shared/utils/domain'
+import { bboxAround, polygonFromBbox, type BoundingBox } from '#shared/utils/geo'
+import { generateYardModel } from '#shared/utils/yard-model'
+
+const { user } = useUserSession()
+setPageLayout(user.value?.role === 'ADMIN' ? 'admin' : 'default')
 
 useHead({ title: 'Add location' })
 
+const route = useRoute()
+const returnTo = computed(() => {
+  const raw = String(route.query.returnTo ?? '')
+  return raw.startsWith('/') ? raw : '/locations'
+})
+
+const DEFAULT_CAPACITY: Record<LocationType, number> = {
+  MARINE_TERMINAL: 240,
+  RAIL_TERMINAL: 80,
+  CUSTOMER: 6,
+  WAREHOUSE: 40,
+  COMPANY_YARD: 48,
+  DEPOT: 80,
+  REPAIR_SHOP: 8,
+  STAGING: 20,
+  TEMPORARY: 12,
+}
+
+type Step = 'type' | 'name' | 'address' | 'map'
+const STEPS: Step[] = ['type', 'name', 'address', 'map']
+const STEP_TITLES: Record<Step, string> = {
+  type: 'What kind of location?',
+  name: 'What do you call it?',
+  address: 'Where is it?',
+  map: 'Fence the yard',
+}
+
+type PlaceHit = {
+  displayName: string
+  latitude: number
+  longitude: number
+  addressLine1: string | null
+  city: string | null
+  state: string | null
+  postalCode: string | null
+  bbox: BoundingBox | null
+}
+
+const step = ref<Step>('type')
+const stepIndex = computed(() => STEPS.indexOf(step.value))
+
 const form = reactive({
+  type: 'CUSTOMER' as LocationType,
   name: '',
-  type: 'CUSTOMER' as (typeof LOCATION_TYPES)[number],
+  addressQuery: '',
   addressLine1: '',
-  addressLine2: '',
   city: '',
   state: '',
   postalCode: '',
-  capacity: '',
-  notes: '',
+  capacity: DEFAULT_CAPACITY.CUSTOMER,
 })
+
+const latitude = ref<number | null>(null)
+const longitude = ref<number | null>(null)
+const bbox = ref<BoundingBox | null>(null)
+
+watch(() => form.type, (type, previous) => {
+  if (form.capacity === DEFAULT_CAPACITY[previous]) {
+    form.capacity = DEFAULT_CAPACITY[type]
+  }
+})
+
+const suggestions = ref<PlaceHit[]>([])
+const searching = ref(false)
+const suggestError = ref('')
+let searchTimer: ReturnType<typeof setTimeout> | undefined
+
+watch(() => form.addressQuery, (value) => {
+  clearTimeout(searchTimer)
+  if (value.trim().length < 3) {
+    suggestions.value = []
+    return
+  }
+  searchTimer = setTimeout(() => lookupAddress(value.trim()), 350)
+})
+
+onBeforeUnmount(() => clearTimeout(searchTimer))
+
+async function lookupAddress(q: string) {
+  searching.value = true
+  suggestError.value = ''
+  try {
+    const result = await $fetch('/api/geocode/search', { query: { q, limit: 6 } })
+    suggestions.value = result.results
+    if (!result.available && result.message) suggestError.value = result.message
+  }
+  catch (error) {
+    suggestError.value = apiErrorMessage(error, 'Address search failed.')
+  }
+  finally {
+    searching.value = false
+  }
+}
+
+function applySuggestion(hit: PlaceHit) {
+  form.addressLine1 = hit.addressLine1 || hit.displayName
+  form.city = hit.city ?? ''
+  form.state = hit.state ?? ''
+  form.postalCode = hit.postalCode ?? ''
+  form.addressQuery = hit.displayName
+  latitude.value = hit.latitude
+  longitude.value = hit.longitude
+  bbox.value = hit.bbox ?? bboxAround(hit.latitude, hit.longitude, 160)
+  suggestions.value = []
+  step.value = 'map'
+}
+
+const model = computed(() => {
+  if (!bbox.value) return null
+  return generateYardModel(bbox.value, Number(form.capacity) || 0)
+})
+
+const canAdvance = computed(() => {
+  switch (step.value) {
+    case 'type': return Boolean(form.type)
+    case 'name': return form.name.trim().length >= 2
+    case 'address': return Boolean(latitude.value && longitude.value && form.addressLine1)
+    case 'map': return Boolean(bbox.value && form.capacity >= 0)
+  }
+  return false
+})
+
+function next() {
+  if (step.value === 'address' && !latitude.value) {
+    lookupAddress(form.addressQuery.trim())
+    return
+  }
+  const index = stepIndex.value
+  if (index < STEPS.length - 1) step.value = STEPS[index + 1]!
+}
+
+function back() {
+  const index = stepIndex.value
+  if (index > 0) step.value = STEPS[index - 1]!
+}
 
 const submitting = ref(false)
 const errorMessage = ref('')
-const fieldErrors = ref<Record<string, string>>({})
 type DuplicateSuggestion = {
   id: string
   name: string
   reason: 'SAME_ADDRESS' | 'SIMILAR_NAME' | 'NEARBY'
   distanceMeters: number | null
 }
+const duplicates = ref<DuplicateSuggestion[]>([])
+const acknowledgeDuplicates = ref(false)
 
 const DUPLICATE_REASONS: Record<DuplicateSuggestion['reason'], string> = {
   SAME_ADDRESS: 'Same address',
@@ -31,16 +162,10 @@ const DUPLICATE_REASONS: Record<DuplicateSuggestion['reason'], string> = {
   NEARBY: 'Nearby',
 }
 
-const duplicates = ref<DuplicateSuggestion[]>([])
-const acknowledgeDuplicates = ref(false)
-
-const canSubmit = computed(() => form.name.trim().length >= 2 && form.addressLine1.trim().length >= 3)
-
 async function submit() {
-  if (!canSubmit.value || submitting.value) return
+  if (!canAdvance.value || submitting.value || !bbox.value) return
   submitting.value = true
   errorMessage.value = ''
-  fieldErrors.value = {}
 
   try {
     await $fetch('/api/locations', {
@@ -49,40 +174,25 @@ async function submit() {
         name: form.name.trim(),
         type: form.type,
         addressLine1: form.addressLine1.trim(),
-        addressLine2: form.addressLine2.trim() || null,
         city: form.city.trim() || null,
         state: form.state.trim() || null,
         postalCode: form.postalCode.trim() || null,
-        capacity: form.capacity ? Number(form.capacity) : null,
-        driverNotes: form.notes.trim() || null,
+        latitude: latitude.value,
+        longitude: longitude.value,
+        boundary: polygonFromBbox(bbox.value),
+        capacity: Number(form.capacity) || 0,
         acknowledgeDuplicates: acknowledgeDuplicates.value,
       },
     })
-
-    await navigateTo('/locations')
+    await navigateTo(returnTo.value)
   }
   catch (error) {
-    const candidate = error as {
-      statusCode?: number
-      data?: {
-        duplicates?: DuplicateSuggestion[]
-        data?: { issues?: Array<{ path: string, message: string }> }
-      }
-    }
-
+    const candidate = error as { statusCode?: number, data?: { duplicates?: DuplicateSuggestion[] } }
     if (candidate.statusCode === 409 && candidate.data?.duplicates?.length) {
       duplicates.value = candidate.data.duplicates
       return
     }
-
-    const issues = candidate.data?.data?.issues
-    if (issues?.length) {
-      fieldErrors.value = Object.fromEntries(issues.map(i => [i.path, i.message]))
-      errorMessage.value = 'Check the highlighted fields.'
-    }
-    else {
-      errorMessage.value = apiErrorMessage(error, 'Could not save the location.')
-    }
+    errorMessage.value = apiErrorMessage(error, 'Could not save the location.')
   }
   finally {
     submitting.value = false
@@ -97,13 +207,29 @@ function createAnyway() {
 </script>
 
 <template>
-  <section class="d-page">
+  <section :class="user?.role === 'ADMIN' ? '' : 'd-page'">
     <PageHeader
       eyebrow="Location pool"
-      title="Add a location"
-      back-to="/locations"
-      back-label="Locations"
+      :title="STEP_TITLES[step]"
+      :back-to="returnTo"
+      back-label="Back"
     />
+
+    <div
+      class="stepper"
+      role="progressbar"
+      :aria-valuenow="stepIndex + 1"
+      aria-valuemin="1"
+      :aria-valuemax="STEPS.length"
+      :aria-label="`Step ${stepIndex + 1} of ${STEPS.length}`"
+    >
+      <span
+        v-for="(name, index) in STEPS"
+        :key="name"
+        class="stepper-step"
+        :class="{ done: index < stepIndex, on: index === stepIndex }"
+      />
+    </div>
 
     <p
       v-if="errorMessage"
@@ -114,7 +240,6 @@ function createAnyway() {
       <span>{{ errorMessage }}</span>
     </p>
 
-    <!-- Duplicate prevention: locations are a shared company asset (spec 6.2). -->
     <div
       v-if="duplicates.length"
       class="card mb-4 border-[var(--color-amber-500)] p-4"
@@ -137,10 +262,6 @@ function createAnyway() {
             <template v-if="dupe.distanceMeters != null"> · {{ dupe.distanceMeters }} m away</template>
           </small>
         </span>
-        <span
-          class="row-end"
-          aria-hidden="true"
-        >›</span>
       </NuxtLink>
       <button
         class="btn-ghost mt-3"
@@ -150,127 +271,151 @@ function createAnyway() {
       </button>
     </div>
 
-    <form
-      class="card p-4"
-      novalidate
-      @submit.prevent="submit"
-    >
-      <label class="field">
-        <span>Location name</span>
-        <input
-          v-model="form.name"
-          class="input"
-          :class="{ invalid: fieldErrors.name }"
-          placeholder="Port Everglades Terminal 3"
-          autocomplete="off"
-          required
+    <template v-if="step === 'type'">
+      <div class="type-grid">
+        <button
+          v-for="type in LOCATION_TYPES"
+          :key="type"
+          type="button"
+          :aria-pressed="form.type === type"
+          @click="form.type = type"
         >
-      </label>
+          <b>{{ LOCATION_GLYPH[type] }} {{ LOCATION_TYPE_LABELS[type] }}</b>
+        </button>
+      </div>
+    </template>
 
-      <label class="field">
-        <span>Type</span>
-        <select
-          v-model="form.type"
-          class="input"
-        >
-          <option
-            v-for="type in LOCATION_TYPES"
-            :key="type"
-            :value="type"
-          >
-            {{ LOCATION_TYPE_LABELS[type] }}
-          </option>
-        </select>
-      </label>
-
-      <label class="field">
-        <span>Street address</span>
-        <input
-          v-model="form.addressLine1"
-          class="input"
-          :class="{ invalid: fieldErrors.addressLine1 }"
-          placeholder="1850 Eller Drive"
-          autocomplete="address-line1"
-          required
-        >
-      </label>
-
-      <label class="field">
-        <span>Suite / unit <small class="normal-case text-[var(--color-ink-400)]">optional</small></span>
-        <input
-          v-model="form.addressLine2"
-          class="input"
-          autocomplete="address-line2"
-        >
-      </label>
-
-      <div class="grid grid-cols-[1fr_auto] gap-3">
-        <label class="field">
-          <span>City</span>
+    <template v-else-if="step === 'name'">
+      <div class="card p-4">
+        <label class="field !mb-0">
+          <span>Location name</span>
           <input
-            v-model="form.city"
+            v-model="form.name"
             class="input"
-            autocomplete="address-level2"
-          >
-        </label>
-        <label class="field">
-          <span>State</span>
-          <input
-            v-model="form.state"
-            class="input !w-20 uppercase"
-            maxlength="2"
-            autocomplete="address-level1"
+            :placeholder="form.type === 'CUSTOMER' ? 'Coastal Tile Imports' : 'Port Everglades Terminal 3'"
+            autocomplete="off"
           >
         </label>
       </div>
+    </template>
 
-      <div class="grid grid-cols-2 gap-3">
-        <label class="field">
-          <span>ZIP</span>
+    <template v-else-if="step === 'address'">
+      <div class="card p-4">
+        <label class="field !mb-0">
+          <span>Address</span>
           <input
-            v-model="form.postalCode"
-            class="input mono"
-            inputmode="numeric"
-            autocomplete="postal-code"
+            v-model="form.addressQuery"
+            class="input"
+            placeholder="Start typing a street, terminal or city"
+            autocomplete="off"
+            autocapitalize="words"
           >
+          <small class="field-hint">
+            Suggestions come from OpenStreetMap. No API key. Pick a result to drop the pin.
+          </small>
         </label>
-        <label class="field">
-          <span>Capacity <small class="normal-case text-[var(--color-ink-400)]">optional</small></span>
-          <input
-            v-model="form.capacity"
-            class="input mono"
-            inputmode="numeric"
-            placeholder="240"
-          >
-        </label>
-      </div>
 
-      <label class="field">
-        <span>Notes <small class="normal-case text-[var(--color-ink-400)]">optional</small></span>
-        <textarea
-          v-model="form.notes"
-          class="input min-h-24 resize-y py-3"
-          placeholder="Gate hours, appointment rules, driver instructions…"
-        />
-      </label>
-
-      <!-- Geocoding + boundary drawing are Phase 2 (self-hosted Nominatim + tiles). -->
-      <div class="mb-4">
-        <span class="eyebrow">Boundary &amp; map</span>
-        <YardMapPlaceholder class="mt-2" />
-        <p class="mt-2 text-xs text-[var(--color-ink-500)]">
-          Geocoding and boundary drawing arrive with the self-hosted map stack. The location saves
-          now and can be geofenced later without re-entering anything.
+        <p
+          v-if="searching"
+          class="mt-2 text-sm text-[var(--color-ink-500)]"
+        >
+          Searching…
         </p>
+        <p
+          v-else-if="suggestError"
+          class="banner warn mt-3 mb-0"
+        >
+          <span aria-hidden="true">!</span>
+          <span>{{ suggestError }}</span>
+        </p>
+
+        <div
+          v-if="suggestions.length"
+          class="suggest-list"
+          role="listbox"
+        >
+          <button
+            v-for="hit in suggestions"
+            :key="`${hit.latitude},${hit.longitude},${hit.displayName}`"
+            type="button"
+            class="row"
+            @click="applySuggestion(hit)"
+          >
+            <span class="row-main">
+              <b>{{ hit.displayName }}</b>
+              <small>{{ [hit.city, hit.state].filter(Boolean).join(', ') || 'OpenStreetMap' }}</small>
+            </span>
+            <span
+              class="row-end"
+              aria-hidden="true"
+            >›</span>
+          </button>
+        </div>
+      </div>
+    </template>
+
+    <template v-else>
+      <div class="card p-4 mb-4">
+        <label class="field">
+          <span>Capacity (container slots)</span>
+          <input
+            v-model.number="form.capacity"
+            class="input mono"
+            type="number"
+            min="0"
+            max="100000"
+            inputmode="numeric"
+          >
+          <small class="field-hint">
+            Used to generate the 2D yard — rows of slots inside the fence you draw.
+          </small>
+        </label>
       </div>
 
+      <ClientOnly>
+        <LocationMapEditor
+          :latitude="latitude"
+          :longitude="longitude"
+          :bbox="bbox"
+          @update:bbox="bbox = $event"
+        />
+      </ClientOnly>
+
+      <div class="mt-4">
+        <YardModelPreview
+          :model="model"
+          :location-name="form.name"
+        />
+      </div>
+    </template>
+
+    <div class="mt-6 flex gap-3">
       <button
-        type="submit"
-        class="btn-primary-action"
-        :disabled="!canSubmit || submitting"
+        v-if="stepIndex > 0"
+        type="button"
+        class="btn-ghost flex-1"
+        @click="back"
+      >
+        Back
+      </button>
+      <button
+        v-if="step !== 'map'"
+        type="button"
+        class="btn-dark flex-1"
+        :disabled="!canAdvance"
+        @click="next"
+      >
+        Continue
+      </button>
+      <button
+        v-else
+        type="button"
+        class="btn-primary-action flex-1 !w-auto"
+        :disabled="!canAdvance || submitting"
+        @click="submit"
       >
         {{ submitting ? 'Saving…' : 'Save location' }}
       </button>
-    </form>
+    </div>
   </section>
 </template>

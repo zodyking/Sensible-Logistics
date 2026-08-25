@@ -1,14 +1,13 @@
 import { and, eq, isNotNull, sql } from 'drizzle-orm'
+import { bboxFromExtent, type BoundingBox } from '#shared/utils/geo'
 import type { DbExecutor } from '../utils/db'
 import { locations } from '../database/schema'
 
 /**
  * Address resolution and duplicate detection (spec 7.1, 31.2).
  *
- * Geocoding must run against a self-hosted Nominatim instance — the public
- * nominatim.openstreetmap.org API forbids production autocomplete. Until that
- * service is deployed, {@link useGeocoder} reports unavailable and the location
- * form falls back to manual latitude/longitude entry.
+ * Autocomplete uses Photon (Komoot) — OpenStreetMap data, no API key. A self-hosted
+ * Nominatim URL in `NUXT_PUBLIC_GEOCODER_URL` is preferred when set.
  */
 
 export interface GeocodeResult {
@@ -21,6 +20,7 @@ export interface GeocodeResult {
   state: string | null
   postalCode: string | null
   country: string | null
+  bbox: BoundingBox | null
 }
 
 export interface Geocoder {
@@ -29,34 +29,116 @@ export interface Geocoder {
   healthCheck(): Promise<{ healthy: boolean, message: string }>
 }
 
-/**
- * TODO(Phase 2): implement `NominatimGeocoder` against
- * `NUXT_PUBLIC_GEOCODER_URL`, caching normalised results for saved locations.
- */
-export class NotConfiguredGeocoder implements Geocoder {
-  private readonly message
-    = 'Self-hosted Nominatim is not deployed yet. Enter coordinates manually, or leave them blank and set them later.'
+function userAgent(): string {
+  const app = String(useRuntimeConfig().appUrl || 'https://localhost').replace(/\/+$/, '')
+  return `SensibleLogistics/1.0 (${app}; location autocomplete)`
+}
 
-  async search(query: string) {
-    void query
-    return { available: false, results: [] as GeocodeResult[], message: this.message }
+async function fetchJson(url: string): Promise<unknown> {
+  const response = await fetch(url, {
+    headers: { 'User-Agent': userAgent(), 'Accept': 'application/json' },
+    signal: AbortSignal.timeout(8_000),
+  })
+  if (!response.ok) {
+    throw new Error(`Geocoder responded ${response.status}`)
+  }
+  return response.json()
+}
+
+interface PhotonFeature {
+  geometry?: { coordinates?: number[] }
+  properties?: {
+    name?: string
+    housenumber?: string
+    street?: string
+    city?: string
+    district?: string
+    county?: string
+    state?: string
+    postcode?: string
+    country?: string
+    countrycode?: string
+    extent?: number[]
+    type?: string
+  }
+}
+
+function photonToResult(feature: PhotonFeature): GeocodeResult | null {
+  const coords = feature.geometry?.coordinates
+  const lon = coords?.[0]
+  const lat = coords?.[1]
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null
+  const p = feature.properties ?? {}
+  const street = [p.housenumber, p.street].filter(Boolean).join(' ')
+  const city = p.city || p.district || p.county || null
+  const display = [p.name, street, city, p.state].filter(Boolean).join(', ')
+  return {
+    displayName: display || `${lat}, ${lon}`,
+    latitude: lat!,
+    longitude: lon!,
+    confidence: 0.85,
+    addressLine1: street || p.name || null,
+    city,
+    state: p.state ?? null,
+    postalCode: p.postcode ?? null,
+    country: p.countrycode?.toUpperCase() ?? p.country ?? null,
+    bbox: Array.isArray(p.extent) ? bboxFromExtent(p.extent) : null,
+  }
+}
+
+class PhotonGeocoder implements Geocoder {
+  constructor(private readonly endpoint: string) {}
+
+  private searchUrl(query: string, limit: number) {
+    const base = this.endpoint.replace(/\/+$/, '')
+    return `${base}/api/?q=${encodeURIComponent(query)}&limit=${limit}&lang=en`
+  }
+
+  async search(query: string, limit = 6) {
+    const q = query.trim()
+    if (q.length < 3) return { available: true, results: [] as GeocodeResult[] }
+    try {
+      const payload = await fetchJson(this.searchUrl(q, limit)) as { features?: PhotonFeature[] }
+      const results = (payload.features ?? []).map(photonToResult).filter((r): r is GeocodeResult => r !== null)
+      return { available: true, results }
+    }
+    catch (error) {
+      const message = error instanceof Error ? error.message : 'Geocoder unreachable.'
+      console.warn('[geocode] Photon search failed:', message)
+      return { available: false, results: [] as GeocodeResult[], message }
+    }
   }
 
   async reverse(latitude: number, longitude: number) {
-    void latitude
-    void longitude
-    return { available: false, result: null, message: this.message }
+    try {
+      const base = this.endpoint.replace(/\/+$/, '')
+      const payload = await fetchJson(
+        `${base}/reverse?lon=${longitude}&lat=${latitude}&limit=1&lang=en`,
+      ) as { features?: PhotonFeature[] }
+      const result = payload.features?.[0] ? photonToResult(payload.features[0]) : null
+      return { available: true, result }
+    }
+    catch (error) {
+      const message = error instanceof Error ? error.message : 'Geocoder unreachable.'
+      return { available: false, result: null, message }
+    }
   }
 
   async healthCheck() {
-    return { healthy: false, message: this.message }
+    const probe = await this.search('port', 1)
+    return probe.available
+      ? { healthy: true, message: 'Photon / OpenStreetMap autocomplete is ready.' }
+      : { healthy: false, message: probe.message ?? 'Photon is unreachable.' }
   }
 }
 
 let instance: Geocoder | undefined
 
 export function useGeocoder(): Geocoder {
-  if (!instance) instance = new NotConfiguredGeocoder()
+  if (!instance) {
+    const custom = String(useRuntimeConfig().public.geocoderUrl ?? '').trim()
+    instance = new PhotonGeocoder(custom || 'https://photon.komoot.io')
+  }
   return instance
 }
 

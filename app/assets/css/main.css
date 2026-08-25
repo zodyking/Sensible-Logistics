@@ -1163,6 +1163,56 @@
     top: -22px;
   }
 
+  .location-map {
+    height: 280px;
+    width: 100%;
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    border: 1px solid var(--color-line-300);
+    background: var(--color-paper-100);
+    z-index: 0;
+  }
+
+  .bbox-handle {
+    width: 28px !important;
+    height: 28px !important;
+    margin-left: -14px !important;
+    margin-top: -14px !important;
+    border-radius: 6px;
+    background: var(--color-amber-500);
+    border: 2px solid var(--color-navy-950);
+    box-shadow: 0 1px 4px rgb(0 0 0 / 0.4);
+  }
+
+  .type-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--s2);
+  }
+
+  .type-grid button {
+    min-height: 64px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-line-300);
+    background: #fff;
+    padding: 10px 12px;
+    text-align: left;
+  }
+
+  .type-grid button[aria-pressed='true'] {
+    border-color: var(--color-navy-800);
+    background: var(--color-navy-800);
+    color: #fff;
+  }
+
+  .suggest-list {
+    margin-top: 6px;
+    border: 1px solid var(--color-line-300);
+    border-radius: var(--radius-md);
+    background: #fff;
+    overflow: hidden;
+  }
+
   /* --- Stepper (multi-step flows) --- */
   .stepper {
     display: flex;

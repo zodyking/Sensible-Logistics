@@ -67,6 +67,49 @@ export async function startPickup(
       equipmentType: input.equipmentType,
     })
 
+    const [liveForContainer] = await tx
+      .select()
+      .from(trips)
+      .where(and(
+        eq(trips.companyId, auth.companyId),
+        eq(trips.containerId, claim.container.id),
+        inArray(trips.status, [...LIVE_TRIP_STATUSES]),
+      ))
+      .limit(1)
+
+    if (liveForContainer) {
+      if (liveForContainer.driverId !== auth.driverId) {
+        throw createError({
+          statusCode: 409,
+          statusMessage: 'This container already has an active movement with another driver.',
+        })
+      }
+      return {
+        trip: liveForContainer,
+        container: claim.container,
+        outcome: claim.outcome,
+        replayed: true,
+      }
+    }
+
+    const [driverLive] = await tx
+      .select()
+      .from(trips)
+      .where(and(
+        eq(trips.companyId, auth.companyId),
+        eq(trips.driverId, auth.driverId),
+        inArray(trips.status, [...LIVE_TRIP_STATUSES]),
+      ))
+      .limit(1)
+
+    if (driverLive) {
+      throw createError({
+        statusCode: 409,
+        statusMessage: 'Finish or cancel your current movement before starting another pickup.',
+        data: { tripId: driverLive.id, reference: driverLive.reference },
+      })
+    }
+
     const previousState = claim.outcome === 'REACTIVATE' ? 'INACTIVE' : claim.container.activePoolState
 
     const reference = await nextTripReference(tx, auth.companyId)
