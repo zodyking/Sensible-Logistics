@@ -98,11 +98,56 @@ const blockedByConflict = computed(() => resolution.value?.outcome === 'CONFLICT
 
 /* --- The movement, created once the identifier is confirmed ------ */
 const tripId = ref<string | null>(null)
+const existingTripId = ref<string | null>(null)
+const hydrating = ref(false)
+
+async function hydrateFromTrip(id: string) {
+  hydrating.value = true
+  errorMessage.value = ''
+  try {
+    const data = await $fetch(`/api/trips/${id}`)
+    if (data.trip.status !== 'PICKUP_IN_PROGRESS') {
+      errorMessage.value = 'That pickup is no longer in progress.'
+      return
+    }
+    tripId.value = data.trip.id
+    originLocationId.value = data.trip.originLocationId
+    rawNumber.value = data.container?.numberNormalized ?? data.container?.number ?? ''
+    if (data.container?.containerType) containerType.value = data.container.containerType
+    if (data.container?.equipmentType) equipmentType.value = data.container.equipmentType
+    chassisId.value = data.trip.chassisId
+    isLoaded.value = Boolean(data.trip.isLoaded)
+    sealNumber.value = data.trip.sealNumber ?? ''
+    notes.value = data.trip.driverNotes ?? ''
+    step.value = 'chassis'
+  }
+  catch (error) {
+    errorMessage.value = apiErrorMessage(error, 'Could not resume that pickup.')
+  }
+  finally {
+    hydrating.value = false
+  }
+}
+
+onMounted(async () => {
+  const fromQuery = String(route.query.trip ?? '')
+  if (fromQuery) {
+    await hydrateFromTrip(fromQuery)
+    return
+  }
+  try {
+    const live = await $fetch('/api/trips', { query: { scope: 'mine', status: 'PICKUP_IN_PROGRESS', limit: 1 } })
+    if (live.items[0]) existingTripId.value = live.items[0].id
+  }
+  catch {
+    // Listing live trips is a convenience, not a blocker.
+  }
+})
 
 const canAdvance = computed(() => {
   switch (step.value) {
     case 'location': return Boolean(originLocationId.value)
-    case 'container': return normalized.value.length === 11 && !blockedByConflict.value && !resolving.value
+    case 'container': return validation.value.structureValid && !blockedByConflict.value && !resolving.value
     case 'chassis': return true
     case 'details': return true
     case 'confirm': return true
@@ -135,8 +180,6 @@ async function startPickup() {
     const result = await $fetch('/api/pickups/start', {
       method: 'POST',
       body: {
-        // Generated client-side and reused on retry, so a flaky connection
-        // cannot create two movements.
         eventId: crypto.randomUUID(),
         containerNumber: normalized.value,
         containerType: containerType.value,
@@ -147,6 +190,25 @@ async function startPickup() {
     tripId.value = result.trip.id
   }
   catch (error) {
+    const payload = error as { statusCode?: number, data?: { tripId?: string, data?: { tripId?: string } } }
+    const resumeId = payload.data?.tripId ?? payload.data?.data?.tripId
+    if (payload.statusCode === 409 && resumeId) {
+      existingTripId.value = resumeId
+      try {
+        const data = await $fetch(`/api/trips/${resumeId}`)
+        if (data.trip.status === 'PICKUP_IN_PROGRESS') {
+          errorMessage.value = apiErrorMessage(error, 'You already have a pickup in progress.')
+          await hydrateFromTrip(resumeId)
+          return
+        }
+        await navigateTo(`/trips/${resumeId}`)
+        return
+      }
+      catch {
+        errorMessage.value = apiErrorMessage(error, 'You already have an active movement.')
+        return
+      }
+    }
     errorMessage.value = apiErrorMessage(error, 'Could not start the pickup.')
   }
   finally {
@@ -227,12 +289,40 @@ const selectedChassis = computed(() =>
     </div>
 
     <p
+      v-if="hydrating"
+      class="banner info"
+      role="status"
+    >
+      <span aria-hidden="true">▸</span>
+      <span>Resuming your pickup…</span>
+    </p>
+
+    <p
       v-if="errorMessage"
       class="banner err"
       role="alert"
     >
       <span aria-hidden="true">✕</span>
       <span>{{ errorMessage }}</span>
+    </p>
+
+    <p
+      v-if="existingTripId && !tripId"
+      class="banner info"
+      role="status"
+    >
+      <span aria-hidden="true">▸</span>
+      <span>
+        You already have a pickup in progress.
+        <button
+          type="button"
+          class="font-semibold underline"
+          @click="hydrateFromTrip(existingTripId)"
+        >
+          Continue it
+        </button>
+        instead of starting another.
+      </span>
     </p>
 
     <!-- ── Step 1 · Location ───────────────────────────────────── -->
@@ -282,18 +372,18 @@ const selectedChassis = computed(() =>
       </div>
 
       <EmptyState
-        v-else
+        v-if="!locationData?.items.length"
         glyph="◫"
         title="No locations match"
         description="Create the yard, terminal or customer you are working from."
+      />
+
+      <NuxtLink
+        :to="{ path: '/locations/new', query: { returnTo: '/pickups/new' } }"
+        class="btn-ghost mt-4 w-full"
       >
-        <NuxtLink
-          to="/locations/new"
-          class="btn-ghost"
-        >
-          Add a location
-        </NuxtLink>
-      </EmptyState>
+        Add a location
+      </NuxtLink>
     </template>
 
     <!-- ── Step 2 · Container ──────────────────────────────────── -->

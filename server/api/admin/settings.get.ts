@@ -71,7 +71,7 @@ export default defineEventHandler(async (event) => {
     services: [
       { key: 'ocr', name: 'Tesseract OCR', healthy: ocr.healthy, detail: ocr.message, phase: 'Phase 1' },
       { key: 'storage', name: 'SeaweedFS object storage', healthy: storage.healthy, detail: storage.message, phase: 'Phase 2' },
-      { key: 'geocoder', name: 'Self-hosted Nominatim', healthy: geocoder.healthy, detail: geocoder.message, phase: 'Phase 2' },
+      { key: 'geocoder', name: 'OpenStreetMap / Photon', healthy: geocoder.healthy, detail: geocoder.message, phase: 'Phase 1' },
       { key: 'tiles', name: 'Planetiler / PMTiles vector tiles', healthy: false, detail: 'Regional tile archive not generated yet.', phase: 'Phase 2' },
       { key: 'realtime', name: 'WebSocket live updates', healthy: false, detail: 'Polling is used in Phase 1.', phase: 'Phase 2' },
       { key: 'jobs', name: 'pg-boss background jobs', healthy: false, detail: 'Job queue not enabled in Phase 1.', phase: 'Phase 2' },

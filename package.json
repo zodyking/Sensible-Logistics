@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",
+    "leaflet": "^1.9.4",
     "nodemailer": "^9.0.5",
     "nuxt": "4.5.2",
     "nuxt-auth-utils": "0.5.30",
@@ -35,6 +36,7 @@
     "@adonisjs/hash": "9.1.1",
     "@nuxt/eslint": "1.17.0",
     "@tailwindcss/vite": "4.3.3",
+    "@types/leaflet": "^1.9.21",
     "@types/nodemailer": "^8.0.1",
     "@types/pg": "8.23.1",
     "@vite-pwa/nuxt": "1.1.1",
