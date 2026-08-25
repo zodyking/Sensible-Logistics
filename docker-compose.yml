@@ -1,0 +1,102 @@
+# Container Tracker — Dokploy-ready Compose stack.
+#
+# Dokploy usage:
+#   1. Point the project at this compose file (or the Dockerfile for a
+#      single-service deploy) and set env vars in the Dokploy UI.
+#   2. Remove the `app.ports` mapping below and attach a domain via
+#      Dokploy's reverse proxy instead of publishing 3000 on the host.
+#   3. `db` and `seaweedfs` stay on the internal `container-tracker`
+#      network — do not publish their ports.
+#   4. App health is defined on the image (Dockerfile HEALTHCHECK),
+#      not duplicated here.
+
+services:
+  db:
+    image: postgis/postgis:17-3.5
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-tracker}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-container_tracker}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tracker} -d ${POSTGRES_DB:-container_tracker}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - container-tracker
+
+  seaweedfs:
+    image: chrislusf/seaweedfs:latest
+    restart: unless-stopped
+    command: server -dir=/data -s3 -s3.port=8333 -master.volumeSizeLimitMB=1024 -volume.max=0 -ip=seaweedfs
+    volumes:
+      - seaweed-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://127.0.0.1:9333/cluster/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - container-tracker
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: ${PORT:-3000}
+      HOST: ${HOST:-0.0.0.0}
+      NUXT_PUBLIC_APP_NAME: ${NUXT_PUBLIC_APP_NAME:-Sensible Logistics Solutions LLC}
+      # Public origin used to build email verification links.
+      NUXT_APP_URL: ${NUXT_APP_URL:?set NUXT_APP_URL}
+      # Outbound SMTP — required for driver email verification.
+      NUXT_SMTP_HOST: ${NUXT_SMTP_HOST:?set NUXT_SMTP_HOST}
+      NUXT_SMTP_PORT: ${NUXT_SMTP_PORT:-587}
+      NUXT_SMTP_SECURE: ${NUXT_SMTP_SECURE:-false}
+      NUXT_SMTP_USER: ${NUXT_SMTP_USER:-}
+      NUXT_SMTP_PASSWORD: ${NUXT_SMTP_PASSWORD:-}
+      NUXT_SMTP_FROM: ${NUXT_SMTP_FROM:-}
+      NUXT_SESSION_PASSWORD: ${NUXT_SESSION_PASSWORD:?set NUXT_SESSION_PASSWORD}
+      # Company identity — the invite code gates driver signup, so it is
+      # operator-owned. Rotate by changing this value and redeploying.
+      NUXT_COMPANY_INVITE_CODE: ${NUXT_COMPANY_INVITE_CODE:?set NUXT_COMPANY_INVITE_CODE}
+      NUXT_COMPANY_NAME: ${NUXT_COMPANY_NAME:-Sensible Logistics Solutions LLC}
+      NUXT_COMPANY_LEGAL_NAME: ${NUXT_COMPANY_LEGAL_NAME:-}
+      NUXT_COMPANY_USDOT_NUMBER: ${NUXT_COMPANY_USDOT_NUMBER:-}
+      NUXT_COMPANY_TIMEZONE: ${NUXT_COMPANY_TIMEZONE:-America/New_York}
+      NUXT_COMPANY_CYCLE_TYPE: ${NUXT_COMPANY_CYCLE_TYPE:-SEVENTY_EIGHT}
+      # Sibling interpolation only — nested ${VAR:-${OTHER}} is not reliable in Compose.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-tracker}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-container_tracker}
+      NUXT_DATABASE_SSL: ${NUXT_DATABASE_SSL:-false}
+      NUXT_S3_ENDPOINT: ${NUXT_S3_ENDPOINT:-http://seaweedfs:8333}
+      NUXT_S3_REGION: ${NUXT_S3_REGION:-us-east-1}
+      NUXT_S3_BUCKET: ${NUXT_S3_BUCKET:-container-tracker}
+      NUXT_S3_ACCESS_KEY_ID: ${NUXT_S3_ACCESS_KEY_ID:-}
+      NUXT_S3_SECRET_ACCESS_KEY: ${NUXT_S3_SECRET_ACCESS_KEY:-}
+      NUXT_OCR_SERVICE_URL: ${NUXT_OCR_SERVICE_URL:-}
+      NUXT_PUBLIC_MAP_TILES_URL: ${NUXT_PUBLIC_MAP_TILES_URL:-}
+      NUXT_PUBLIC_GEOCODER_URL: ${NUXT_PUBLIC_GEOCODER_URL:-}
+      SKIP_MIGRATIONS: ${SKIP_MIGRATIONS:-false}
+    # Dokploy users: delete this `ports` block and map a domain on the proxy.
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    networks:
+      - container-tracker
+
+volumes:
+  db-data:
+  seaweed-data:
+
+networks:
+  container-tracker:
+    driver: bridge

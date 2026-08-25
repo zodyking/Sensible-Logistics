@@ -1,0 +1,23 @@
+# Build context exclusions. Keep drizzle/ and docker/ — the image COPY needs them.
+
+node_modules
+.nuxt
+.output
+.git
+.gitignore
+dist
+*.log
+npm-debug.log*
+.env
+.env.*
+!.env.example
+Agent-Files
+README.md
+.vscode
+.idea
+coverage
+test
+.DS_Store
+Dockerfile
+docker-compose.yml
+.dockerignore

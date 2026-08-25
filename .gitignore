@@ -1,0 +1,25 @@
+# Dependencies
+node_modules
+
+# Nuxt / Nitro
+.nuxt
+.output
+.data
+dist
+
+# Env (keep the template)
+.env
+.env.*
+!.env.example
+
+# Logs and OS
+*.log
+.DS_Store
+
+# Editors
+.vscode/*
+!.vscode/extensions.json
+.idea
+
+# Tests
+coverage

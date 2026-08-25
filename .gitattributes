@@ -1,0 +1,15 @@
+# Normalise to LF in the repository. Without this, a Windows checkout commits
+# CRLF into docker/entrypoint.sh and the Linux image fails to start with
+# "bad interpreter: /bin/sh^M".
+* text=auto eol=lf
+
+*.sh text eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.woff binary
+*.woff2 binary
