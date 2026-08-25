@@ -1,6 +1,5 @@
 import { classifyHighway, type OsmWay } from '#shared/utils/osm-ways'
-import type { BoundingBox } from '#shared/utils/geo'
-import { bboxSizeMeters, isValidBbox } from '#shared/utils/geo'
+import { bboxAround, bboxSizeMeters, isValidBbox, type BoundingBox } from '#shared/utils/geo'
 
 /**
  * Streets, sidewalks and street-level photos for the location fence.
@@ -125,7 +124,13 @@ function assetUrl(assets: Record<string, unknown> | undefined, key: 'thumb' | 's
 }
 
 async function fetchStreetPhoto(box: BoundingBox): Promise<StreetLevelPhoto | null> {
-  const url = `https://api.panoramax.xyz/api/search?bbox=${box.west},${box.south},${box.east},${box.north}&limit=1`
+  const size = bboxSizeMeters(box)
+  const lat = (box.north + box.south) / 2
+  const lon = (box.west + box.east) / 2
+  const search = (size.width < 160 || size.height < 160 || size.width * size.height > 2_000_000)
+    ? bboxAround(lat, lon, 220)
+    : box
+  const url = `https://api.panoramax.xyz/api/search?bbox=${search.west},${search.south},${search.east},${search.north}&limit=1`
   try {
     const payload = await fetchJson(url) as { features?: Array<{ assets?: Record<string, unknown>, properties?: Record<string, unknown> }> }
     const feature = payload.features?.[0]
