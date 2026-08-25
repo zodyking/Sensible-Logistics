@@ -492,6 +492,14 @@
     transform: scale(0.985);
   }
 
+  /* The global blue ring is low contrast against amber, so the primary action
+     carries a navy ring over a light halo instead. */
+  .btn-primary-action:focus-visible {
+    outline: 3px solid var(--color-navy-950);
+    outline-offset: 3px;
+    box-shadow: 0 0 0 6px rgb(255 255 255 / 0.95), 0 2px 8px rgb(240 164 34 / 0.35);
+  }
+
   .btn-primary-action:disabled {
     opacity: 0.5;
     box-shadow: none;

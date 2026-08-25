@@ -69,8 +69,9 @@ needs no database extensions.
 ```bash
 # 1. Environment
 cp .env.example .env          # PowerShell: Copy-Item .env.example .env
-# Set NUXT_SESSION_PASSWORD to 32+ characters, DATABASE_URL to your Postgres
-# connection string, and NUXT_SMTP_FROM_EMAIL to the From email (not the SMTP login).
+# Set NUXT_SESSION_PASSWORD to 32+ characters and DATABASE_URL to your Postgres
+# connection string. SMTP can stay empty in development — the verification link
+# is printed to the console instead.
 
 # 2. Database — provide your own Postgres and point DATABASE_URL at it, e.g.:
 #   docker run -d --name ct-db -p 5432:5432 \
@@ -130,12 +131,11 @@ are no metered or paid dependencies anywhere in the stack — see [Self-hosting]
 | `NUXT_PUBLIC_PWA_DESCRIPTION` | no | `Driver Portal` | PWA install-prompt description. Build-time only |
 | `NUXT_APP_URL` | **yes** | — | Public origin, no trailing slash. Builds email verification links |
 | `NUXT_SMTP_HOST` | **yes** | — | SMTP server for verification email — see [Email](#email) |
-| `NUXT_SMTP_PORT` | no | `587` | `587` for STARTTLS, `465` for implicit TLS |
-| `NUXT_SMTP_SECURE` | no | `false` | `true` for implicit TLS (assumed on port 465) |
-| `NUXT_SMTP_USER` | no | — | SMTP login only. Never used as the From address |
-| `NUXT_SMTP_PASSWORD` | no | — | SMTP password |
-| `NUXT_SMTP_FROM_EMAIL` | **yes** | — | From email shown to recipients. Distinct from `NUXT_SMTP_USER` |
-| `NUXT_SMTP_FROM_NAME` | no | — | Optional display name in front of `NUXT_SMTP_FROM_EMAIL` |
+| `NUXT_SMTP_PORT` | no | `587` | `587` for STARTTLS, `465` for implicit TLS. The port decides encryption |
+| `NUXT_SMTP_USER` | no | — | SMTP login. Also the default From address |
+| `NUXT_SMTP_PASSWORD` | no | — | SMTP password. An app password where the provider requires one |
+| `NUXT_SMTP_FROM_EMAIL` | no | `NUXT_SMTP_USER` | From address. Only set it when the provider allows sending as another mailbox |
+| `NUXT_SMTP_FROM_NAME` | no | — | Optional display name in front of the From address |
 | `NUXT_SESSION_PASSWORD` | **yes** | — | Seals the session cookie. Minimum 32 characters |
 | `NUXT_COMPANY_INVITE_CODE` | **yes** | — | Shared code drivers type at `/signup` — see [Company identity](#company-identity) |
 | `NUXT_COMPANY_NAME` | no | `Container Tracker` | Company name shown in the UI |
@@ -187,14 +187,35 @@ Point `NUXT_SMTP_HOST` at a mailbox that already has working SPF, DKIM, and DMAR
 mailbox, your host's relay, or an internal mail server. This is plain SMTP, not a metered API, so
 it satisfies the self-hosting rule in spec 29.
 
-`NUXT_SMTP_USER` is the SMTP login. `NUXT_SMTP_FROM_EMAIL` is the From email recipients see. They
-are not the same field — a relay login is often a different mailbox than `no-reply@yourdomain.com`.
-Production sending requires `NUXT_SMTP_FROM_EMAIL`. Optional `NUXT_SMTP_FROM_NAME` sets the display
-name in front of that email.
-
 Sending directly from the application server is the common failure mode: a fresh VPS IP has no
 sending reputation, many providers block outbound port 25, and verification mail that lands in
 spam means drivers cannot finish signup.
+
+### Settings that decide whether mail arrives
+
+| Setting | What to use |
+| --- | --- |
+| Port | `587` (STARTTLS) or `465` (implicit TLS). Encryption follows the port, so there is nothing else to switch |
+| From address | Leave `NUXT_SMTP_FROM_EMAIL` unset unless the provider lets you send as a different mailbox. Gmail, Outlook and most relays reject a From they do not own, and the default is `NUXT_SMTP_USER` |
+| Password | Where the provider offers app passwords (Gmail, Outlook, Fastmail), use one. An account password with 2FA enabled is refused with `535` |
+| Display name | `NUXT_SMTP_FROM_NAME` is quoted for you, so commas and periods in a company name are safe |
+
+Unprefixed `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` and `SMTP_FROM` are read as aliases
+when the `NUXT_`-prefixed variable is absent, so an existing env set works unchanged. `SMTP_FROM`
+takes a complete header: `"Sensible Logistics" <no-reply@example.com>`.
+
+Credentials are only ever sent over an encrypted connection: if the relay does not offer STARTTLS,
+the send fails instead of falling back to plaintext.
+
+### Testing delivery
+
+**Admin → Settings → Email delivery** shows whether SMTP is configured and sends a test message. It
+reports the mail server's own answer — `535 Invalid login`, a refused connection, an expired
+certificate — so a broken variable is named rather than guessed. The same check is available as
+`POST /api/admin/smtp-test` with an optional `{"to": "someone@example.com"}` body.
+
+Signup itself stays vague on purpose: an anonymous visitor is told only that the confirmation email
+could not be sent. The full SMTP reply goes to the server log, prefixed `[mail]`.
 
 ### Without SMTP
 
@@ -297,8 +318,10 @@ API leaks your operational footprint. Run your own containers instead.
    start a database.
 3. **Set environment variables.** Paste the keys from `.env.example` into the Dokploy environment
    UI. At minimum set `NUXT_SESSION_PASSWORD` (32+ characters), `DATABASE_URL` (the external
-   connection string), `NUXT_APP_URL`, `NUXT_SMTP_FROM_EMAIL` (From email — not the SMTP login),
-   and `NUXT_SMTP_USER` / `NUXT_SMTP_PASSWORD` if the relay requires auth.
+   connection string), `NUXT_APP_URL`, `NUXT_COMPANY_INVITE_CODE`, and the SMTP block —
+   `NUXT_SMTP_HOST`, `NUXT_SMTP_PORT`, `NUXT_SMTP_USER`, `NUXT_SMTP_PASSWORD`. Mail is what
+   finishes driver signup, so confirm it from **Admin → Settings → Email delivery** after the
+   first deploy.
 4. **Do not publish host ports.** Compose does not map 3000 (Dokploy's panel). Traffic
    comes through the reverse proxy.
 5. **Attach a domain.** In Dokploy's **Domains** tab, map your hostname to the `app` service on
@@ -348,7 +371,9 @@ PostGIS, so the operator-supplied database can be any PostgreSQL 14+ server.
 - **Admin**: `/admin/containers` and `/admin/drivers` with working search and filters;
   `/admin/locations`, `/admin/documents` and `/admin/settings` as designed shells fed by real
   queries. There is deliberately **no** admin dashboard page — admins land on `/admin/containers`.
-- **Health**: `/api/health` reports database, OCR and storage status for the Docker healthcheck.
+- **Health**: `/api/health` reports database, mail, OCR and storage status for the Docker
+  healthcheck. Only the database can mark the container unhealthy; the rest report `degraded` so a
+  missing optional service never stops traffic.
 - **Idempotency**: every mutating operational endpoint takes a client-generated event UUID and
   enforces it, so an offline retry can never double-post a custody event.
 
