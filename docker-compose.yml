@@ -1,34 +1,18 @@
 # Container Tracker — Dokploy-ready Compose stack.
 #
+# Postgres is external. Create it in Dokploy (Database service) or point
+# DATABASE_URL at any PostGIS instance. This file does not start a database.
+#
 # Dokploy usage:
-#   1. Point the project at this compose file (or the Dockerfile for a
-#      single-service deploy) and set env vars in the Dokploy UI.
+#   1. Point the project at this compose file and set env vars in the UI.
 #   2. Remove the `app.ports` mapping below and attach a domain via
 #      Dokploy's reverse proxy instead of publishing 3000 on the host.
-#   3. `db` and `seaweedfs` stay on the internal `container-tracker`
-#      network — do not publish their ports.
+#   3. `seaweedfs` stays on the internal `container-tracker` network —
+#      do not publish its ports.
 #   4. App health is defined on the image (Dockerfile HEALTHCHECK),
 #      not duplicated here.
 
 services:
-  db:
-    image: postgis/postgis:17-3.5
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-tracker}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB:-container_tracker}
-    volumes:
-      - db-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tracker} -d ${POSTGRES_DB:-container_tracker}"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
-    networks:
-      - container-tracker
-
   seaweedfs:
     image: chrislusf/seaweedfs:latest
     restart: unless-stopped
@@ -49,9 +33,6 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       PORT: ${PORT:-3000}
@@ -63,9 +44,11 @@ services:
       NUXT_SMTP_HOST: ${NUXT_SMTP_HOST:?set NUXT_SMTP_HOST}
       NUXT_SMTP_PORT: ${NUXT_SMTP_PORT:-587}
       NUXT_SMTP_SECURE: ${NUXT_SMTP_SECURE:-false}
+      # Login identity for the SMTP server — not the From header.
       NUXT_SMTP_USER: ${NUXT_SMTP_USER:-}
       NUXT_SMTP_PASSWORD: ${NUXT_SMTP_PASSWORD:-}
-      NUXT_SMTP_FROM: ${NUXT_SMTP_FROM:-}
+      # Envelope / header From. Distinct from NUXT_SMTP_USER.
+      NUXT_SMTP_FROM: ${NUXT_SMTP_FROM:?set NUXT_SMTP_FROM}
       NUXT_SESSION_PASSWORD: ${NUXT_SESSION_PASSWORD:?set NUXT_SESSION_PASSWORD}
       # Company identity — the invite code gates driver signup, so it is
       # operator-owned. Rotate by changing this value and redeploying.
@@ -75,8 +58,9 @@ services:
       NUXT_COMPANY_USDOT_NUMBER: ${NUXT_COMPANY_USDOT_NUMBER:-}
       NUXT_COMPANY_TIMEZONE: ${NUXT_COMPANY_TIMEZONE:-America/New_York}
       NUXT_COMPANY_CYCLE_TYPE: ${NUXT_COMPANY_CYCLE_TYPE:-SEVENTY_EIGHT}
-      # Sibling interpolation only — nested ${VAR:-${OTHER}} is not reliable in Compose.
-      DATABASE_URL: postgresql://${POSTGRES_USER:-tracker}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-container_tracker}
+      # External PostGIS. Paste the full connection string from Dokploy or
+      # any other Postgres host — this stack does not create a database.
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
       NUXT_DATABASE_SSL: ${NUXT_DATABASE_SSL:-false}
       NUXT_S3_ENDPOINT: ${NUXT_S3_ENDPOINT:-http://seaweedfs:8333}
       NUXT_S3_REGION: ${NUXT_S3_REGION:-us-east-1}
@@ -94,7 +78,6 @@ services:
       - container-tracker
 
 volumes:
-  db-data:
   seaweed-data:
 
 networks:

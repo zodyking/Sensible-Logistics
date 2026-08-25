@@ -39,6 +39,13 @@ function readSmtpSettings(): SmtpSettings | null {
   if (!host) return null
 
   const port = Number(config.port) || 587
+  const from = String(config.from ?? '').trim()
+  if (!from) {
+    throw createError({
+      statusCode: 503,
+      statusMessage: 'NUXT_SMTP_FROM is not set. This is the From address shown to recipients and is separate from NUXT_SMTP_USER (SMTP login).',
+    })
+  }
 
   return {
     host,
@@ -47,7 +54,7 @@ function readSmtpSettings(): SmtpSettings | null {
     secure: String(config.secure ?? '').toLowerCase() === 'true' || port === 465,
     user: String(config.user ?? '').trim(),
     password: String(config.password ?? ''),
-    from: String(config.from ?? '').trim() || `${useRuntimeConfig().public.appName} <no-reply@${host}>`,
+    from,
   }
 }
 
@@ -75,6 +82,13 @@ class SmtpMailService implements MailService {
   }
 
   async send(message: MailMessage): Promise<void> {
+    if (!this.settings.from) {
+      throw createError({
+        statusCode: 503,
+        statusMessage: 'NUXT_SMTP_FROM is not set. This is the From address shown to recipients and is separate from NUXT_SMTP_USER (SMTP login).',
+      })
+    }
+
     await this.transport().sendMail({
       from: this.settings.from,
       to: message.to,
