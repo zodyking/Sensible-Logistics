@@ -52,10 +52,18 @@ function overpassQuery(box: BoundingBox): string {
   const bbox = `${box.south},${box.west},${box.north},${box.east}`
   return `[out:json][timeout:12];
 (
-  way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|service|living_street|track|footway|path|steps|pedestrian|cycleway)$"](${bbox});
   way["footway"="sidewalk"](${bbox});
+  way["highway"="footway"](${bbox});
+  way["highway"="path"](${bbox});
+  way["highway"="pedestrian"](${bbox});
+  way["highway"="steps"](${bbox});
+  way["highway"="cycleway"](${bbox});
 );
-out geom 80;`
+out geom 50;
+(
+  way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|service|living_street|track)$"](${bbox});
+);
+out geom 50;`
 }
 
 interface OverpassElement {
