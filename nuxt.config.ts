@@ -56,12 +56,17 @@ export default defineNuxtConfig({
     /** Outbound SMTP. Credentials live only here — never in the database. */
     smtp: {
       host: '',
-      port: '587',
-      secure: '',
-      /** SMTP login only. Never used as the From address. */
+      /**
+       * 465 is implicit TLS; anything else (587, 25) upgrades with STARTTLS.
+       * Left empty so the service can fall back to `SMTP_PORT` — a default here
+       * would always win over the unprefixed alias. Defaults to 587 in code.
+       */
+      port: '',
       user: '',
       password: '',
-      /** From email shown to recipients. Distinct from `user`. */
+      /** Complete From header, e.g. `"Sensible Logistics" <no-reply@example.com>`. */
+      from: '',
+      /** From address, when not using the full `from` header. Defaults to `user`. */
       fromEmail: '',
       /** Optional display name, e.g. Sensible Logistics. */
       fromName: '',

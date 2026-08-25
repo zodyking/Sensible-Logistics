@@ -44,15 +44,22 @@ services:
       # Public origin used to build email verification links.
       NUXT_APP_URL: ${NUXT_APP_URL:?set NUXT_APP_URL}
       # Outbound SMTP — required for driver email verification.
-      NUXT_SMTP_HOST: ${NUXT_SMTP_HOST:?set NUXT_SMTP_HOST}
+      # Port decides encryption: 465 is implicit TLS, 587 is STARTTLS.
+      NUXT_SMTP_HOST: ${NUXT_SMTP_HOST:-}
       NUXT_SMTP_PORT: ${NUXT_SMTP_PORT:-587}
-      NUXT_SMTP_SECURE: ${NUXT_SMTP_SECURE:-false}
-      # SMTP login only — not the From email.
       NUXT_SMTP_USER: ${NUXT_SMTP_USER:-}
       NUXT_SMTP_PASSWORD: ${NUXT_SMTP_PASSWORD:-}
-      # From email shown to recipients. Distinct from NUXT_SMTP_USER.
-      NUXT_SMTP_FROM_EMAIL: ${NUXT_SMTP_FROM_EMAIL:?set NUXT_SMTP_FROM_EMAIL}
+      # From address. Defaults to NUXT_SMTP_USER, which is what most providers
+      # require anyway — they reject a From they do not own.
+      NUXT_SMTP_FROM_EMAIL: ${NUXT_SMTP_FROM_EMAIL:-}
       NUXT_SMTP_FROM_NAME: ${NUXT_SMTP_FROM_NAME:-}
+      # Unprefixed aliases, so an existing SMTP_* set works unchanged.
+      # SMTP_FROM accepts a full header: "Name" <address>.
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
       NUXT_SESSION_PASSWORD: ${NUXT_SESSION_PASSWORD:?set NUXT_SESSION_PASSWORD}
       # Company identity — the invite code gates driver signup, so it is
       # operator-owned. Rotate by changing this value and redeploying.
