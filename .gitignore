@@ -12,6 +12,10 @@ dist
 .env.*
 !.env.example
 
+# Internal reference material (product spec, design template) — kept locally,
+# not published to the public repository.
+Agent-Files/
+
 # Logs and OS
 *.log
 .DS_Store

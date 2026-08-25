@@ -395,7 +395,7 @@ npm run build   →  Build complete. Total size 4.39 MB (1.11 MB gzip)
 ├── public/                     # PWA icons, favicon
 ├── Dockerfile  docker-compose.yml  .dockerignore  .env.example
 ├── nuxt.config.ts  drizzle.config.ts  eslint.config.mjs  vitest.config.ts
-└── Agent-Files/                # Product spec, design template, working notes
+└── Agent-Files/                # Internal reference material — git-ignored, not published
 ```
 
 ---
@@ -408,7 +408,7 @@ sunlight.
 
 ### Tokens
 
-Extracted from `Agent-Files/design-template.html` into Tailwind v4 `@theme` and CSS custom properties in
+Extracted from the approved design template into Tailwind v4 `@theme` and CSS custom properties in
 `app/assets/css/main.css`.
 
 - **Palette** — Navy `#081624` / `#0C1E30` / `#13293F` / `#1D3A57` / `#2C5075` (chrome, headers,
@@ -452,7 +452,7 @@ screen with the primary action at the bottom. No horizontal overflow from 320 px
 
 ## Notes on the spec
 
-`Agent-Files/design-template.html` and `Agent-Files/spec-extracted.txt` are reference material and
-are left untouched.
+The product specification and the approved design template live in `Agent-Files/`, which is
+git-ignored and kept out of this repository. Both are reference material and are left untouched.
 The Driver Home replicates the template's dashboard visual language closely; other screens were
 elevated to production quality within the same design system.
