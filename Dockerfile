@@ -32,7 +32,7 @@ RUN mkdir -p /migrator \
 FROM node:22-alpine AS runner
 
 ENV NODE_ENV=production
-ENV PORT=3000
+ENV PORT=3847
 ENV HOST=0.0.0.0
 
 # uid 1001: the base image already has `node` at uid 1000.
@@ -50,12 +50,12 @@ RUN chmod +x ./entrypoint.sh
 
 USER nuxt
 
-EXPOSE 3000
+EXPOSE 3847
 
 # busybox wget (already in alpine) — no extra apk layer.
 # --quiet is used instead of GNU wget's --no-verbose (busybox does not support it).
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
-  CMD wget --quiet --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1
+  CMD wget --quiet --tries=1 --spider http://127.0.0.1:3847/api/health || exit 1
 
 ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["node", ".output/server/index.mjs"]
