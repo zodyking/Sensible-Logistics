@@ -35,36 +35,33 @@ describe('formatUtcStamp', () => {
 })
 
 describe('transactional email templates', () => {
-  it('keeps a white canvas and the corporate navy / cyan treatment', () => {
+  it('reads as a single letter on a white canvas', () => {
     const { html } = verificationEmail({
       brand: brand(),
       firstName: 'Alex',
-      email: 'alex@sensible.test',
       confirmUrl: 'https://tracker.example.com/verify-email?token=abc',
-      expiresAt,
       ttlHours: 24,
     })
 
     expect(html).toContain(`background-color:${EMAIL.white}`)
     expect(html).not.toContain('#EDF0F2')
-    expect(html).toContain('max-width:520px')
+    expect(html).toContain('max-width:480px')
     expect(html).toContain(EMAIL.navy)
-    expect(html).toContain(EMAIL.cyan)
+    expect(html).toContain('Hi Alex,')
     expect(html).toContain('Confirm your email')
-    expect(html).toContain('Activate your account')
     expect(html).toContain('Confirm email address')
-    expect(html).toContain('Expires in 24 hours')
-    expect(html).toContain('Was this not you?')
+    expect(html).toContain('expires in 24 hours')
     expect(html).toContain('cid:logo@sensible-logistics')
+    expect(html).not.toContain('Recipient')
+    expect(html).not.toContain('Was this not you?')
+    expect(html).not.toContain('Activate your account')
   })
 
   it('inlines the brand mark when the PNG is on disk', () => {
     const rendered = verificationEmail({
       brand: brand(),
       firstName: 'Alex',
-      email: 'alex@sensible.test',
       confirmUrl: 'https://tracker.example.com/verify-email?token=abc',
-      expiresAt,
       ttlHours: 24,
     })
 
@@ -81,55 +78,52 @@ describe('transactional email templates', () => {
     const { html, text } = verificationEmail({
       brand: brand(),
       firstName: '<script>alert(1)</script>',
-      email: 'a&b@sensible.test',
       confirmUrl: 'https://tracker.example.com/verify-email?token=a&b',
-      expiresAt,
       ttlHours: 24,
     })
 
     expect(html).not.toContain('<script>alert(1)</script>')
     expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;')
-    expect(html).toContain('a&amp;b@sensible.test')
     expect(html).toContain('token=a&amp;b')
     expect(text).toContain('<script>alert(1)</script>')
   })
 
-  it('renders a welcome message after confirmation', () => {
+  it('renders a welcome letter after confirmation', () => {
     const { html, subject, text } = welcomeEmail({
       brand: brand(),
       firstName: 'Alex',
-      email: 'alex@sensible.test',
       companyName: 'Sensible Logistics Solutions LLC',
       portalUrl: 'https://tracker.example.com',
     })
 
     expect(subject).toBe('Welcome to Sensible Logistics Solutions LLC')
-    expect(html).toContain('Welcome aboard')
+    expect(html).toContain('Welcome to the driver portal')
     expect(html).toContain('Open driver portal')
-    expect(html).toContain('On the yard')
+    expect(html).not.toContain('On the yard')
+    expect(html).not.toContain('Recipient')
+    expect(html).not.toContain('>Account<')
+    expect(html).not.toContain('>Company<')
     expect(html).toContain(`background-color:${EMAIL.white}`)
     expect(text).toContain('https://tracker.example.com')
   })
 
-  it('renders the SMTP test on the same layout', () => {
+  it('renders the SMTP test as the same letter', () => {
     const { html, subject } = smtpTestEmail({
       brand: brand(),
-      email: 'admin@sensible.test',
-      settingsUrl: 'https://tracker.example.com/admin/settings',
     })
 
     expect(subject).toBe('Sensible Logistics Solutions LLC SMTP test')
     expect(html).toContain('Mail delivery confirmed')
-    expect(html).toContain('Open admin settings')
-    expect(html).toContain('max-width:520px')
-    expect(html).toContain(EMAIL.cyan)
+    expect(html).not.toContain('Open admin settings')
+    expect(html).not.toContain('Recipient')
+    expect(html).not.toContain('Operator check')
+    expect(html).toContain('max-width:480px')
   })
 
   it('omits a CTA when the portal URL is not absolute', () => {
     const { html } = welcomeEmail({
       brand: brand({ appUrl: '' }),
       firstName: 'Alex',
-      email: 'alex@sensible.test',
       companyName: 'Sensible Logistics Solutions LLC',
       portalUrl: '',
     })

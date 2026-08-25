@@ -16,7 +16,6 @@ export async function sendWelcomeEmail(user: {
   const rendered = welcomeEmail({
     brand,
     firstName: user.firstName,
-    email: user.email,
     companyName: user.companyName,
     portalUrl,
   })

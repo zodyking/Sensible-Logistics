@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { readEmailBrand, smtpTestEmail } from '../../services/email'
-import { appBaseUrl, resetMail, useMail } from '../../services/mail'
+import { resetMail, useMail } from '../../services/mail'
 import { requireAdmin } from '../../utils/session'
 
 const schema = z.object({
@@ -31,18 +31,8 @@ export default defineEventHandler(async (event) => {
     return { ok: false, delivered: false, to, message: reachable.message }
   }
 
-  let settingsUrl = ''
-  try {
-    settingsUrl = `${appBaseUrl()}/admin/settings`
-  }
-  catch {
-    // Logo still inlines via CID when the public origin is not configured.
-  }
-
   const rendered = smtpTestEmail({
     brand: readEmailBrand(),
-    email: to,
-    settingsUrl,
   })
 
   try {

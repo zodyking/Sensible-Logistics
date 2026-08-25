@@ -124,14 +124,12 @@ export async function consumeEmailVerification(
   return { userId: user.id, email: user.email }
 }
 
-function buildMessage(user: { firstName: string, email: string }, link: string, expiresAt: Date) {
+function buildMessage(user: { firstName: string }, link: string) {
   const hours = Math.round(TOKEN_TTL_MINUTES / 60)
   return verificationEmail({
     brand: readEmailBrand(),
     firstName: user.firstName,
-    email: user.email,
     confirmUrl: link,
-    expiresAt,
     ttlHours: hours,
   })
 }
@@ -144,10 +142,10 @@ export async function sendEmailVerification(
   db: DbExecutor,
   user: { id: string, email: string, firstName: string },
 ): Promise<{ devLink: string | null }> {
-  const { token, expiresAt } = await issueEmailVerification(db, user.id, user.email)
+  const { token } = await issueEmailVerification(db, user.id, user.email)
   const link = `${appBaseUrl()}/verify-email?token=${encodeURIComponent(token)}`
   const mail = useMail()
-  const message = buildMessage(user, link, expiresAt)
+  const message = buildMessage(user, link)
 
   await mail.send({
     to: user.email,
