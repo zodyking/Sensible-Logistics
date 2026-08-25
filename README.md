@@ -124,7 +124,6 @@ are no metered or paid dependencies anywhere in the stack — see [Self-hosting]
 | `NODE_ENV` | no | `production` | Node environment |
 | `PORT` | no | `3847` | Port the Nitro server binds in Docker/production. Not 3000 (Dokploy panel) |
 | `HOST` | no | `0.0.0.0` | Bind address |
-| `APP_PORT` | no | `3847` | Host port published by Compose (drop for Dokploy) |
 | `NUXT_PUBLIC_APP_NAME` | no | `Sensible Logistics Solutions LLC` | Site name — brand bar, page titles, email |
 | `NUXT_PUBLIC_PWA_SHORT_NAME` | no | `Driver Portal` | Installed home-screen label. Build-time only |
 | `NUXT_PUBLIC_PWA_DESCRIPTION` | no | `Driver Portal` | PWA install-prompt description. Build-time only |
@@ -298,10 +297,11 @@ API leaks your operational footprint. Run your own containers instead.
    UI. At minimum set `NUXT_SESSION_PASSWORD` (32+ characters), `DATABASE_URL` (the external
    connection string), `NUXT_SMTP_FROM_EMAIL` (From email — not the SMTP login), and
    `NUXT_SMTP_USER` / `NUXT_SMTP_PASSWORD` if the relay requires auth.
-4. **Do not publish host 3000.** Dokploy's panel already uses it. Delete the `ports:` block
-   from the `app` service, or leave it mapping `3847`.
+4. **Do not publish host ports.** Compose does not map 3000 (Dokploy's panel). Traffic
+   comes through the reverse proxy.
 5. **Attach a domain.** In Dokploy's **Domains** tab, map your hostname to the `app` service on
-   container port `3847` and enable Let's Encrypt.
+   container port `3847` and enable Let's Encrypt. Remove any leftover `APP_PORT=3000` from
+   the Environment tab — it is unused.
 6. **Deploy.** The entrypoint runs Drizzle migrations (with connection retry and
    `CREATE EXTENSION IF NOT EXISTS postgis`) against `DATABASE_URL` before the Nitro server
    starts. The image's `HEALTHCHECK` polls `/api/health`, so Dokploy will not route traffic to

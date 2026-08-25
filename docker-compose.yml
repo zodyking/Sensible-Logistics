@@ -5,8 +5,8 @@
 #
 # Dokploy usage:
 #   1. Point the project at this compose file and set env vars in the UI.
-#   2. Leave `app.ports` off the host 3000 (Dokploy's panel). The app listens
-#      on 3847 inside the container — set that as the domain container port.
+#   2. Do not publish host ports — Traefik routes via the Domains tab.
+#      Set the domain container port to 3847 (the app listen port).
 #   3. `seaweedfs` stays on the internal `container-tracker` network —
 #      do not publish its ports.
 #   4. App health is defined on the image (Dockerfile HEALTHCHECK),
@@ -35,7 +35,9 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: ${NODE_ENV:-production}
-      PORT: ${PORT:-3847}
+      # Always 3847 inside the container. Do not interpolate PORT from env —
+      # a leftover PORT=3000 in Dokploy would collide with the panel if published.
+      PORT: "3847"
       HOST: ${HOST:-0.0.0.0}
       NUXT_PUBLIC_APP_NAME: ${NUXT_PUBLIC_APP_NAME:-Sensible Logistics Solutions LLC}
       # Public origin used to build email verification links.
@@ -72,10 +74,8 @@ services:
       NUXT_PUBLIC_MAP_TILES_URL: ${NUXT_PUBLIC_MAP_TILES_URL:-}
       NUXT_PUBLIC_GEOCODER_URL: ${NUXT_PUBLIC_GEOCODER_URL:-}
       SKIP_MIGRATIONS: ${SKIP_MIGRATIONS:-false}
-    # Host 3000 is Dokploy's panel. Map a different host port, or delete this
-    # block and attach a domain (container port 3847) on the proxy.
-    ports:
-      - "${APP_PORT:-3847}:${PORT:-3847}"
+    # No host ports. Dokploy's panel already owns 3000; Traefik reaches this
+    # container on PORT (3847) through the compose network.
     networks:
       - container-tracker
 
