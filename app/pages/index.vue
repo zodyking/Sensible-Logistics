@@ -81,10 +81,16 @@ async function saveDropoff() {
         <p class="home-hello">
           Hello {{ data.driver.firstName }}
         </p>
-        <p class="home-tally">
-          <small>Bridge Crosses &amp; Swaps</small>
-          <b>{{ data.stats.bridgeCrosses }}/{{ data.stats.swaps }}</b>
-        </p>
+        <div class="home-tally">
+          <div>
+            <small>Bridge Crosses</small>
+            <b>{{ data.stats.bridgeCrosses }}</b>
+          </div>
+          <div>
+            <small>Swaps</small>
+            <b>{{ data.stats.swaps }}</b>
+          </div>
+        </div>
       </header>
 
       <TripCard
