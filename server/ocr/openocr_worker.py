@@ -109,8 +109,81 @@ def _compact(lines: list[dict]) -> str:
     return re.sub(r'[^A-Z0-9]', '', blob)
 
 
-def _looks_like_equipment(lines: list[dict]) -> bool:
-    return bool(re.search(r'[A-Z]{4}\d{6,7}', _compact(lines)))
+def _has_container(lines: list[dict]) -> bool:
+    """ISO 6346 door code: four letters + seven digits (the boxed check digit)."""
+    return bool(re.search(r'[A-Z]{4}\d{7}', _compact(lines)))
+
+
+def _merge_lines(*groups: list[dict]) -> list[dict]:
+    merged: list[dict] = []
+    seen: set[str] = set()
+    for group in groups:
+        for line in group:
+            key = re.sub(r'[^A-Z0-9]', '', str(line.get('text') or '').upper())
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            merged.append(line)
+    return merged
+
+
+def _box_center(box):
+    """Return ((cx, cy), short_side) for a Paddle-style quad or x,y,w,h box."""
+    if not box:
+        return None
+    try:
+        if isinstance(box, (list, tuple)) and len(box) >= 4:
+            if all(isinstance(v, (int, float)) for v in box[:4]) and not isinstance(box[0], (list, tuple)):
+                x, y, w, h = (float(box[0]), float(box[1]), float(box[2]), float(box[3]))
+                return (x + w / 2.0, y + h / 2.0), min(abs(w), abs(h)) or 8.0
+            xs = []
+            ys = []
+            for point in box:
+                if isinstance(point, (list, tuple)) and len(point) >= 2:
+                    xs.append(float(point[0]))
+                    ys.append(float(point[1]))
+            if len(xs) >= 2:
+                width = max(xs) - min(xs)
+                height = max(ys) - min(ys)
+                return ((min(xs) + max(xs)) / 2.0, (min(ys) + max(ys)) / 2.0), min(width, height) or 8.0
+    except (TypeError, ValueError, IndexError):
+        return None
+    return None
+
+
+def _column_stitches(lines: list[dict]) -> list[dict]:
+    """Join glyphs that sit in a vertical column (stacked door codes)."""
+    placed = []
+    for line in lines:
+        text = str(line.get('text') or '').strip()
+        geo = _box_center(line.get('box'))
+        if not text or not geo:
+            continue
+        (cx, cy), short = geo
+        placed.append((cx, cy, short, text, line.get('score', 0.0)))
+    if len(placed) < 2:
+        return []
+
+    gap = max(12.0, sorted(item[2] for item in placed)[len(placed) // 2] * 1.8)
+    columns: list[list[tuple]] = []
+    for item in sorted(placed, key=lambda row: row[0]):
+        if not columns or abs(item[0] - columns[-1][-1][0]) > gap:
+            columns.append([item])
+        else:
+            columns[-1].append(item)
+
+    extra: list[dict] = []
+    for column in columns:
+        if len(column) < 2:
+            continue
+        column.sort(key=lambda row: row[1])
+        joined = ''.join(row[3] for row in column)
+        compact = re.sub(r'[^A-Z0-9]', '', joined.upper())
+        if len(compact) < 4:
+            continue
+        score = sum(float(row[4] or 0) for row in column) / len(column)
+        extra.append({'text': joined, 'score': score, 'box': None})
+    return extra
 
 
 def _workdir() -> str:
@@ -125,6 +198,21 @@ def _save_dir() -> str:
     return path
 
 
+def _parse_ocr_output(out):
+    if isinstance(out, tuple):
+        results = out[0] if out else None
+        timing = out[1] if len(out) > 1 else None
+    else:
+        results, timing = out, None
+    return _extract_lines(results), timing
+
+
+def _run_numpy(ocr, img):
+    save_dir = _save_dir()
+    out = ocr(img_numpy=img, save_dir=save_dir, is_visualize=False)
+    return _parse_ocr_output(out)
+
+
 def _run(ocr, image_path: str):
     # OpenOCR defaults save_dir='e2e_results/' in the process cwd (/app), which
     # the non-root app user cannot create. Prefer in-memory numpy so nothing is
@@ -137,50 +225,43 @@ def _run(ocr, image_path: str):
     except Exception:
         img = None
 
-    if img is not None:
-        out = ocr(img_numpy=img, save_dir=save_dir, is_visualize=False)
-    else:
+    if img is None:
         out = ocr(image_path=image_path, save_dir=save_dir, is_visualize=False)
+        return _parse_ocr_output(out)
 
-    if isinstance(out, tuple):
-        results = out[0] if out else None
-        timing = out[1] if len(out) > 1 else None
-    else:
-        results, timing = out, None
-    return _extract_lines(results), timing
+    lines, timing = _run_numpy(ocr, img)
+    return _orientation_pass(ocr, img, lines, timing)
 
 
-def _rotate_pass(ocr, image_path: str, lines: list[dict], timing):
-    if _looks_like_equipment(lines):
-        return lines, timing
+def _orientation_pass(ocr, img, lines: list[dict], timing):
+    """Keep the upright reading and add 90° passes for vertical door codes.
+
+    Chassis plates are usually horizontal. ISO container markings on the door
+    are often stacked vertically. The first pass therefore often finds the
+    chassis and used to skip rotation — which dropped the container. Merge
+    every orientation instead of replacing the original lines.
+    """
+    combined = _merge_lines(lines, _column_stitches(lines))
+    if _has_container(combined):
+        return combined, timing
+
     try:
         import cv2
     except Exception:
-        return lines, timing
+        return combined, timing
 
-    img = cv2.imread(image_path)
-    if img is None:
-        return lines, timing
-
-    best = (lines, timing)
+    best_timing = timing
     for flag in (cv2.ROTATE_90_COUNTERCLOCKWISE, cv2.ROTATE_90_CLOCKWISE):
-        fd, tmp = tempfile.mkstemp(suffix='.jpg')
-        os.close(fd)
         try:
-            cv2.imwrite(tmp, cv2.rotate(img, flag))
-            rotated, rotated_timing = _run(ocr, tmp)
-            if _looks_like_equipment(rotated):
-                return rotated, rotated_timing
-            if len(rotated) > len(best[0]):
-                best = (rotated, rotated_timing)
+            rotated, rotated_timing = _run_numpy(ocr, cv2.rotate(img, flag))
+            combined = _merge_lines(combined, rotated, _column_stitches(rotated))
+            if rotated_timing:
+                best_timing = rotated_timing
+            if _has_container(combined):
+                return combined, best_timing
         except Exception:
             continue
-        finally:
-            try:
-                os.unlink(tmp)
-            except OSError:
-                pass
-    return best
+    return combined, best_timing
 
 
 def _reply(payload: dict) -> None:
@@ -235,7 +316,6 @@ def main() -> int:
 
         try:
             lines, timing = _run(ocr, path)
-            lines, timing = _rotate_pass(ocr, path, lines, timing)
             _reply({
                 'ok': True,
                 'id': req_id,

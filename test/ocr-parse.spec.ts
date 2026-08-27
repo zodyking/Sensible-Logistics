@@ -83,6 +83,25 @@ describe('classifyEquipmentReadings', () => {
     expect(classified.chassis).toBe('AIMZ481345')
   })
 
+  it('keeps a chassis plate when the container is read from another orientation', () => {
+    const classified = classifyEquipmentReadings([
+      'AIMZ 481345',
+      'SUPER HEAVY',
+      'MSCU4521894',
+    ])
+    expect(classified.container).toBe('MSCU4521894')
+    expect(classified.chassis).toBe('AIMZ481345')
+  })
+
+  it('rebuilds a vertical door code from one glyph per line next to a chassis plate', () => {
+    const classified = classifyEquipmentReadings([
+      'AIMZ481345',
+      'M', 'S', 'C', 'U', '4', '5', '2', '1', '8', '9', '4',
+    ])
+    expect(classified.container).toBe('MSCU4521894')
+    expect(classified.chassis).toBe('AIMZ481345')
+  })
+
   it('does not treat the container serial as a chassis plate', () => {
     const classified = classifyEquipmentReadings(['BSIU 816924 7'])
     expect(classified.container).toBe('BSIU8169247')
