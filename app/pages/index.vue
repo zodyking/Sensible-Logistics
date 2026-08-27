@@ -33,6 +33,15 @@ const selectedPickupId = ref<string | null>(null)
 const busy = ref(false)
 const actionError = ref('')
 const uploadingCategory = ref<DocumentCategory | null>(null)
+const sessionPrompt = ref<{
+  title: string
+  locationType: string
+  tripId: string | null
+  containerId: string
+  checklist: Array<{ category: DocumentCategory, label: string, required: boolean, hint: string }>
+  uploaded?: DocumentCategory[]
+  missing?: DocumentCategory[]
+} | null>(null)
 
 const { data: locationData } = await useFetch('/api/locations', {
   query: computed(() => ({ q: locationSearch.value || undefined, limit: 50 })),
@@ -47,7 +56,7 @@ const connectList = computed(() =>
   connectLoaded.value ? (data.value?.inventory.loads ?? []) : (data.value?.inventory.empties ?? []),
 )
 const swapList = computed(() => data.value?.inventory.counterpart ?? [])
-const documentPrompt = computed(() => data.value?.documentPrompt)
+const documentPrompt = computed(() => sessionPrompt.value ?? data.value?.documentPrompt)
 
 const primaryAction = computed(() => data.value?.nextActions[0] ?? null)
 const secondaryAction = computed(() => data.value?.nextActions[1] ?? null)
@@ -158,9 +167,17 @@ async function swap() {
       },
     })
     selectedPickupId.value = null
+    sessionPrompt.value = {
+      title: result.documentPrompt.title,
+      locationType: result.documentPrompt.locationType,
+      tripId: result.documentPrompt.tripId,
+      containerId: result.documentPrompt.containerId,
+      checklist: result.documentPrompt.checklist,
+      uploaded: [],
+      missing: result.documentPrompt.checklist.filter(item => item.required).map(item => item.category),
+    }
     sheet.value = 'documents'
     await refresh()
-    if (result.documentPrompt) sheet.value = 'documents'
   }
   catch (err) {
     actionError.value = apiErrorMessage(err, 'Could not complete the swap.')
@@ -203,6 +220,13 @@ async function uploadDocument(category: DocumentCategory, file: File) {
     if (prompt.tripId) body.append('tripId', prompt.tripId)
     if (board.value?.id) body.append('locationId', board.value.id)
     await $fetch('/api/documents', { method: 'POST', body })
+    if (sessionPrompt.value && !sessionPrompt.value.uploaded?.includes(category)) {
+      sessionPrompt.value = {
+        ...sessionPrompt.value,
+        uploaded: [...(sessionPrompt.value.uploaded ?? []), category],
+        missing: (sessionPrompt.value.missing ?? []).filter(item => item !== category),
+      }
+    }
     await refresh()
   }
   catch (err) {
