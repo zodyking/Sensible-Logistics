@@ -164,6 +164,15 @@ describe('classifyEquipmentReadings', () => {
     expect(classified.container).toBe('BSIU8169247')
     expect(classified.chassis).toBe('AIMZ481345')
   })
+
+  it('drops a junk leading 0 on the serial when the check digit fails', () => {
+    const classified = classifyEquipmentReadings([
+      'METZ435303',
+      'BSIU0835260',
+    ])
+    expect(classified.container).toBe('BSIU8352601')
+    expect(classified.chassis).toBe('METZ435303')
+  })
 })
 
 describe('driverOcrMessage', () => {

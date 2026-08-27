@@ -140,6 +140,8 @@ export function assembleStackedIso(texts: string[]): string[] {
   }
   const addSerial = (value: string) => {
     if (!/^\d{6,7}$/.test(value)) return
+    // 7 digits starting with 0 is almost always a junk glyph in front of the serial.
+    if (/^0\d{6}$/.test(value)) return
     if (chassisSerials.has(value) || chassisSerials.has(value.slice(-6))) return
     if (!serials.includes(value)) serials.push(value)
   }
@@ -193,6 +195,18 @@ export function stitchOcrFragments(texts: string[]): string[] {
   return [...texts, ...extra]
 }
 
+/** Stacked OCR often prepends a junk 0 onto the six-digit serial. */
+export function repairLeadingZeroIso(value: string): string | null {
+  const compact = compactAlnum(value)
+  if (!/^[A-Z]{3}U0\d{6}$/.test(compact)) return null
+  if (validateContainerNumber(compact).checkDigitValid) return null
+  const prefix = compact.slice(0, 4) + compact.slice(5, 11)
+  const digit = computeCheckDigit(prefix)
+  if (digit === null) return null
+  const repaired = prefix + String(digit)
+  return validateContainerNumber(repaired).checkDigitValid ? repaired : null
+}
+
 /** Sliding 11-character windows that look like ISO 6346 identifiers. */
 export function extractIsoWindows(text: string): string[] {
   const compact = compactAlnum(text)
@@ -207,7 +221,11 @@ export function extractIsoWindows(text: string): string[] {
   if (compact.length >= 11) {
     for (let i = 0; i <= compact.length - 11; i++) {
       const slice = compact.slice(i, i + 11)
-      if (ISO_WINDOW.test(slice) || isNearIsoWindow(slice)) push(slice)
+      if (ISO_WINDOW.test(slice) || isNearIsoWindow(slice)) {
+        push(slice)
+        const repaired = repairLeadingZeroIso(slice)
+        if (repaired) push(repaired)
+      }
     }
   }
 
@@ -318,6 +336,8 @@ export function parseEquipmentReadings(
       // letters in the serial can still be corrected. Reject junk windows.
       if (compact.length === 11 && /^[A-Z]{4}/.test(compact)) values.add(compact)
       if (compact.length === 11 && isNearIsoWindow(compact)) values.add(compact)
+      const repaired = repairLeadingZeroIso(compact)
+      if (repaired) values.add(repaired)
     }
   }
 

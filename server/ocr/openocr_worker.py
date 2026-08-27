@@ -128,7 +128,10 @@ def _compact(lines: list[dict]) -> str:
 def _line_has_container(text: str) -> bool:
     """True when one transcript already looks like ISO 6346 (or I/1 in the owner)."""
     compact = _compact_text(text)
-    if re.search(r'[A-Z]{4}\d{7}', compact):
+    if re.fullmatch(r'[A-Z]{4}\d{7}', compact):
+        # 0 + six serial digits is a stacked misread, not a finished ISO number.
+        if re.fullmatch(r'[A-Z]{3}U0\d{6}', compact):
+            return False
         return True
     if re.fullmatch(r'[A-Z]{3}U\d{6}', compact):
         return True
@@ -294,6 +297,8 @@ def _assemble_iso_from_lines(lines: list[dict]) -> list[dict]:
 
     def add_serial(value: str) -> None:
         if not value or not value.isdigit() or len(value) not in (6, 7):
+            return
+        if len(value) == 7 and value.startswith('0'):
             return
         if value in chassis_serials or value[-6:] in chassis_serials:
             return
