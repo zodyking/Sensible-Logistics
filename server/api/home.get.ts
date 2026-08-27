@@ -89,7 +89,9 @@ export default defineEventHandler(async (event) => {
     .limit(5)
 
   return {
-    driver: { name: auth.fullName, company: auth.companyName },
+    driver: { name: auth.fullName, firstName: auth.firstName, company: auth.companyName },
+    /** Bridge crossings are a later increment. Swaps stay 0 until that flow is recorded. */
+    stats: { bridgeCrosses: 0, swaps: 0 },
     duty: duty
       ? {
           workDate: duty.card.workDate,

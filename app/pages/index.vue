@@ -77,131 +77,111 @@ async function saveDropoff() {
     </p>
 
     <template v-else-if="data">
-      <template v-if="active">
-        <TripCard
-          :container-type="active.container?.containerType"
-          :is-loaded="active.trip.isLoaded"
-          :container-number="active.container?.number"
-          :equipment-type="active.container?.equipmentType"
-          :chassis-number="active.chassis?.number"
-          :seal-number="active.trip.sealNumber"
-          :origin-name="active.origin?.name"
-          :destination-name="active.destination?.name"
-          can-change-dropoff
-          @change-dropoff="sheet = 'dropoff'"
-        />
+      <header class="home-mast">
+        <p class="home-hello">
+          Hello {{ data.driver.firstName }}
+        </p>
+        <p class="home-tally">
+          <small>Bridge Crosses &amp; Swaps</small>
+          <b>{{ data.stats.bridgeCrosses }}/{{ data.stats.swaps }}</b>
+        </p>
+      </header>
 
-        <div class="home-actions">
-          <button
-            type="button"
-            @click="sheet = 'documents'"
-          >
-            <span
-              class="act-ico"
-              aria-hidden="true"
-            >▤</span>
-            Documents
-          </button>
-          <button
-            type="button"
-            @click="sheet = 'sms'"
-          >
-            <span
-              class="act-ico"
-              aria-hidden="true"
-            >✉</span>
-            Send SMS
-          </button>
-          <button
-            type="button"
-            @click="sheet = 'contacts'"
-          >
-            <span
-              class="act-ico"
-              aria-hidden="true"
-            >☎</span>
-            Contacts
-          </button>
-          <NuxtLink :to="`/trips/${active.trip.id}`">
-            <span
-              class="act-ico"
-              aria-hidden="true"
-            >☰</span>
-            Trip Details
-          </NuxtLink>
-        </div>
+      <TripCard
+        v-if="active"
+        :container-type="active.container?.containerType"
+        :is-loaded="active.trip.isLoaded"
+        :container-number="active.container?.number"
+        :equipment-type="active.container?.equipmentType"
+        :chassis-number="active.chassis?.number"
+        :seal-number="active.trip.sealNumber"
+        :origin-name="active.origin?.name"
+        :destination-name="active.destination?.name"
+        can-change-dropoff
+        @change-dropoff="sheet = 'dropoff'"
+      />
 
-        <NuxtLink
-          :to="primaryAction.to"
-          class="btn-primary-action home-cta"
-        >
-          {{ primaryAction.label }}
-        </NuxtLink>
-      </template>
-
-      <template v-else>
-        <div class="trip-card">
-          <div class="trip-card-head">
-            <div class="trip-card-meta">
-              <span class="trip-flag line">Ready</span>
-              <span class="trip-flag empty">No load</span>
-            </div>
-            <div class="trip-cno">
-              No active trip
-            </div>
-            <p class="text-center text-sm text-[var(--color-ink-500)]">
-              Start a pickup to put a container on this card.
-            </p>
+      <div
+        v-else
+        class="trip-card"
+      >
+        <div class="trip-card-head">
+          <div class="trip-card-meta">
+            <span class="trip-flag line">Ready</span>
+            <span class="trip-flag empty">No load</span>
           </div>
+          <div class="trip-cno">
+            No active trip
+          </div>
+          <p class="text-center text-sm text-[var(--color-ink-500)]">
+            Start a pickup to put a container on this card.
+          </p>
         </div>
+      </div>
 
-        <div class="home-actions">
-          <button
-            type="button"
-            @click="sheet = 'documents'"
-          >
-            <span
-              class="act-ico"
-              aria-hidden="true"
-            >▤</span>
-            Documents
-          </button>
-          <button
-            type="button"
-            @click="sheet = 'sms'"
-          >
-            <span
-              class="act-ico"
-              aria-hidden="true"
-            >✉</span>
-            Send SMS
-          </button>
-          <button
-            type="button"
-            @click="sheet = 'contacts'"
-          >
-            <span
-              class="act-ico"
-              aria-hidden="true"
-            >☎</span>
-            Contacts
-          </button>
-          <NuxtLink to="/pickups">
-            <span
-              class="act-ico"
-              aria-hidden="true"
-            >☰</span>
-            Trip Details
-          </NuxtLink>
-        </div>
-
-        <NuxtLink
-          to="/pickups/new"
-          class="btn-primary-action home-cta"
+      <div class="home-actions">
+        <button
+          type="button"
+          :disabled="!active"
+          @click="sheet = 'documents'"
         >
-          New Pickup
+          <span
+            class="act-ico"
+            aria-hidden="true"
+          >▤</span>
+          Documents
+        </button>
+        <button
+          type="button"
+          :disabled="!active"
+          @click="sheet = 'sms'"
+        >
+          <span
+            class="act-ico"
+            aria-hidden="true"
+          >✉</span>
+          Send SMS
+        </button>
+        <button
+          type="button"
+          :disabled="!active"
+          @click="sheet = 'contacts'"
+        >
+          <span
+            class="act-ico"
+            aria-hidden="true"
+          >☎</span>
+          Contacts
+        </button>
+        <NuxtLink
+          v-if="active"
+          :to="`/trips/${active.trip.id}`"
+        >
+          <span
+            class="act-ico"
+            aria-hidden="true"
+          >☰</span>
+          Trip Details
         </NuxtLink>
-      </template>
+        <button
+          v-else
+          type="button"
+          disabled
+        >
+          <span
+            class="act-ico"
+            aria-hidden="true"
+          >☰</span>
+          Trip Details
+        </button>
+      </div>
+
+      <NuxtLink
+        :to="primaryAction.to"
+        class="btn-primary-action home-cta"
+      >
+        {{ primaryAction.label }}
+      </NuxtLink>
     </template>
 
     <BottomSheet
