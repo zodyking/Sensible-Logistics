@@ -4,8 +4,8 @@ import { requireDriver } from '../../utils/session'
 import { validateContainerNumber } from '#shared/utils/iso6346'
 
 const schema = z.object({
-  /** JPEG/PNG data URL from the framed camera crop. */
-  image: z.string().min(32, 'Capture a frame from the camera first.').max(20_000_000),
+  /** JPEG/PNG data URL from a full-frame photo (camera or library). */
+  image: z.string().min(32, 'Take a photo first.').max(20_000_000),
   profile: z.enum(['container', 'chassis', 'seal']).default('container'),
 })
 
@@ -13,8 +13,8 @@ const schema = z.object({
  * Scene-text recognition for equipment photos.
  *
  * Returns candidate values and regions, never a single magic string (spec 34).
- * Container crops are expected to already be rotated into a left-to-right line;
- * chassis crops stay horizontal.
+ * Photos are full-frame; SAFEContain reads ISO 6346 container codes from the
+ * whole image. Chassis uses the same capture path with a chassis profile.
  */
 export default defineEventHandler(async (event) => {
   await requireDriver(event)

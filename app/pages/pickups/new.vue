@@ -5,18 +5,61 @@ import { formatContainerNumber, normalizeContainerNumber, validateContainerNumbe
 
 useHead({ title: 'New pickup' })
 
-type Step = 'location' | 'container' | 'chassis' | 'details' | 'confirm'
-const STEPS: Step[] = ['location', 'container', 'chassis', 'details', 'confirm']
+type Step = 'location' | 'container' | 'containerType' | 'equipmentType' | 'chassis' | 'load' | 'seal' | 'notes' | 'confirm'
+
 const STEP_TITLES: Record<Step, string> = {
   location: 'Where are you picking up?',
-  container: 'Which container?',
-  chassis: 'Chassis',
-  details: 'Load, seal and notes',
+  container: 'Container number',
+  containerType: 'Container type',
+  equipmentType: 'Equipment size',
+  chassis: 'Chassis number',
+  load: 'Loaded or empty?',
+  seal: 'Seal number',
+  notes: 'Notes',
   confirm: 'Confirm pickup',
 }
 
+const originLocationId = ref<string | null>(null)
+const rawNumber = ref('')
+const containerType = ref<ContainerType>('TROPICAL')
+const equipmentType = ref<EquipmentType>('HC_40')
+const chassisId = ref<string | null>(null)
+const chassisNumber = ref('')
+const isLoaded = ref(true)
+const sealNumber = ref('')
+const notes = ref('')
+
+function resolveNumber(number: string) {
+  return $fetch('/api/containers/resolve', { query: { number } })
+}
+
+type Resolution = Awaited<ReturnType<typeof resolveNumber>>
+const resolution = ref<Resolution | null>(null)
+
+const needsClassification = computed(() => resolution.value?.outcome === 'CREATE')
+
+const STEPS = computed<Step[]>(() => {
+  const steps: Step[] = ['location', 'container']
+  if (needsClassification.value) {
+    steps.push('containerType', 'equipmentType')
+  }
+  steps.push('chassis', 'load')
+  if (isLoaded.value) steps.push('seal')
+  steps.push('notes', 'confirm')
+  return steps
+})
+
 const step = ref<Step>('location')
-const stepIndex = computed(() => STEPS.indexOf(step.value))
+const stepIndex = computed(() => Math.max(0, STEPS.value.indexOf(step.value)))
+
+watch(STEPS, (steps) => {
+  if (steps.includes(step.value)) return
+  const order: Step[] = ['location', 'container', 'containerType', 'equipmentType', 'chassis', 'load', 'seal', 'notes', 'confirm']
+  const from = order.indexOf(step.value)
+  const following = order.slice(from + 1).find(name => steps.includes(name))
+  const previous = [...order.slice(0, Math.max(0, from))].reverse().find(name => steps.includes(name))
+  step.value = following ?? previous ?? 'location'
+})
 
 /* --- Data sources ----------------------------------------------- */
 const locationSearch = ref('')
@@ -24,33 +67,16 @@ const { data: locationData } = await useFetch('/api/locations', {
   query: computed(() => ({ q: locationSearch.value || undefined, limit: 50 })),
 })
 
-const { data: chassisData } = await useFetch('/api/chassis', {
-  query: { availableOnly: 'true', limit: 100 },
-})
-
-/* --- Form state -------------------------------------------------- */
-const originLocationId = ref<string | null>(null)
 const originLocation = computed(() =>
   locationData.value?.items.find(l => l.id === originLocationId.value) ?? null)
 
 const route = useRoute()
-const rawNumber = ref(String(route.query.number ?? ''))
-const containerType = ref<ContainerType>('TROPICAL')
-const equipmentType = ref<EquipmentType>('HC_40')
-const chassisId = ref<string | null>(null)
-const isLoaded = ref(true)
-const sealNumber = ref('')
-const notes = ref('')
-
-watch(chassisData, (data) => {
-  const wanted = normalizeContainerNumber(String(route.query.chassis ?? ''))
-  if (!wanted || chassisId.value) return
-  const match = data?.items.find(c => normalizeContainerNumber(c.number) === wanted)
-  if (match) chassisId.value = match.id
-}, { immediate: true })
+rawNumber.value = String(route.query.number ?? '')
+if (route.query.chassis) chassisNumber.value = String(route.query.chassis)
 
 const submitting = ref(false)
 const errorMessage = ref('')
+const cameraFor = ref<'container' | 'chassis' | null>(null)
 
 /* --- ISO 6346 validation (mirrors the server implementation) ----- */
 const normalized = computed(() => normalizeContainerNumber(rawNumber.value))
@@ -58,13 +84,7 @@ const validation = computed(() => validateContainerNumber(rawNumber.value))
 const showValidation = computed(() => normalized.value.length >= 11)
 
 /* --- Active-pool resolution -------------------------------------- */
-type Resolution = Awaited<ReturnType<typeof resolveNumber>>
-const resolution = ref<Resolution | null>(null)
 const resolving = ref(false)
-
-function resolveNumber(number: string) {
-  return $fetch('/api/containers/resolve', { query: { number } })
-}
 
 async function checkPool() {
   if (normalized.value.length < 11) return
@@ -72,6 +92,9 @@ async function checkPool() {
   errorMessage.value = ''
   try {
     resolution.value = await resolveNumber(normalized.value)
+    const found = resolution.value.container
+    if (found?.containerType) containerType.value = found.containerType
+    if (found?.equipmentType) equipmentType.value = found.equipmentType
   }
   catch (error) {
     errorMessage.value = apiErrorMessage(error, 'Could not check the active pool.')
@@ -81,11 +104,10 @@ async function checkPool() {
   }
 }
 
-// Re-check whenever the driver edits the identifier.
 watch(normalized, (value) => {
   resolution.value = null
   if (value.length === 11) checkPool()
-})
+}, { immediate: true })
 
 const RESOLUTION_COPY: Record<string, { variant: 'ok' | 'warn' | 'err' | 'info', title: string }> = {
   REUSE_ACTIVE: { variant: 'info', title: 'Already in the active pool' },
@@ -116,6 +138,7 @@ async function hydrateFromTrip(id: string) {
     if (data.container?.containerType) containerType.value = data.container.containerType
     if (data.container?.equipmentType) equipmentType.value = data.container.equipmentType
     chassisId.value = data.trip.chassisId
+    chassisNumber.value = data.chassis?.number ?? ''
     isLoaded.value = Boolean(data.trip.isLoaded)
     sealNumber.value = data.trip.sealNumber ?? ''
     notes.value = data.trip.driverNotes ?? ''
@@ -144,34 +167,65 @@ onMounted(async () => {
   }
 })
 
+const claimStep = computed<Step>(() => needsClassification.value ? 'equipmentType' : 'container')
+
 const canAdvance = computed(() => {
   switch (step.value) {
-    case 'location': return Boolean(originLocationId.value)
-    case 'container': return validation.value.structureValid && !blockedByConflict.value && !resolving.value
-    case 'chassis': return true
-    case 'details': return true
-    case 'confirm': return true
+    case 'location':
+      return Boolean(originLocationId.value)
+    case 'container':
+      return validation.value.structureValid && !blockedByConflict.value && !resolving.value && Boolean(resolution.value)
+    case 'containerType':
+    case 'equipmentType':
+    case 'chassis':
+    case 'load':
+    case 'seal':
+    case 'notes':
+    case 'confirm':
+      return true
   }
   return false
 })
 
+async function attachChassis() {
+  const typed = chassisNumber.value.trim()
+  if (!typed) {
+    chassisId.value = null
+    return
+  }
+  const result = await $fetch('/api/chassis', {
+    method: 'POST',
+    body: { number: typed },
+  })
+  chassisId.value = result.item.id
+  chassisNumber.value = result.item.number
+}
+
 async function next() {
   errorMessage.value = ''
 
-  // Leaving the container step is the activation point: claim it now so other
-  // drivers immediately see the container is being worked (spec 5.3).
-  if (step.value === 'container' && !tripId.value) {
+  if (step.value === 'chassis') {
+    try {
+      await attachChassis()
+    }
+    catch (error) {
+      errorMessage.value = apiErrorMessage(error, 'Could not save the chassis.')
+      return
+    }
+  }
+
+  if (step.value === claimStep.value && !tripId.value) {
     await startPickup()
     if (errorMessage.value) return
   }
 
   const index = stepIndex.value
-  if (index < STEPS.length - 1) step.value = STEPS[index + 1]!
+  if (index < STEPS.value.length - 1) step.value = STEPS.value[index + 1]!
 }
 
 function back() {
   const index = stepIndex.value
-  if (index > 0) step.value = STEPS[index - 1]!
+  if (index > 0) step.value = STEPS.value[index - 1]!
 }
 
 async function startPickup() {
@@ -259,8 +313,26 @@ async function abandon() {
   }
 }
 
-const selectedChassis = computed(() =>
-  chassisData.value?.items.find(c => c.id === chassisId.value) ?? null)
+function onCaptured(value: string) {
+  if (cameraFor.value === 'chassis') {
+    chassisNumber.value = value
+  }
+  else {
+    rawNumber.value = value
+  }
+  cameraFor.value = null
+}
+
+async function skipChassis() {
+  chassisId.value = null
+  chassisNumber.value = ''
+  await next()
+}
+
+async function skipNotes() {
+  notes.value = ''
+  await next()
+}
 </script>
 
 <template>
@@ -325,7 +397,7 @@ const selectedChassis = computed(() =>
       </span>
     </p>
 
-    <!-- ── Step 1 · Location ───────────────────────────────────── -->
+    <!-- ── Location ────────────────────────────────────────────── -->
     <template v-if="step === 'location'">
       <div class="searchbar">
         <span aria-hidden="true">⌕</span>
@@ -386,10 +458,23 @@ const selectedChassis = computed(() =>
       </NuxtLink>
     </template>
 
-    <!-- ── Step 2 · Container ──────────────────────────────────── -->
+    <!-- ── Container number ────────────────────────────────────── -->
     <template v-else-if="step === 'container'">
+      <button
+        type="button"
+        class="btn-primary-action"
+        :disabled="Boolean(tripId)"
+        @click="cameraFor = 'container'"
+      >
+        Take photo
+      </button>
+
+      <p class="my-4 text-center text-sm font-semibold text-[var(--color-ink-500)]">
+        or type it
+      </p>
+
       <div class="card p-4">
-        <label class="field">
+        <label class="field !mb-0">
           <span>Container number</span>
           <input
             v-model="rawNumber"
@@ -400,17 +485,11 @@ const selectedChassis = computed(() =>
             autocomplete="off"
             spellcheck="false"
             maxlength="15"
+            :readonly="Boolean(tripId)"
             aria-describedby="container-validation"
           >
           <small class="field-hint">Four letters, six digits and a check digit.</small>
         </label>
-
-        <NuxtLink
-          to="/scan"
-          class="btn-ghost w-full"
-        >
-          <span aria-hidden="true">⊙</span> Scan with the camera instead
-        </NuxtLink>
 
         <div
           id="container-validation"
@@ -454,7 +533,6 @@ const selectedChassis = computed(() =>
         </div>
       </div>
 
-      <!-- Active-pool resolution -->
       <div
         v-if="resolving"
         class="banner info mt-4"
@@ -477,10 +555,9 @@ const selectedChassis = computed(() =>
           </span>
         </div>
 
-        <!-- Conflict screen: show who has it, never create a duplicate -->
         <div
           v-if="resolution.outcome === 'CONFLICT' && resolution.holder"
-          class="card p-4"
+          class="card mt-4 p-4"
         >
           <span class="eyebrow">Current holder</span>
           <div class="trip-facts mt-3 !border-t-0 !pt-0">
@@ -502,134 +579,109 @@ const selectedChassis = computed(() =>
             resolve the conflict.
           </p>
         </div>
-
-        <!-- Classification is required for a brand-new identity -->
-        <div
-          v-if="resolution.outcome === 'CREATE'"
-          class="card mt-4 p-4"
-        >
-          <label class="field">
-            <span>Container type</span>
-            <select
-              v-model="containerType"
-              class="select"
-            >
-              <option
-                v-for="type in CONTAINER_TYPES"
-                :key="type"
-                :value="type"
-              >
-                {{ CONTAINER_TYPE_LABELS[type] }}
-              </option>
-            </select>
-          </label>
-
-          <label class="field !mb-0">
-            <span>Equipment size / type</span>
-            <select
-              v-model="equipmentType"
-              class="select"
-            >
-              <option
-                v-for="type in EQUIPMENT_TYPES"
-                :key="type"
-                :value="type"
-              >
-                {{ EQUIPMENT_TYPE_LABELS[type] }}
-              </option>
-            </select>
-          </label>
-        </div>
       </template>
     </template>
 
-    <!-- ── Step 3 · Chassis ────────────────────────────────────── -->
-    <template v-else-if="step === 'chassis'">
-      <div class="card rowlist">
+    <!-- ── Container type (new records only) ───────────────────── -->
+    <template v-else-if="step === 'containerType'">
+      <div class="choice-grid cols-2">
         <button
+          v-for="type in CONTAINER_TYPES"
+          :key="type"
           type="button"
-          class="row"
-          :aria-pressed="chassisId === null"
-          @click="chassisId = null"
+          class="choice-card"
+          :aria-pressed="containerType === type"
+          :disabled="Boolean(tripId)"
+          @click="containerType = type"
         >
-          <span
-            class="row-ico"
-            aria-hidden="true"
-          >∅</span>
-          <span class="row-main">
-            <b>No chassis</b>
-            <small>Grounded move or chassis assigned later</small>
-          </span>
-          <span class="row-end">
-            <StatusChip
-              v-if="chassisId === null"
-              variant="ok"
-              label="Selected"
-            />
-          </span>
-        </button>
-
-        <button
-          v-for="item in chassisData?.items ?? []"
-          :key="item.id"
-          type="button"
-          class="row"
-          :aria-pressed="chassisId === item.id"
-          @click="chassisId = item.id"
-        >
-          <span
-            class="row-ico"
-            aria-hidden="true"
-          >⚭</span>
-          <span class="row-main">
-            <b class="mono">{{ item.number }}</b>
-            <small>{{ [item.provider, item.sizeCompatibility].filter(Boolean).join(' · ') || '—' }}</small>
-          </span>
-          <span class="row-end">
-            <StatusChip
-              v-if="chassisId === item.id"
-              variant="ok"
-              label="Selected"
-            />
-          </span>
+          {{ CONTAINER_TYPE_LABELS[type] }}
         </button>
       </div>
-
-      <p class="mt-4 text-sm text-[var(--color-ink-500)]">
-        Only available chassis are listed. Scan a plate from the Scan tab to jump here with it selected.
-      </p>
     </template>
 
-    <!-- ── Step 4 · Details ────────────────────────────────────── -->
-    <template v-else-if="step === 'details'">
-      <div class="card p-4">
-        <fieldset class="field">
-          <legend class="field-label">
-            Load state
-          </legend>
-          <div class="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              class="btn-ghost min-h-[52px]"
-              :class="isLoaded ? '!border-[var(--color-ok-600)] !bg-[var(--color-ok-100)] !text-[var(--color-ok-600)]' : ''"
-              :aria-pressed="isLoaded"
-              @click="isLoaded = true"
-            >
-              Loaded
-            </button>
-            <button
-              type="button"
-              class="btn-ghost min-h-[52px]"
-              :class="!isLoaded ? '!border-[var(--color-navy-800)] !bg-[var(--color-paper-100)] !text-[var(--color-navy-800)]' : ''"
-              :aria-pressed="!isLoaded"
-              @click="isLoaded = false"
-            >
-              Empty
-            </button>
-          </div>
-        </fieldset>
+    <!-- ── Equipment type (new records only) ───────────────────── -->
+    <template v-else-if="step === 'equipmentType'">
+      <div class="choice-grid cols-2">
+        <button
+          v-for="type in EQUIPMENT_TYPES"
+          :key="type"
+          type="button"
+          class="choice-card"
+          :aria-pressed="equipmentType === type"
+          :disabled="Boolean(tripId)"
+          @click="equipmentType = type"
+        >
+          {{ EQUIPMENT_TYPE_LABELS[type] }}
+        </button>
+      </div>
+    </template>
 
-        <label class="field">
+    <!-- ── Chassis number ──────────────────────────────────────── -->
+    <template v-else-if="step === 'chassis'">
+      <button
+        type="button"
+        class="btn-primary-action"
+        @click="cameraFor = 'chassis'"
+      >
+        Take photo
+      </button>
+
+      <p class="my-4 text-center text-sm font-semibold text-[var(--color-ink-500)]">
+        or type it
+      </p>
+
+      <div class="card p-4">
+        <label class="field !mb-0">
+          <span>Chassis number</span>
+          <input
+            v-model="chassisNumber"
+            class="input mono"
+            placeholder="TRAC481029"
+            autocapitalize="characters"
+            autocomplete="off"
+            spellcheck="false"
+            maxlength="20"
+          >
+        </label>
+      </div>
+
+      <button
+        type="button"
+        class="btn-ghost mt-4 w-full"
+        @click="skipChassis"
+      >
+        No chassis
+      </button>
+    </template>
+
+    <!-- ── Load state ──────────────────────────────────────────── -->
+    <template v-else-if="step === 'load'">
+      <div class="choice-grid">
+        <button
+          type="button"
+          class="choice-card"
+          :aria-pressed="isLoaded"
+          @click="isLoaded = true"
+        >
+          Loaded
+          <small>Freight is on the box</small>
+        </button>
+        <button
+          type="button"
+          class="choice-card"
+          :aria-pressed="!isLoaded"
+          @click="isLoaded = false"
+        >
+          Empty
+          <small>Bobtail or empty move</small>
+        </button>
+      </div>
+    </template>
+
+    <!-- ── Seal ────────────────────────────────────────────────── -->
+    <template v-else-if="step === 'seal'">
+      <div class="card p-4">
+        <label class="field !mb-0">
           <span>Seal number</span>
           <input
             v-model="sealNumber"
@@ -638,9 +690,14 @@ const selectedChassis = computed(() =>
             autocapitalize="characters"
             autocomplete="off"
           >
-          <small class="field-hint">Leave blank if the container is empty or unsealed.</small>
+          <small class="field-hint">Leave blank if the container is unsealed.</small>
         </label>
+      </div>
+    </template>
 
+    <!-- ── Notes ───────────────────────────────────────────────── -->
+    <template v-else-if="step === 'notes'">
+      <div class="card p-4">
         <label class="field !mb-0">
           <span>Notes</span>
           <textarea
@@ -650,21 +707,23 @@ const selectedChassis = computed(() =>
           />
         </label>
       </div>
-
-      <p class="banner info mt-4">
-        <span aria-hidden="true">▸</span>
-        <span>Interchange/EIR capture and damage photos attach to this event once object storage is deployed.</span>
-      </p>
+      <button
+        type="button"
+        class="btn-ghost mt-4 w-full"
+        @click="skipNotes"
+      >
+        Skip notes
+      </button>
     </template>
 
-    <!-- ── Step 5 · Confirm ────────────────────────────────────── -->
+    <!-- ── Confirm ─────────────────────────────────────────────── -->
     <template v-else>
       <TripCard
         :container-type="containerType"
         :is-loaded="isLoaded"
         :container-number="formatContainerNumber(normalized)"
         :equipment-type="equipmentType"
-        :chassis-number="selectedChassis?.number"
+        :chassis-number="chassisNumber || undefined"
         :seal-number="sealNumber"
         :origin-name="originLocation?.name"
         destination-name="Chosen on arrival"
@@ -714,5 +773,12 @@ const selectedChassis = computed(() =>
     >
       {{ tripId ? 'Cancel this pickup' : 'Discard and go home' }}
     </button>
+
+    <CaptureCamera
+      v-if="cameraFor"
+      :profile="cameraFor"
+      @close="cameraFor = null"
+      @captured="onCaptured"
+    />
   </section>
 </template>

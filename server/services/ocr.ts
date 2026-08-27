@@ -4,14 +4,19 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { parseEquipmentReadings } from '#shared/utils/ocr-parse'
 import { generateCorrectionCandidates, validateContainerNumber } from '#shared/utils/iso6346'
+import {
+  ensureSafecontainTessdata,
+  SAFECONTAIN_ENGINE,
+  tessdataReady,
+} from './safecontain'
 
 /**
  * Local OCR engine boundary (spec 30.7, 34).
  *
- * Inference never runs in the browser. The engine is Tesseract, installed in
- * the application image, so "Read number" works without a second container.
- * `NUXT_OCR_SERVICE_URL` remains an optional override for a future PaddleOCR
- * sidecar — when it is unset, Tesseract is the engine.
+ * Inference never runs in the browser. Scene-text reading uses Tesseract with
+ * SAFEContain's trained `eng.traineddata` (ISO 6346 container codes). The
+ * model is cached under `.data/safecontain/tessdata` on first scan.
+ * `NUXT_OCR_SERVICE_URL` remains an optional override for a future sidecar.
  */
 
 export interface OcrRegion {
@@ -69,7 +74,7 @@ export interface OcrService {
   engineVersion(): Promise<string | null>
 }
 
-const ENGINE = 'tesseract'
+const ENGINE = SAFECONTAIN_ENGINE
 const WHITELIST = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
 
 function imageExtension(buffer: Buffer): 'jpg' | 'png' | 'webp' {
@@ -155,7 +160,11 @@ function parseTsv(tsv: string): OcrRegion[] {
   return regions
 }
 
-async function ocrFile(imagePath: string, psm: number): Promise<{ text: string, regions: OcrRegion[] }> {
+async function ocrFile(
+  imagePath: string,
+  psm: number,
+  tessdataDir: string | null,
+): Promise<{ text: string, regions: OcrRegion[] }> {
   const binary = await tesseractBinary()
   if (!binary) throw new Error('tesseract is not installed')
 
@@ -168,6 +177,9 @@ async function ocrFile(imagePath: string, psm: number): Promise<{ text: string, 
     '-c', 'load_freq_dawg=0',
     'tsv',
   ]
+  if (tessdataDir) {
+    args.splice(2, 0, '--tessdata-dir', tessdataDir)
+  }
 
   const result = await runCommand(binary, args)
   if (result.code !== 0) {
@@ -179,7 +191,7 @@ async function ocrFile(imagePath: string, psm: number): Promise<{ text: string, 
   return { text, regions }
 }
 
-class TesseractOcrService implements OcrService {
+class SafecontainOcrService implements OcrService {
   async recognizeSceneText(image: Buffer, options?: { profile?: 'container' | 'chassis' | 'seal' }): Promise<SceneTextResult> {
     const started = Date.now()
     const profile = options?.profile ?? 'container'
@@ -195,7 +207,7 @@ class TesseractOcrService implements OcrService {
         regions: [],
         candidates: [],
         latencyMs: Date.now() - started,
-        message: 'No photo was captured. Start the camera, frame the number, then tap Read number.',
+        message: 'No photo was captured. Take a picture of the number, or pick one from the library.',
       }
     }
 
@@ -209,30 +221,29 @@ class TesseractOcrService implements OcrService {
         regions: [],
         candidates: [],
         latencyMs: Date.now() - started,
-        message: 'Tesseract is not installed in this image, so the number cannot be read. Enter it manually.',
+        message: 'Tesseract is not installed, so SAFEContain cannot read the number. Enter it manually.',
       }
     }
 
+    const tessdataDir = await ensureSafecontainTessdata()
     const dir = await mkdtemp(join(tmpdir(), 'ocr-'))
     const imagePath = join(dir, `frame.${imageExtension(image)}`)
 
     try {
       await writeFile(imagePath, image)
-      // Container numbers arrive pre-rotated to a single line. Chassis plates
-      // are already a line. PSM 7 is "treat the image as a single text line";
-      // PSM 6 is the fallback for a wrapped stencil.
-      const passes = profile === 'container' ? [7, 6, 5] : [7, 6]
+      // Full-frame photos: sparse text (11), block (6), then a single line (7).
+      const passes = profile === 'container' ? [11, 6, 7] : [7, 6, 11]
       const texts: string[] = []
       let regions: OcrRegion[] = []
 
       for (const psm of passes) {
         try {
-          const pass = await ocrFile(imagePath, psm)
+          const pass = await ocrFile(imagePath, psm, tessdataDir)
           if (pass.text.trim()) texts.push(pass.text)
           if (pass.regions.length > regions.length) regions = pass.regions
         }
         catch (error) {
-          console.warn(`[ocr] tesseract psm ${psm} failed:`, error instanceof Error ? error.message : error)
+          console.warn(`[ocr] SAFEContain psm ${psm} failed:`, error instanceof Error ? error.message : error)
         }
       }
 
@@ -246,14 +257,14 @@ class TesseractOcrService implements OcrService {
         available: true,
         engine: ENGINE,
         engineVersion: version,
-        modelName: 'eng',
+        modelName: tessdataDir ? 'safecontain-eng' : 'eng',
         preprocessingProfile: profile,
         regions,
         candidates,
         latencyMs: Date.now() - started,
         message: candidates.length
           ? undefined
-          : 'No equipment number could be read. Re-frame the marking, or enter it manually.',
+          : 'No equipment number could be read. Take another photo, or enter it manually.',
       }
     }
     finally {
@@ -281,14 +292,17 @@ class TesseractOcrService implements OcrService {
         healthy: false,
         engine: ENGINE,
         engineVersion: null,
-        message: 'Tesseract is not installed in this image.',
+        message: 'Tesseract is not installed, so SAFEContain cannot run.',
       }
     }
+    const ready = await tessdataReady()
     return {
       healthy: true,
       engine: ENGINE,
       engineVersion: version,
-      message: `Tesseract ${version} ready.`,
+      message: ready
+        ? `SAFEContain ready (Tesseract ${version}).`
+        : `Tesseract ${version} ready. SAFEContain tessdata downloads on the first scan.`,
     }
   }
 
@@ -301,7 +315,7 @@ let instance: OcrService | undefined
 
 /** Resolve the configured engine. Swap the implementation here, nowhere else. */
 export function useOcrService(): OcrService {
-  if (!instance) instance = new TesseractOcrService()
+  if (!instance) instance = new SafecontainOcrService()
   return instance
 }
 

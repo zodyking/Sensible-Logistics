@@ -73,6 +73,7 @@ export default defineNuxtConfig({
       fromName: '',
     },
     ocrServiceUrl: '',
+    ocrTessdataDir: '',
     s3Endpoint: '',
     s3Region: 'us-east-1',
     s3Bucket: '',

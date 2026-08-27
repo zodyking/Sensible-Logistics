@@ -107,53 +107,12 @@ async function saveDropoff() {
           Hello {{ data.driver.firstName }}
         </p>
         <div class="home-tally">
-          <div
-            class="home-tally-card"
-            :aria-label="`Bridge Crosses, ${data.stats.bridgeCrosses}`"
-          >
-            <span
-              class="home-tally-ico"
-              aria-hidden="true"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.75"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <path d="M4 20V9h3v11" />
-                <path d="M17 20V9h3v11" />
-                <path d="M2 14h20" />
-                <path d="M7 9c2.5 4 7.5 4 10 0" />
-                <path d="M4 20h3M17 20h3" />
-              </svg>
-            </span>
+          <div class="home-tally-card">
+            <small>Bridge Crosses</small>
             <b>{{ data.stats.bridgeCrosses }}</b>
           </div>
-          <div
-            class="home-tally-card"
-            :aria-label="`Swaps, ${data.stats.swaps}`"
-          >
-            <span
-              class="home-tally-ico"
-              aria-hidden="true"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.75"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <path d="m17 2 4 4-4 4" />
-                <path d="M3 11V9a4 4 0 0 1 4-4h14" />
-                <path d="m7 22-4-4 4-4" />
-                <path d="M21 13v2a4 4 0 0 1-4 4H3" />
-              </svg>
-            </span>
+          <div class="home-tally-card">
+            <small>Swaps</small>
             <b>{{ data.stats.swaps }}</b>
           </div>
         </div>
