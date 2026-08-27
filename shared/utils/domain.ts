@@ -95,6 +95,14 @@ export const EQUIPMENT_LENGTH_FT: Record<EquipmentType, number> = {
   OTHER: 40,
 }
 
+export const TRIP_KINDS = ['CONTAINER', 'BARE_CHASSIS'] as const
+export type TripKind = (typeof TRIP_KINDS)[number]
+
+export const TRIP_KIND_LABELS: Record<TripKind, string> = {
+  CONTAINER: 'Container',
+  BARE_CHASSIS: 'Bare chassis',
+}
+
 export const TRIP_STATUSES = [
   'DRAFT',
   'PICKUP_IN_PROGRESS',

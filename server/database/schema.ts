@@ -477,6 +477,8 @@ export const trips = pgTable('trips', {
   truckId: uuid('truck_id'),
   containerId: uuid('container_id').references(() => containers.id),
   chassisId: uuid('chassis_id'),
+  /** CONTAINER (box on a chassis or bobtail) or BARE_CHASSIS (chassis only). */
+  kind: text('kind').notNull().default('CONTAINER'),
 
   originLocationId: uuid('origin_location_id'),
   destinationLocationId: uuid('destination_location_id'),
@@ -542,7 +544,7 @@ export const containerEvents = pgTable('container_events', {
    */
   id: uuid('id').primaryKey(),
   companyId: uuid('company_id').notNull().references(() => companies.id, { onDelete: 'cascade' }),
-  containerId: uuid('container_id').notNull().references(() => containers.id, { onDelete: 'cascade' }),
+  containerId: uuid('container_id').references(() => containers.id, { onDelete: 'cascade' }),
 
   eventType: eventTypeEnum('event_type').notNull(),
   /** Actual moment the event happened in the real world. */

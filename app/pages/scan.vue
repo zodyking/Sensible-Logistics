@@ -116,7 +116,7 @@ async function continuePickup() {
       </p>
 
       <label class="field !mb-0">
-        <span>Trailer / chassis number</span>
+        <span>Chassis number</span>
         <ChassisNumberInput
           v-model="chassisNumber"
           :invalid="Boolean(chassisNumber) && !chassisOk"

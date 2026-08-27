@@ -30,6 +30,22 @@ watch(active, (value) => {
 
 const filteredLocations = computed(() => locationData.value?.items ?? [])
 
+const canAttachContainer = computed(() =>
+  Boolean(
+    active.value
+    && active.value.chassis
+    && !active.value.container
+    && active.value.trip.status !== 'PICKUP_IN_PROGRESS',
+  ),
+)
+
+const cancelCopy = computed(() => {
+  if (active.value && !active.value.container) {
+    return 'Cancel this trip? You will go back to no active trip. The chassis returns to available.'
+  }
+  return 'Cancel this trip? You will go back to no active trip. The container stays in the pool.'
+})
+
 const primaryAction = computed(() => {
   if (!active.value) return { label: 'New Pickup', to: '/pickups/new' }
   return active.value.primaryAction
@@ -120,6 +136,7 @@ async function saveDropoff() {
 
       <TripCard
         v-if="active"
+        :trip-kind="active.trip.kind === 'BARE_CHASSIS' ? 'BARE_CHASSIS' : 'CONTAINER'"
         :container-type="active.container?.containerType"
         :is-loaded="active.trip.isLoaded"
         :container-number="active.container?.number"
@@ -213,6 +230,13 @@ async function saveDropoff() {
           class="btn-primary-action home-cta"
         >
           {{ primaryAction.label }}
+        </NuxtLink>
+        <NuxtLink
+          v-if="canAttachContainer"
+          to="/pickups/attach"
+          class="btn-dark home-cta"
+        >
+          Add container to chassis
         </NuxtLink>
         <button
           v-if="active"
@@ -352,7 +376,7 @@ async function saveDropoff() {
         <span>{{ cancelError }}</span>
       </p>
       <p class="text-sm text-[var(--color-ink-700)]">
-        Cancel this trip? You will go back to no active trip. The container stays in the pool.
+        {{ cancelCopy }}
       </p>
       <div class="sheet-actions">
         <button

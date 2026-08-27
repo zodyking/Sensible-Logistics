@@ -26,6 +26,8 @@ import {
   SHORT_HAUL_RADIUS_MILES,
   SHORT_HAUL_STATUSES,
   SHORT_HAUL_WINDOW_MINUTES,
+  TRIP_KIND_LABELS,
+  TRIP_KINDS,
   TRIP_STATUS_CHIP,
   TRIP_STATUS_GLYPH,
   TRIP_STATUS_LABELS,
@@ -55,6 +57,10 @@ describe('domain vocabulary integrity', () => {
 
   it('keeps EQUIPMENT_TYPES in lockstep with labels and lengths', () => {
     expectUnionKeysMatch(EQUIPMENT_TYPES, EQUIPMENT_TYPE_LABELS, EQUIPMENT_LENGTH_FT, EQUIPMENT_TYPE_SHORT)
+  })
+
+  it('keeps TRIP_KINDS in lockstep with labels', () => {
+    expectUnionKeysMatch(TRIP_KINDS, TRIP_KIND_LABELS)
   })
 
   it('keeps TRIP_STATUSES in lockstep with labels and chips', () => {

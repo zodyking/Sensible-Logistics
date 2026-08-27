@@ -97,6 +97,7 @@ async function completeDropoff() {
       </div>
 
       <TripCard
+        :trip-kind="data.trip.kind === 'BARE_CHASSIS' ? 'BARE_CHASSIS' : 'CONTAINER'"
         :container-type="data.container?.containerType"
         :is-loaded="data.trip.isLoaded"
         :container-number="data.container?.number"
@@ -154,6 +155,14 @@ async function completeDropoff() {
           History
         </NuxtLink>
       </div>
+
+      <NuxtLink
+        v-if="isLive && data.chassis && !data.container && data.trip.status !== 'PICKUP_IN_PROGRESS'"
+        to="/pickups/attach"
+        class="btn-dark home-cta mb-3"
+      >
+        Add container to chassis
+      </NuxtLink>
 
       <button
         v-if="isLive"
@@ -220,7 +229,10 @@ async function completeDropoff() {
         </small>
       </button>
 
-      <label class="flex min-h-11 items-center gap-3 text-sm font-semibold">
+      <label
+        v-if="data?.container"
+        class="flex min-h-11 items-center gap-3 text-sm font-semibold"
+      >
         <input
           v-model="placeInYard"
           type="checkbox"
@@ -237,7 +249,10 @@ async function completeDropoff() {
         >
         Keep the chassis attached
       </label>
-      <label class="flex min-h-11 items-center gap-3 text-sm font-semibold">
+      <label
+        v-if="data?.container"
+        class="flex min-h-11 items-center gap-3 text-sm font-semibold"
+      >
         <input
           v-model="isFinalRelease"
           type="checkbox"

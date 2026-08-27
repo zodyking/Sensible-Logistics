@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ACTIVE_POOL_LABELS, CONTAINER_TYPES, CONTAINER_TYPE_LABELS, EQUIPMENT_TYPES, EQUIPMENT_TYPE_LABELS, LOCATION_GLYPH } from '#shared/utils/domain'
-import type { ContainerType, EquipmentType } from '#shared/utils/domain'
+import { ACTIVE_POOL_LABELS, CONTAINER_TYPES, CONTAINER_TYPE_LABELS, EQUIPMENT_TYPES, EQUIPMENT_TYPE_LABELS, LOCATION_GLYPH, TRIP_KIND_LABELS } from '#shared/utils/domain'
+import type { ContainerType, EquipmentType, TripKind } from '#shared/utils/domain'
 import {
   formatChassisNumber,
   formatContainerNumber,
@@ -14,9 +14,10 @@ import { driverOcrMessage } from '#shared/utils/ocr-parse'
 
 useHead({ title: 'New pickup' })
 
-type Step = 'location' | 'equipment' | 'containerType' | 'equipmentType' | 'load' | 'seal' | 'notes' | 'confirm'
+type Step = 'kind' | 'location' | 'equipment' | 'containerType' | 'equipmentType' | 'load' | 'seal' | 'notes' | 'confirm'
 
 const STEP_TITLES: Record<Step, string> = {
+  kind: 'What are you picking up?',
   location: 'Where are you picking up?',
   equipment: 'Container and chassis',
   containerType: 'Container type',
@@ -28,6 +29,7 @@ const STEP_TITLES: Record<Step, string> = {
 }
 
 const originLocationId = ref<string | null>(null)
+const pickupKind = ref<TripKind>('CONTAINER')
 const rawNumber = ref('')
 const containerType = ref<ContainerType>('TROPICAL')
 const equipmentType = ref<EquipmentType>('HC_40')
@@ -47,26 +49,28 @@ const resolution = ref<Resolution | null>(null)
 const needsClassification = computed(() => resolution.value?.outcome === 'CREATE')
 
 const STEPS = computed<Step[]>(() => {
-  const steps: Step[] = ['location', 'equipment']
-  if (needsClassification.value) {
+  const steps: Step[] = ['kind', 'location', 'equipment']
+  if (pickupKind.value === 'CONTAINER' && needsClassification.value) {
     steps.push('containerType', 'equipmentType')
   }
-  steps.push('load')
-  if (isLoaded.value) steps.push('seal')
+  if (pickupKind.value === 'CONTAINER') {
+    steps.push('load')
+    if (isLoaded.value) steps.push('seal')
+  }
   steps.push('notes', 'confirm')
   return steps
 })
 
-const step = ref<Step>('location')
+const step = ref<Step>('kind')
 const stepIndex = computed(() => Math.max(0, STEPS.value.indexOf(step.value)))
 
 watch(STEPS, (steps) => {
   if (steps.includes(step.value)) return
-  const order: Step[] = ['location', 'equipment', 'containerType', 'equipmentType', 'load', 'seal', 'notes', 'confirm']
+  const order: Step[] = ['kind', 'location', 'equipment', 'containerType', 'equipmentType', 'load', 'seal', 'notes', 'confirm']
   const from = order.indexOf(step.value)
   const following = order.slice(from + 1).find(name => steps.includes(name))
   const previous = [...order.slice(0, Math.max(0, from))].reverse().find(name => steps.includes(name))
-  step.value = following ?? previous ?? 'location'
+  step.value = following ?? previous ?? 'kind'
 })
 
 /* --- Data sources ----------------------------------------------- */
@@ -75,8 +79,9 @@ const { data: locationData } = await useFetch('/api/locations', {
   query: computed(() => ({ q: locationSearch.value || undefined, limit: 50 })),
 })
 
-const originLocation = computed(() =>
-  locationData.value?.items.find(l => l.id === originLocationId.value) ?? null)
+watch(pickupKind, (kind) => {
+  STEP_TITLES.equipment = kind === 'BARE_CHASSIS' ? 'Chassis' : 'Container and chassis'
+})
 
 const route = useRoute()
 rawNumber.value = maskContainerInput(String(route.query.number ?? ''))
@@ -146,6 +151,7 @@ async function hydrateFromTrip(id: string) {
     }
     tripId.value = data.trip.id
     originLocationId.value = data.trip.originLocationId
+    pickupKind.value = data.trip.kind === 'BARE_CHASSIS' ? 'BARE_CHASSIS' : 'CONTAINER'
     rawNumber.value = maskContainerInput(data.container?.numberNormalized ?? data.container?.number ?? '')
     if (data.container?.containerType) containerType.value = data.container.containerType
     if (data.container?.equipmentType) equipmentType.value = data.container.equipmentType
@@ -179,15 +185,30 @@ onMounted(async () => {
   }
 })
 
-const claimStep = computed<Step>(() => needsClassification.value ? 'equipmentType' : 'equipment')
+const claimStep = computed<Step>(() => {
+  if (pickupKind.value === 'BARE_CHASSIS') return 'equipment'
+  return needsClassification.value ? 'equipmentType' : 'equipment'
+})
 
-const chassisOk = computed(() => !chassisNumber.value || isCompleteChassisNumber(chassisNumber.value))
+const chassisOk = computed(() => {
+  if (pickupKind.value === 'BARE_CHASSIS') return isCompleteChassisNumber(chassisNumber.value)
+  return !chassisNumber.value || isCompleteChassisNumber(chassisNumber.value)
+})
+
+const originLocation = computed(() =>
+  locationData.value?.items.find(item => item.id === originLocationId.value) ?? null,
+)
 
 const canAdvance = computed(() => {
   switch (step.value) {
+    case 'kind':
+      return pickupKind.value === 'CONTAINER' || pickupKind.value === 'BARE_CHASSIS'
     case 'location':
       return Boolean(originLocationId.value)
     case 'equipment':
+      if (pickupKind.value === 'BARE_CHASSIS') {
+        return chassisOk.value && !readingPhoto.value
+      }
       return validation.value.structureValid
         && chassisOk.value
         && !blockedByConflict.value
@@ -247,17 +268,29 @@ function back() {
 }
 
 async function startPickup() {
+  if (pickupKind.value === 'BARE_CHASSIS' && !chassisId.value) {
+    errorMessage.value = 'Enter a chassis number.'
+    return
+  }
   submitting.value = true
   try {
+    const body: Record<string, unknown> = {
+      eventId: crypto.randomUUID(),
+      kind: pickupKind.value,
+      originLocationId: originLocationId.value,
+    }
+    if (pickupKind.value === 'BARE_CHASSIS') {
+      body.chassisId = chassisId.value
+    }
+    else {
+      body.containerNumber = normalized.value
+      body.containerType = containerType.value
+      body.equipmentType = equipmentType.value
+    }
+
     const result = await $fetch('/api/pickups/start', {
       method: 'POST',
-      body: {
-        eventId: crypto.randomUUID(),
-        containerNumber: normalized.value,
-        containerType: containerType.value,
-        equipmentType: equipmentType.value,
-        originLocationId: originLocationId.value,
-      },
+      body,
     })
     tripId.value = result.trip.id
   }
@@ -299,8 +332,8 @@ async function confirm() {
       body: {
         eventId: crypto.randomUUID(),
         chassisId: chassisId.value,
-        isLoaded: isLoaded.value,
-        sealNumber: sealNumber.value || null,
+        isLoaded: pickupKind.value === 'CONTAINER' ? isLoaded.value : false,
+        sealNumber: pickupKind.value === 'CONTAINER' ? (sealNumber.value || null) : null,
         notes: notes.value || null,
       },
     })
@@ -351,9 +384,16 @@ async function onPhoto(dataUrl: string) {
       headers: { 'Cache-Control': 'no-store' },
       body: { image: dataUrl },
     })
-    if (result.container) rawNumber.value = maskContainerInput(result.container)
+    if (result.container && pickupKind.value === 'CONTAINER') {
+      rawNumber.value = maskContainerInput(result.container)
+    }
     if (result.chassis) chassisNumber.value = maskChassisInput(result.chassis)
-    if (!result.container) {
+    if (pickupKind.value === 'BARE_CHASSIS') {
+      if (!result.chassis) {
+        ocrMessage.value = result.message || 'No chassis number could be read. Edit the field or retake.'
+      }
+    }
+    else if (!result.container) {
       ocrMessage.value = result.message || 'No container number could be read. Edit the fields or retake.'
     }
   }
@@ -441,8 +481,32 @@ async function skipNotes() {
       </span>
     </p>
 
+    <!-- ── What are you picking up? ────────────────────────────── -->
+    <template v-if="step === 'kind'">
+      <div class="choice-grid">
+        <button
+          type="button"
+          class="choice-card"
+          :aria-pressed="pickupKind === 'CONTAINER'"
+          @click="pickupKind = 'CONTAINER'"
+        >
+          {{ TRIP_KIND_LABELS.CONTAINER }}
+          <small>Box and chassis</small>
+        </button>
+        <button
+          type="button"
+          class="choice-card"
+          :aria-pressed="pickupKind === 'BARE_CHASSIS'"
+          @click="pickupKind = 'BARE_CHASSIS'"
+        >
+          {{ TRIP_KIND_LABELS.BARE_CHASSIS }}
+          <small>Chassis only — add a container later from Home</small>
+        </button>
+      </div>
+    </template>
+
     <!-- ── Location ────────────────────────────────────────────── -->
-    <template v-if="step === 'location'">
+    <template v-else-if="step === 'location'">
       <div class="searchbar">
         <span aria-hidden="true">⌕</span>
         <input
@@ -523,63 +587,66 @@ async function skipNotes() {
       </p>
 
       <div class="card p-4">
-        <label class="field">
-          <span>Container number</span>
-          <ContainerNumberInput
-            v-model="rawNumber"
-            :disabled="Boolean(tripId)"
-            :invalid="showValidation && !validation.structureValid"
-            describedby="container-validation"
-          />
-          <small class="field-hint">Four letters, six digits, dash, then the boxed check digit.</small>
-        </label>
+        <template v-if="pickupKind === 'CONTAINER'">
+          <label class="field">
+            <span>Container number</span>
+            <ContainerNumberInput
+              v-model="rawNumber"
+              :disabled="Boolean(tripId)"
+              :invalid="showValidation && !validation.structureValid"
+              describedby="container-validation"
+            />
+            <small class="field-hint">Four letters, six digits, dash, then the boxed check digit.</small>
+          </label>
 
-        <div
-          id="container-validation"
-          aria-live="polite"
-        >
-          <template v-if="showValidation">
-            <p
-              v-if="validation.valid"
-              class="banner ok mt-3 mb-0"
-            >
-              <span aria-hidden="true">✓</span>
-              <span>
-                <b>{{ formatContainerNumber(normalized) }}</b>
-                ISO 6346 check digit is valid.
-              </span>
-            </p>
+          <div
+            id="container-validation"
+            aria-live="polite"
+          >
+            <template v-if="showValidation">
+              <p
+                v-if="validation.valid"
+                class="banner ok mt-3 mb-0"
+              >
+                <span aria-hidden="true">✓</span>
+                <span>
+                  <b>{{ formatContainerNumber(normalized) }}</b>
+                  ISO 6346 check digit is valid.
+                </span>
+              </p>
 
-            <p
-              v-else
-              class="banner warn mt-3 mb-0"
-            >
-              <span aria-hidden="true">!</span>
-              <span>
-                <b>Check the number</b>
-                {{ validation.errors[0] }}
-                <template v-if="validation.expectedCheckDigit !== null">
-                  Expected check digit {{ validation.expectedCheckDigit }}.
-                </template>
-              </span>
-            </p>
+              <p
+                v-else
+                class="banner warn mt-3 mb-0"
+              >
+                <span aria-hidden="true">!</span>
+                <span>
+                  <b>Check the number</b>
+                  {{ validation.errors[0] }}
+                  <template v-if="validation.expectedCheckDigit !== null">
+                    Expected check digit {{ validation.expectedCheckDigit }}.
+                  </template>
+                </span>
+              </p>
 
-            <p
-              v-for="warning in validation.warnings"
-              :key="warning"
-              class="banner info mt-2 mb-0"
-            >
-              <span aria-hidden="true">▸</span>
-              <span>{{ warning }}</span>
-            </p>
-          </template>
-        </div>
+              <p
+                v-for="warning in validation.warnings"
+                :key="warning"
+                class="banner info mt-2 mb-0"
+              >
+                <span aria-hidden="true">▸</span>
+                <span>{{ warning }}</span>
+              </p>
+            </template>
+          </div>
+        </template>
 
         <label
-          class="field !mb-0 mt-5"
+          class="field !mb-0"
+          :class="{ 'mt-5': pickupKind === 'CONTAINER' }"
           for="chassis-number"
         >
-          <span>Trailer / chassis number</span>
+          <span>Chassis number</span>
           <ChassisNumberInput
             id="chassis-number"
             v-model="chassisNumber"
@@ -589,12 +656,12 @@ async function skipNotes() {
           <small
             id="chassis-hint"
             class="field-hint"
-          >Four letters and six digits. Leave blank if there is no chassis.</small>
+          >{{ pickupKind === 'BARE_CHASSIS' ? 'Four letters and six digits. Required for a bare chassis pickup.' : 'Four letters and six digits. Leave blank if there is no chassis.' }}</small>
         </label>
       </div>
 
       <div
-        v-if="resolving"
+        v-if="pickupKind === 'CONTAINER' && resolving"
         class="banner info mt-4"
         role="status"
       >
@@ -602,7 +669,7 @@ async function skipNotes() {
         <span>Checking the active container pool…</span>
       </div>
 
-      <template v-else-if="resolution">
+      <template v-else-if="pickupKind === 'CONTAINER' && resolution">
         <div
           class="banner mt-4"
           :class="RESOLUTION_COPY[resolution.outcome]?.variant"
@@ -749,14 +816,15 @@ async function skipNotes() {
     </template>
 
     <!-- ── Confirm ─────────────────────────────────────────────── -->
-    <template v-else>
+    <template v-else-if="step === 'confirm'">
       <TripCard
-        :container-type="containerType"
-        :is-loaded="isLoaded"
-        :container-number="formatContainerNumber(normalized)"
-        :equipment-type="equipmentType"
+        :trip-kind="pickupKind"
+        :container-type="pickupKind === 'CONTAINER' ? containerType : null"
+        :is-loaded="pickupKind === 'CONTAINER' ? isLoaded : false"
+        :container-number="pickupKind === 'CONTAINER' ? formatContainerNumber(normalized) : ''"
+        :equipment-type="pickupKind === 'CONTAINER' ? equipmentType : null"
         :chassis-number="chassisNumber ? formatChassisNumber(chassisNumber) : undefined"
-        :seal-number="sealNumber"
+        :seal-number="pickupKind === 'CONTAINER' ? sealNumber : ''"
         :origin-name="originLocation?.name"
         destination-name="Chosen on arrival"
         origin-label="Pickup"
@@ -764,7 +832,13 @@ async function skipNotes() {
 
       <p class="banner info">
         <span aria-hidden="true">▸</span>
-        <span>Confirming records the pickup, custody and departure events and moves the container into your custody.</span>
+        <span>
+          {{
+            pickupKind === 'BARE_CHASSIS'
+              ? 'Confirming records the chassis pickup and departure. You can hang a container on it from Home.'
+              : 'Confirming records the pickup, custody and departure events and moves the container into your custody.'
+          }}
+        </span>
       </p>
 
       <button
@@ -808,7 +882,7 @@ async function skipNotes() {
 
     <CaptureCamera
       v-if="cameraOpen"
-      title="Container and chassis"
+      :title="pickupKind === 'BARE_CHASSIS' ? 'Chassis' : 'Container and chassis'"
       @close="cameraOpen = false"
       @photo="onPhoto"
     />

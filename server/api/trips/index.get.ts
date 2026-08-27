@@ -1,6 +1,6 @@
 import { aliasedTable, and, desc, eq, inArray } from 'drizzle-orm'
 import { z } from 'zod'
-import { containers, locations, trips } from '../../database/schema'
+import { chassis, containers, locations, trips } from '../../database/schema'
 import { requireAuth } from '../../utils/session'
 import { TRIP_STATUSES } from '#shared/utils/domain'
 
@@ -39,11 +39,14 @@ export default defineEventHandler(async (event) => {
       pickedUpAt: trips.pickedUpAt,
       completedAt: trips.completedAt,
       containerNumber: containers.number,
+      chassisNumber: chassis.number,
+      kind: trips.kind,
       originName: origin.name,
       destinationName: destination.name,
     })
     .from(trips)
     .leftJoin(containers, eq(containers.id, trips.containerId))
+    .leftJoin(chassis, eq(chassis.id, trips.chassisId))
     .leftJoin(origin, eq(origin.id, trips.originLocationId))
     .leftJoin(destination, eq(destination.id, trips.destinationLocationId))
     .where(and(...filters))

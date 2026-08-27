@@ -7,7 +7,7 @@ export interface RecordEventInput {
   /** Client-generated UUID. Reused on retries so replays are no-ops. */
   id: string
   companyId: string
-  containerId: string
+  containerId?: string | null
   eventType: EventType
   occurredAt?: Date
   actorUserId?: string | null
@@ -61,7 +61,7 @@ export async function recordEvent(
     .values({
       id: input.id,
       companyId: input.companyId,
-      containerId: input.containerId,
+      containerId: input.containerId ?? null,
       eventType: input.eventType,
       occurredAt,
       actorUserId: input.actorUserId ?? null,
@@ -84,7 +84,7 @@ export async function recordEvent(
   const created = inserted.length > 0
 
   // A replayed event must not re-apply a state transition.
-  if (created && statePatch) {
+  if (created && statePatch && input.containerId) {
     await tx
       .update(containers)
       .set({

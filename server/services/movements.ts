@@ -13,6 +13,7 @@ import { claimContainerForPickup, nextTripReference, releasePickupClaim } from '
 import { eventExists, recordEvent } from './events'
 import type { AuthContext } from '../utils/session'
 import { normalizeContainerNumber } from '#shared/utils/iso6346'
+import type { TripKind } from '#shared/utils/domain'
 
 /**
  * Driver-owned pickup and drop-off orchestration (spec 6.2, 6.3).
@@ -27,17 +28,19 @@ export const LIVE_TRIP_STATUSES = ['PICKUP_IN_PROGRESS', 'IN_TRANSIT', 'DROPOFF_
 
 export interface StartPickupInput {
   eventId: string
-  containerNumber: string
-  containerType: Container['containerType']
+  kind?: TripKind
+  containerNumber?: string
+  containerType?: Container['containerType']
   equipmentType?: Container['equipmentType']
+  chassisId?: string | null
   originLocationId: string
   gps?: { latitude: number, longitude: number, accuracyMeters?: number } | null
 }
 
 export interface StartPickupResult {
   trip: Trip
-  container: Container
-  outcome: 'REUSE_ACTIVE' | 'REACTIVATE' | 'CREATE'
+  container: Container | null
+  outcome: 'REUSE_ACTIVE' | 'REACTIVATE' | 'CREATE' | 'BARE_CHASSIS'
   replayed: boolean
 }
 
@@ -53,6 +56,12 @@ export async function startPickup(
   auth: AuthContext & { driverId: string },
   input: StartPickupInput,
 ): Promise<StartPickupResult> {
+  if ((input.kind ?? 'CONTAINER') === 'BARE_CHASSIS') {
+    return startBareChassisPickup(db, auth, input)
+  }
+  if (!input.containerNumber || !input.containerType) {
+    throw createError({ statusCode: 422, statusMessage: 'Enter a container number.' })
+  }
   return db.transaction(async (tx) => {
     if (await eventExists(tx, auth.companyId, input.eventId)) {
       const replayed = await loadTripByEvent(tx, auth.companyId, input.eventId)
@@ -144,6 +153,7 @@ export async function startPickup(
         containerId: claim.container.id,
         originLocationId: input.originLocationId,
         status: 'PICKUP_IN_PROGRESS',
+        kind: 'CONTAINER',
       })
       .returning()
 
@@ -192,6 +202,116 @@ export async function startPickup(
   })
 }
 
+async function assertNoLiveDriverTrip(
+  tx: DbExecutor,
+  auth: AuthContext & { driverId: string },
+) {
+  const [driverLive] = await tx
+    .select()
+    .from(trips)
+    .where(and(
+      eq(trips.companyId, auth.companyId),
+      eq(trips.driverId, auth.driverId),
+      inArray(trips.status, [...LIVE_TRIP_STATUSES]),
+    ))
+    .limit(1)
+
+  if (driverLive) {
+    throw createError({
+      statusCode: 409,
+      statusMessage: 'Finish or cancel your current movement before starting another pickup.',
+      data: { tripId: driverLive.id, reference: driverLive.reference },
+    })
+  }
+}
+
+async function startBareChassisPickup(
+  db: Database,
+  auth: AuthContext & { driverId: string },
+  input: StartPickupInput,
+): Promise<StartPickupResult> {
+  if (!input.chassisId) {
+    throw createError({ statusCode: 422, statusMessage: 'Enter a chassis number.' })
+  }
+
+  return db.transaction(async (tx) => {
+    if (await eventExists(tx, auth.companyId, input.eventId)) {
+      const replayed = await loadTripByEvent(tx, auth.companyId, input.eventId)
+      if (replayed) return { ...replayed, outcome: 'BARE_CHASSIS' as const, replayed: true }
+    }
+
+    await assertNoLiveDriverTrip(tx, auth)
+    await assertChassisAvailable(tx, auth.companyId, input.chassisId!, null)
+
+    const [liveForChassis] = await tx
+      .select()
+      .from(trips)
+      .where(and(
+        eq(trips.companyId, auth.companyId),
+        eq(trips.chassisId, input.chassisId!),
+        inArray(trips.status, [...LIVE_TRIP_STATUSES]),
+      ))
+      .limit(1)
+
+    if (liveForChassis) {
+      if (liveForChassis.driverId === auth.driverId && liveForChassis.status === 'PICKUP_IN_PROGRESS') {
+        return {
+          trip: liveForChassis,
+          container: null,
+          outcome: 'BARE_CHASSIS',
+          replayed: true,
+        }
+      }
+      throw createError({
+        statusCode: 409,
+        statusMessage: 'That chassis is already on an active movement.',
+        data: { tripId: liveForChassis.id, reference: liveForChassis.reference },
+      })
+    }
+
+    const reference = await nextTripReference(tx, auth.companyId)
+    const [trip] = await tx
+      .insert(trips)
+      .values({
+        companyId: auth.companyId,
+        reference,
+        driverId: auth.driverId,
+        containerId: null,
+        chassisId: input.chassisId,
+        originLocationId: input.originLocationId,
+        status: 'PICKUP_IN_PROGRESS',
+        kind: 'BARE_CHASSIS',
+        isLoaded: false,
+      })
+      .returning()
+
+    if (!trip) {
+      throw createError({ statusCode: 500, statusMessage: 'Could not open the movement.' })
+    }
+
+    await recordEvent(tx, {
+      id: input.eventId,
+      companyId: auth.companyId,
+      containerId: null,
+      eventType: 'PICKUP_STARTED',
+      actorUserId: auth.userId,
+      actorDriverId: auth.driverId,
+      tripId: trip.id,
+      locationId: input.originLocationId,
+      chassisId: input.chassisId,
+      gps: input.gps,
+      payload: { kind: 'BARE_CHASSIS', reference },
+    })
+
+    await tx
+      .update(chassisTable)
+      .set({ status: 'IN_USE', updatedAt: new Date() })
+      .where(and(eq(chassisTable.id, input.chassisId!), eq(chassisTable.companyId, auth.companyId)))
+
+    return { trip, container: null, outcome: 'BARE_CHASSIS', replayed: false }
+  })
+}
+
 export interface ConfirmPickupInput {
   eventId: string
   tripId: string
@@ -210,7 +330,7 @@ export async function confirmPickup(
   db: Database,
   auth: AuthContext & { driverId: string },
   input: ConfirmPickupInput,
-): Promise<{ trip: Trip, container: Container, replayed: boolean }> {
+): Promise<{ trip: Trip, container: Container | null, replayed: boolean }> {
   return db.transaction(async (tx) => {
     if (await eventExists(tx, auth.companyId, input.eventId)) {
       const replayed = await loadTripByEvent(tx, auth.companyId, input.eventId)
@@ -222,8 +342,9 @@ export async function confirmPickup(
     if (trip.status !== 'PICKUP_IN_PROGRESS') {
       throw createError({ statusCode: 409, statusMessage: 'This pickup has already been confirmed.' })
     }
-    if (!trip.containerId) {
-      throw createError({ statusCode: 422, statusMessage: 'The movement has no container attached.' })
+
+    if (trip.kind === 'BARE_CHASSIS' || !trip.containerId) {
+      return confirmBareChassisPickup(tx, auth, trip, input)
     }
 
     if (input.chassisId) {
@@ -340,6 +461,77 @@ export async function confirmPickup(
   })
 }
 
+async function confirmBareChassisPickup(
+  tx: DbExecutor,
+  auth: AuthContext & { driverId: string },
+  trip: Trip,
+  input: ConfirmPickupInput,
+): Promise<{ trip: Trip, container: null, replayed: boolean }> {
+  const chassisId = input.chassisId ?? trip.chassisId
+  if (!chassisId) {
+    throw createError({ statusCode: 422, statusMessage: 'Enter a chassis number.' })
+  }
+
+  await assertChassisAvailable(tx, auth.companyId, chassisId, null)
+  const now = new Date()
+
+  await recordEvent(tx, {
+    id: input.eventId,
+    companyId: auth.companyId,
+    containerId: null,
+    eventType: 'PICKUP_CONFIRMED',
+    occurredAt: now,
+    actorUserId: auth.userId,
+    actorDriverId: auth.driverId,
+    tripId: trip.id,
+    locationId: trip.originLocationId,
+    chassisId,
+    gps: input.gps,
+    payload: { kind: 'BARE_CHASSIS' },
+    notes: input.notes ?? null,
+  })
+
+  await recordEvent(tx, {
+    id: crypto.randomUUID(),
+    companyId: auth.companyId,
+    containerId: null,
+    eventType: 'DEPARTED',
+    occurredAt: now,
+    actorUserId: auth.userId,
+    actorDriverId: auth.driverId,
+    tripId: trip.id,
+    locationId: trip.originLocationId,
+    chassisId,
+    gps: input.gps,
+  })
+
+  await tx
+    .update(chassisTable)
+    .set({ status: 'IN_USE', currentContainerId: null, updatedAt: now })
+    .where(and(eq(chassisTable.id, chassisId), eq(chassisTable.companyId, auth.companyId)))
+
+  const [updatedTrip] = await tx
+    .update(trips)
+    .set({
+      status: 'IN_TRANSIT',
+      chassisId,
+      isLoaded: false,
+      pickedUpAt: now,
+      driverNotes: input.notes ?? trip.driverNotes,
+      updatedAt: now,
+      version: sql`${trips.version} + 1`,
+    })
+    .where(eq(trips.id, trip.id))
+    .returning()
+
+  await tx
+    .update(drivers)
+    .set({ status: 'ON_TRIP', updatedAt: now })
+    .where(eq(drivers.id, auth.driverId))
+
+  return { trip: updatedTrip!, container: null, replayed: false }
+}
+
 export interface CancelPickupInput {
   eventId: string
   tripId: string
@@ -367,13 +559,58 @@ export async function cancelPickup(
     if (!(LIVE_TRIP_STATUSES as readonly string[]).includes(trip.status)) {
       throw createError({ statusCode: 409, statusMessage: 'This movement is already finished.' })
     }
-    if (!trip.containerId) {
-      throw createError({ statusCode: 422, statusMessage: 'The movement has no container attached.' })
-    }
 
     const now = new Date()
-    const previousState = await previousPoolState(tx, auth.companyId, trip.id)
     const restoreLocationId = trip.originLocationId
+
+    if (!trip.containerId) {
+      await recordEvent(tx, {
+        id: input.eventId,
+        companyId: auth.companyId,
+        containerId: null,
+        eventType: trip.status === 'PICKUP_IN_PROGRESS' ? 'PICKUP_CANCELLED' : 'STATUS_CHANGE',
+        actorUserId: auth.userId,
+        actorDriverId: auth.driverId,
+        tripId: trip.id,
+        locationId: restoreLocationId,
+        chassisId: trip.chassisId,
+        payload: { cancelledFrom: trip.status, kind: trip.kind },
+        notes: input.reason ?? 'Driver cancelled the trip.',
+      })
+
+      if (trip.chassisId) {
+        await tx
+          .update(chassisTable)
+          .set({
+            currentContainerId: null,
+            currentLocationId: restoreLocationId,
+            status: 'AVAILABLE',
+            updatedAt: now,
+          })
+          .where(and(eq(chassisTable.id, trip.chassisId), eq(chassisTable.companyId, auth.companyId)))
+      }
+
+      const [cancelledBare] = await tx
+        .update(trips)
+        .set({
+          status: 'CANCELLED',
+          cancelledAt: now,
+          driverNotes: input.reason ?? trip.driverNotes,
+          updatedAt: now,
+          version: sql`${trips.version} + 1`,
+        })
+        .where(eq(trips.id, trip.id))
+        .returning()
+
+      await tx
+        .update(drivers)
+        .set({ status: 'AVAILABLE', updatedAt: now })
+        .where(eq(drivers.id, auth.driverId))
+
+      return { trip: cancelledBare! }
+    }
+
+    const previousState = await previousPoolState(tx, auth.companyId, trip.id)
 
     await recordEvent(tx, {
       id: input.eventId,
@@ -457,7 +694,7 @@ export async function completeDropoff(
   db: Database,
   auth: AuthContext & { driverId: string },
   input: CompleteDropoffInput,
-): Promise<{ trip: Trip, container: Container, replayed: boolean }> {
+): Promise<{ trip: Trip, container: Container | null, replayed: boolean }> {
   return db.transaction(async (tx) => {
     if (await eventExists(tx, auth.companyId, input.eventId)) {
       const replayed = await loadTripByEvent(tx, auth.companyId, input.eventId)
@@ -469,8 +706,9 @@ export async function completeDropoff(
     if (!(['IN_TRANSIT', 'DROPOFF_IN_PROGRESS'] as string[]).includes(trip.status)) {
       throw createError({ statusCode: 409, statusMessage: 'This movement is not in transit.' })
     }
+
     if (!trip.containerId) {
-      throw createError({ statusCode: 422, statusMessage: 'The movement has no container attached.' })
+      return completeBareChassisDropoff(tx, auth, trip, input)
     }
 
     const now = new Date()
@@ -607,6 +845,188 @@ export async function completeDropoff(
   })
 }
 
+async function completeBareChassisDropoff(
+  tx: DbExecutor,
+  auth: AuthContext & { driverId: string },
+  trip: Trip,
+  input: CompleteDropoffInput,
+): Promise<{ trip: Trip, container: null, replayed: boolean }> {
+  const now = new Date()
+  const detachChassis = Boolean(trip.chassisId) && !input.retainChassis
+
+  await recordEvent(tx, {
+    id: input.eventId,
+    companyId: auth.companyId,
+    containerId: null,
+    eventType: 'DROPOFF_CONFIRMED',
+    occurredAt: now,
+    actorUserId: auth.userId,
+    actorDriverId: auth.driverId,
+    tripId: trip.id,
+    locationId: input.destinationLocationId,
+    chassisId: input.retainChassis ? trip.chassisId : null,
+    gps: input.gps,
+    payload: { kind: 'BARE_CHASSIS', retainChassis: input.retainChassis },
+    notes: input.notes ?? null,
+  })
+
+  if (detachChassis && trip.chassisId) {
+    await tx
+      .update(chassisTable)
+      .set({
+        currentContainerId: null,
+        currentLocationId: input.destinationLocationId,
+        status: 'AVAILABLE',
+        updatedAt: now,
+      })
+      .where(and(eq(chassisTable.id, trip.chassisId), eq(chassisTable.companyId, auth.companyId)))
+  }
+
+  const [updatedTrip] = await tx
+    .update(trips)
+    .set({
+      status: 'COMPLETED',
+      destinationLocationId: input.destinationLocationId,
+      chassisId: input.retainChassis ? trip.chassisId : null,
+      droppedOffAt: now,
+      completedAt: now,
+      driverNotes: input.notes ?? trip.driverNotes,
+      updatedAt: now,
+      version: sql`${trips.version} + 1`,
+    })
+    .where(eq(trips.id, trip.id))
+    .returning()
+
+  await tx
+    .update(drivers)
+    .set({ status: 'AVAILABLE', updatedAt: now })
+    .where(eq(drivers.id, auth.driverId))
+
+  return { trip: updatedTrip!, container: null, replayed: false }
+}
+
+export interface AttachContainerInput {
+  eventId: string
+  tripId: string
+  containerNumber: string
+  containerType: Container['containerType']
+  equipmentType?: Container['equipmentType']
+  isLoaded?: boolean
+  sealNumber?: string | null
+}
+
+/**
+ * Hang a container on an in-progress bare-chassis movement.
+ */
+export async function attachContainerToTrip(
+  db: Database,
+  auth: AuthContext & { driverId: string },
+  input: AttachContainerInput,
+): Promise<StartPickupResult> {
+  return db.transaction(async (tx) => {
+    if (await eventExists(tx, auth.companyId, input.eventId)) {
+      const replayed = await loadTripByEvent(tx, auth.companyId, input.eventId)
+      if (replayed) return { ...replayed, outcome: 'REUSE_ACTIVE' as const, replayed: true }
+    }
+
+    const trip = await loadOwnedTrip(tx, auth, input.tripId)
+    if (!(['IN_TRANSIT', 'DROPOFF_IN_PROGRESS'] as string[]).includes(trip.status)) {
+      throw createError({ statusCode: 409, statusMessage: 'Confirm the chassis pickup before adding a container.' })
+    }
+    if (trip.containerId) {
+      throw createError({ statusCode: 409, statusMessage: 'This movement already has a container.' })
+    }
+    if (!trip.chassisId) {
+      throw createError({ statusCode: 422, statusMessage: 'This movement has no chassis to load onto.' })
+    }
+
+    const claim = await claimContainerForPickup(tx, {
+      companyId: auth.companyId,
+      driverId: auth.driverId,
+      userId: auth.userId,
+      rawNumber: input.containerNumber,
+      containerType: input.containerType,
+      equipmentType: input.equipmentType,
+    })
+
+    const now = new Date()
+    if (claim.outcome !== 'REUSE_ACTIVE') {
+      await recordEvent(tx, {
+        id: crypto.randomUUID(),
+        companyId: auth.companyId,
+        containerId: claim.container.id,
+        eventType: 'ACTIVATED',
+        actorUserId: auth.userId,
+        actorDriverId: auth.driverId,
+        tripId: trip.id,
+        payload: { outcome: claim.outcome, attachedToBareChassis: true },
+      })
+    }
+
+    await recordEvent(
+      tx,
+      {
+        id: input.eventId,
+        companyId: auth.companyId,
+        containerId: claim.container.id,
+        eventType: 'CHASSIS_ATTACH',
+        occurredAt: now,
+        actorUserId: auth.userId,
+        actorDriverId: auth.driverId,
+        tripId: trip.id,
+        chassisId: trip.chassisId,
+        payload: { previousState: claim.container.activePoolState },
+      },
+      {
+        activePoolState: 'DRIVER_CUSTODY',
+        currentDriverId: auth.driverId,
+        currentLocationId: null,
+        currentChassisId: trip.chassisId,
+        activeMovementId: trip.id,
+        isLoaded: input.isLoaded ?? false,
+        sealNumber: input.sealNumber ?? null,
+      },
+    )
+
+    await recordEvent(tx, {
+      id: crypto.randomUUID(),
+      companyId: auth.companyId,
+      containerId: claim.container.id,
+      eventType: input.isLoaded ? 'LOADED' : 'EMPTIED',
+      occurredAt: now,
+      actorUserId: auth.userId,
+      actorDriverId: auth.driverId,
+      tripId: trip.id,
+    })
+
+    await tx
+      .update(chassisTable)
+      .set({ currentContainerId: claim.container.id, status: 'IN_USE', updatedAt: now })
+      .where(and(eq(chassisTable.id, trip.chassisId), eq(chassisTable.companyId, auth.companyId)))
+
+    const [updatedTrip] = await tx
+      .update(trips)
+      .set({
+        containerId: claim.container.id,
+        kind: 'CONTAINER',
+        isLoaded: input.isLoaded ?? false,
+        sealNumber: input.sealNumber ?? null,
+        updatedAt: now,
+        version: sql`${trips.version} + 1`,
+      })
+      .where(eq(trips.id, trip.id))
+      .returning()
+
+    const [container] = await tx.select().from(containers).where(eq(containers.id, claim.container.id)).limit(1)
+    return {
+      trip: updatedTrip!,
+      container: container!,
+      outcome: claim.outcome,
+      replayed: false,
+    }
+  })
+}
+
 /** The driver's current live movement, if any. */
 export async function findActiveTrip(db: Database, companyId: string, driverId: string): Promise<Trip | null> {
   const [trip] = await db
@@ -670,7 +1090,7 @@ async function loadTripByEvent(
   tx: DbExecutor,
   companyId: string,
   eventId: string,
-): Promise<{ trip: Trip, container: Container } | null> {
+): Promise<{ trip: Trip, container: Container | null } | null> {
   const [event] = await tx
     .select({ tripId: containerEvents.tripId, containerId: containerEvents.containerId })
     .from(containerEvents)
@@ -680,16 +1100,18 @@ async function loadTripByEvent(
   if (!event?.tripId) return null
 
   const [trip] = await tx.select().from(trips).where(eq(trips.id, event.tripId)).limit(1)
-  const [container] = await tx.select().from(containers).where(eq(containers.id, event.containerId)).limit(1)
+  if (!trip) return null
+  if (!event.containerId) return { trip, container: null }
 
-  return trip && container ? { trip, container } : null
+  const [container] = await tx.select().from(containers).where(eq(containers.id, event.containerId)).limit(1)
+  return { trip, container: container ?? null }
 }
 
 async function assertChassisAvailable(
   tx: DbExecutor,
   companyId: string,
   chassisId: string,
-  containerId: string,
+  containerId: string | null,
 ): Promise<void> {
   const [record] = await tx
     .select()
