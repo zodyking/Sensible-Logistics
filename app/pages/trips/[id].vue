@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { LOCATION_TYPE_LABELS, TRIP_STATUS_CHIP, TRIP_STATUS_LABELS } from '#shared/utils/domain'
+import { formatContainerNumber } from '#shared/utils/iso6346'
 
 const route = useRoute()
 const tripId = computed(() => String(route.params.id))
@@ -112,7 +113,7 @@ async function completeDropoff() {
           #number
         >
           <NuxtLink :to="`/containers/${data.container.id}`">
-            {{ data.container.number }}
+            {{ formatContainerNumber(data.container.number) || data.container.number }}
           </NuxtLink>
         </template>
       </TripCard>

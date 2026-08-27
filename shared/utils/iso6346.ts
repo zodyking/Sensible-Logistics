@@ -164,11 +164,66 @@ export function isValidContainerNumber(input: string): boolean {
   return validateContainerNumber(input).valid
 }
 
-/** Display form: `MSCU 452189-4`. Falls back to the raw value when malformed. */
+/**
+ * Keep the first four letters, then up to seven digits — the painted ISO
+ * marking (owner + category + serial + boxed check digit).
+ */
+export function maskContainerInput(input: string): string {
+  let letters = ''
+  let digits = ''
+  for (const char of (input ?? '').toUpperCase()) {
+    if (letters.length < 4) {
+      if (/[A-Z]/.test(char)) letters += char
+      continue
+    }
+    if (digits.length < 7 && /\d/.test(char)) digits += char
+  }
+  return letters + digits
+}
+
+/** Display form: `MSCU 452189-4`. Partial values keep the same grouping. */
 export function formatContainerNumber(input: string): string {
-  const normalized = normalizeContainerNumber(input)
-  if (!STRUCTURE_RE.test(normalized)) return normalized
-  return `${normalized.slice(0, 4)} ${normalized.slice(4, 10)}-${normalized.slice(10)}`
+  const compact = maskContainerInput(input)
+  if (!compact) return ''
+  const letters = compact.replace(/\d/g, '')
+  const digits = compact.slice(letters.length)
+  if (!digits) return letters
+  if (digits.length <= 6) return `${letters} ${digits}`
+  return `${letters} ${digits.slice(0, 6)}-${digits.slice(6)}`
+}
+
+const CHASSIS_STRUCTURE_RE = /^[A-Z]{4}\d{6}$/
+
+/** Keep four letters then up to six digits (no boxed check digit). */
+export function maskChassisInput(input: string): string {
+  let letters = ''
+  let digits = ''
+  for (const char of (input ?? '').toUpperCase()) {
+    if (letters.length < 4) {
+      if (/[A-Z]/.test(char)) letters += char
+      continue
+    }
+    if (digits.length < 6 && /\d/.test(char)) digits += char
+  }
+  return letters + digits
+}
+
+export function normalizeChassisNumber(input: string): string {
+  return maskChassisInput(input)
+}
+
+export function isCompleteChassisNumber(input: string): boolean {
+  return CHASSIS_STRUCTURE_RE.test(maskChassisInput(input))
+}
+
+/** Display form: `AIMZ 481345`. Partial values keep the same grouping. */
+export function formatChassisNumber(input: string): string {
+  const compact = maskChassisInput(input)
+  if (!compact) return ''
+  const letters = compact.replace(/\d/g, '')
+  const digits = compact.slice(letters.length)
+  if (!digits) return letters
+  return `${letters} ${digits}`
 }
 
 /**

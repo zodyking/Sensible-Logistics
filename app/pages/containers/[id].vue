@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { CONTAINER_TYPE_LABELS, EQUIPMENT_TYPE_SHORT } from '#shared/utils/domain'
+import { formatContainerNumber } from '#shared/utils/iso6346'
 
 const route = useRoute()
 const { data, status, error } = await useFetch(() => `/api/containers/${route.params.id}`)
@@ -59,7 +60,7 @@ const flags = computed(() => {
         <div class="cd-head">
           <span class="eyebrow">Container Record</span>
           <div class="container-no mono">
-            {{ data.container.number }}
+            {{ formatContainerNumber(data.container.number) || data.container.number }}
           </div>
           <div class="cd-chips">
             <StatusChip

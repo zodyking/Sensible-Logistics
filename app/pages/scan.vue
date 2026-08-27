@@ -1,27 +1,61 @@
 <script setup lang="ts">
+import { formatContainerNumber, isCompleteChassisNumber, maskChassisInput, maskContainerInput, validateContainerNumber } from '#shared/utils/iso6346'
+
 useHead({ title: 'Scan' })
 
-const route = useRoute()
+const cameraOpen = ref(true)
+const reading = ref(false)
+const captured = ref(false)
+const errorMessage = ref('')
+const containerNumber = ref('')
+const chassisNumber = ref('')
 
-type ScanProfile = 'container' | 'chassis'
-const profile = ref<ScanProfile | null>(
-  route.query.profile === 'chassis' ? 'chassis' : route.query.profile === 'container' ? 'container' : null,
+const containerValidation = computed(() => validateContainerNumber(containerNumber.value))
+const chassisOk = computed(() => !chassisNumber.value || isCompleteChassisNumber(chassisNumber.value))
+const canContinue = computed(() =>
+  containerValidation.value.structureValid && chassisOk.value && !reading.value,
 )
 
-function choose(next: ScanProfile) {
-  profile.value = next
-}
-
-function onCaptured(value: string) {
-  const query = profile.value === 'chassis' ? { chassis: value } : { number: value }
-  return navigateTo({ path: '/pickups/new', query })
-}
-
-function closeCamera() {
-  if (route.query.profile) {
-    return navigateTo('/')
+async function onPhoto(dataUrl: string) {
+  cameraOpen.value = false
+  captured.value = true
+  reading.value = true
+  errorMessage.value = ''
+  try {
+    const result = await $fetch('/api/scan/recognize', {
+      method: 'POST',
+      timeout: 180_000,
+      headers: { 'Cache-Control': 'no-store' },
+      body: { image: dataUrl },
+    })
+    if (result.container) containerNumber.value = maskContainerInput(result.container)
+    if (result.chassis) chassisNumber.value = maskChassisInput(result.chassis)
+    if (!result.container) {
+      errorMessage.value = result.message || 'No container number could be read. Edit the fields or retake.'
+    }
   }
-  profile.value = null
+  catch (error) {
+    errorMessage.value = apiErrorMessage(error, 'Could not read the photo. Edit the fields or retake.')
+  }
+  finally {
+    reading.value = false
+  }
+}
+
+function retake() {
+  errorMessage.value = ''
+  cameraOpen.value = true
+}
+
+async function continuePickup() {
+  if (!canContinue.value) return
+  await navigateTo({
+    path: '/pickups/new',
+    query: {
+      number: containerNumber.value,
+      chassis: chassisNumber.value || undefined,
+    },
+  })
 }
 </script>
 
@@ -29,41 +63,95 @@ function closeCamera() {
   <section class="d-page">
     <PageHeader
       eyebrow="Capture"
-      title="Take a photo"
+      title="Container and chassis"
       back-to="/"
       back-label="Home"
     />
 
-    <p class="mb-4 text-sm text-[var(--color-ink-500)]">
-      One photo, one number. Type it later if the camera cannot read it.
+    <p
+      v-if="reading"
+      class="banner info"
+      role="status"
+    >
+      <span aria-hidden="true">▸</span>
+      <span>Reading the photo…</span>
     </p>
 
-    <div class="choice-grid">
+    <p
+      v-else-if="errorMessage"
+      class="banner warn"
+      role="status"
+    >
+      <span aria-hidden="true">!</span>
+      <span>{{ errorMessage }}</span>
+    </p>
+
+    <div
+      v-if="captured"
+      class="card p-4"
+    >
+      <label class="field">
+        <span>Container number</span>
+        <ContainerNumberInput
+          v-model="containerNumber"
+          :invalid="containerNumber.length >= 11 && !containerValidation.structureValid"
+        />
+        <small class="field-hint">Four letters, six digits, dash, then the boxed check digit.</small>
+      </label>
+
+      <p
+        v-if="containerValidation.structureValid"
+        class="banner mt-3 mb-4"
+        :class="containerValidation.valid ? 'ok' : 'warn'"
+      >
+        <span aria-hidden="true">{{ containerValidation.valid ? '✓' : '!' }}</span>
+        <span>
+          <b>{{ formatContainerNumber(containerNumber) }}</b>
+          {{ containerValidation.valid ? 'ISO 6346 check digit is valid.' : containerValidation.errors[0] }}
+        </span>
+      </p>
+
+      <label class="field !mb-0">
+        <span>Trailer / chassis number</span>
+        <ChassisNumberInput
+          v-model="chassisNumber"
+          :invalid="Boolean(chassisNumber) && !chassisOk"
+        />
+        <small class="field-hint">Four letters and six digits. Leave blank if there is no chassis.</small>
+      </label>
+    </div>
+
+    <p
+      v-else
+      class="text-sm text-[var(--color-ink-500)]"
+    >
+      Point the camera at the container number and the chassis plate, then take one photo.
+    </p>
+
+    <div class="mt-6 flex gap-3">
       <button
         type="button"
-        class="choice-card"
-        :aria-pressed="profile === 'container'"
-        @click="choose('container')"
+        class="btn-ghost flex-1"
+        :disabled="reading"
+        @click="retake"
       >
-        Container number
-        <small>ISO code on the box</small>
+        {{ captured ? 'Retake photo' : 'Open camera' }}
       </button>
       <button
         type="button"
-        class="choice-card"
-        :aria-pressed="profile === 'chassis'"
-        @click="choose('chassis')"
+        class="btn-dark flex-1"
+        :disabled="!canContinue"
+        @click="continuePickup"
       >
-        Chassis number
-        <small>Plate on the trailer</small>
+        Continue
       </button>
     </div>
 
     <CaptureCamera
-      v-if="profile"
-      :profile="profile"
-      @close="closeCamera"
-      @captured="onCaptured"
+      v-if="cameraOpen"
+      title="Container and chassis"
+      @close="cameraOpen = false"
+      @photo="onPhoto"
     />
   </section>
 </template>

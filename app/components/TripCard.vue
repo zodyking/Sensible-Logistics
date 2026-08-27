@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { CONTAINER_TYPE_LABELS, EQUIPMENT_TYPE_SHORT } from '#shared/utils/domain'
 import type { ContainerType, EquipmentType } from '#shared/utils/domain'
+import { formatChassisNumber, formatContainerNumber } from '#shared/utils/iso6346'
 
-defineProps<{
+const props = defineProps<{
   containerType?: ContainerType | null
   isLoaded?: boolean | null
   containerNumber?: string | null
@@ -17,6 +18,16 @@ defineProps<{
 }>()
 
 const emit = defineEmits<{ changeDropoff: [] }>()
+
+const displayContainer = computed(() => {
+  const formatted = formatContainerNumber(props.containerNumber || '')
+  return formatted || props.containerNumber || '—'
+})
+
+const displayChassis = computed(() => {
+  if (!props.chassisNumber) return 'None'
+  return formatChassisNumber(props.chassisNumber) || props.chassisNumber
+})
 </script>
 
 <template>
@@ -36,7 +47,7 @@ const emit = defineEmits<{ changeDropoff: [] }>()
 
       <div class="trip-cno">
         <slot name="number">
-          {{ containerNumber ?? '—' }}
+          {{ displayContainer }}
         </slot>
       </div>
 
@@ -47,7 +58,7 @@ const emit = defineEmits<{ changeDropoff: [] }>()
         </div>
         <div class="trip-fact">
           <small>Chassis</small>
-          <b>{{ chassisNumber ?? 'None' }}</b>
+          <b>{{ displayChassis }}</b>
         </div>
         <div class="trip-fact">
           <small>Seal</small>

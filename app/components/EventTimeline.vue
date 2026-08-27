@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { EVENT_GLYPH, EVENT_TYPE_LABELS } from '#shared/utils/domain'
 import type { EventType } from '#shared/utils/domain'
+import { formatChassisNumber } from '#shared/utils/iso6346'
 
 interface TimelineEntry {
   id: string
@@ -32,7 +33,7 @@ function meta(entry: TimelineEntry) {
     formatDateTime(entry.occurredAt),
     entry.locationName,
     actor || null,
-    entry.chassisNumber ? `Chassis ${entry.chassisNumber}` : null,
+    entry.chassisNumber ? `Chassis ${formatChassisNumber(entry.chassisNumber) || entry.chassisNumber}` : null,
     entry.tripReference,
   ].filter(Boolean).join(' · ')
 }

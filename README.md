@@ -45,7 +45,7 @@ Taken verbatim from `package.json`.
 
 | Component | Image / version |
 | --- | --- |
-| Node.js | 22 (`node:22-alpine`) |
+| Node.js | 22 (`node:22-alpine` builder, `node:22-bookworm-slim` runner) |
 | PostgreSQL | 14+ external (operator-provided), no extensions required. App reads `DATABASE_URL` |
 | Object storage | `chrislusf/seaweedfs:latest` (S3-compatible mode) |
 
@@ -150,8 +150,10 @@ are no metered or paid dependencies anywhere in the stack — see [Self-hosting]
 | `NUXT_S3_BUCKET` | no | `container-tracker` | Private bucket for documents and photos |
 | `NUXT_S3_ACCESS_KEY_ID` | no | — | Key you invent for your SeaweedFS container (Phase 2) |
 | `NUXT_S3_SECRET_ACCESS_KEY` | no | — | Secret you invent for your SeaweedFS container (Phase 2) |
-| `NUXT_OCR_SERVICE_URL` | no | — | Unused. Container/chassis OCR runs SAFEContain (Tesseract + trained tessdata) inside the app image |
-| `NUXT_OCR_TESSDATA_DIR` | no | OS temp `safecontain/tessdata` | Directory containing SAFEContain `eng.traineddata`. Downloaded on first scan if missing |
+| `NUXT_OCR_SERVICE_URL` | no | — | Unused. Container/chassis OCR runs OpenOCR (RepViT DB + RepSVTR Mobile, ONNX CPU) inside the app image |
+| `OPENOCR_DET_MODEL` | no | `/opt/openocr/openocr_det_model.onnx` in Docker | Path to the mobile detection ONNX model |
+| `OPENOCR_REC_MODEL` | no | `/opt/openocr/openocr_rec_model.onnx` in Docker | Path to the mobile recognition ONNX model |
+| `OPENOCR_WORKER` | no | `server/ocr/openocr_worker.py` | Persistent Python worker that keeps ONNX sessions loaded |
 | `NUXT_PUBLIC_MAP_TILES_URL` | no | — | Self-hosted tile server (Phase 2) |
 | `NUXT_PUBLIC_GEOCODER_URL` | no | — | Self-hosted Nominatim (Phase 2) |
 | `SKIP_MIGRATIONS` | no | `false` | `true` boots the container without migrating |
@@ -301,7 +303,7 @@ API leaks your operational footprint. Run your own containers instead.
 
 | Service | Self-hosted component |
 | --- | --- |
-| OCR | SAFEContain tessdata via Tesseract in the app image (container + chassis numbers) |
+| OCR | OpenOCR mobile ONNX (RepViT DB detector + RepSVTR Mobile recognizer) on CPU |
 | Map tiles | PMTiles archive generated locally with Planetiler |
 | Geocoding | Nominatim with only your operating region imported |
 | Background jobs | pg-boss, backed by the same Postgres |
@@ -382,7 +384,7 @@ PostGIS, so the operator-supplied database can be any PostgreSQL 14+ server.
 
 | Subsystem | Interface | Behaviour today |
 | --- | --- | --- |
-| OCR | `server/services/ocr.ts` (`recognizeSceneText`, `recognizeDocument`, `healthCheck`, `engineVersion`) | SAFEContain trained tessdata via Tesseract. Pickup and `/scan` take a full-screen photo (or library image) |
+| OCR | `server/services/ocr.ts` (`recognizeSceneText`, `recognizeDocument`, `healthCheck`, `engineVersion`) | OpenOCR mobile ONNX worker. Pickup and `/scan` take one full-screen photo of the container and chassis |
 | Object storage | `server/services/storage.ts` | `NotConfiguredStorageService`; upload validation and key generation are implemented |
 | Geocoding | `server/services/geocoding.ts` | `NotConfiguredGeocoder`; address normalisation and duplicate detection are implemented |
 | Yard editor | `app/components/YardMapPlaceholder.vue` | Schematic placeholder. Drop-off stores a placeholder placement when yard positioning is selected |
@@ -395,7 +397,7 @@ PostGIS, so the operator-supplied database can be any PostgreSQL 14+ server.
 ## Quality gate results
 
 ```
-npm run test    →  2 test files, 48 tests passed  (ISO 6346 + domain vocabulary)
+npm run test    →  6 test files, 101 tests passed
 npm run lint    →  0 errors, 0 warnings
 npm run build   →  Build complete. Total size 4.39 MB (1.11 MB gzip)
 ```

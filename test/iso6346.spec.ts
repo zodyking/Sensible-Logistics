@@ -2,9 +2,13 @@ import { describe, expect, it } from 'vitest'
 
 import {
   computeCheckDigit,
+  formatChassisNumber,
   formatContainerNumber,
   generateCorrectionCandidates,
+  isCompleteChassisNumber,
   isValidContainerNumber,
+  maskChassisInput,
+  maskContainerInput,
   normalizeContainerNumber,
   validateContainerNumber,
 } from '../shared/utils/iso6346'
@@ -299,10 +303,28 @@ describe('formatContainerNumber', () => {
     expect(formatContainerNumber('mscu4521894')).toBe('MSCU 452189-4')
   })
 
-  it('returns the normalized string unchanged for invalid or short input', () => {
-    expect(formatContainerNumber('CSQU305438')).toBe('CSQU305438')
+  it('groups partial values the same way, inserting the dash once the check digit is typed', () => {
+    expect(formatContainerNumber('CSQU')).toBe('CSQU')
+    expect(formatContainerNumber('CSQU305438')).toBe('CSQU 305438')
     expect(formatContainerNumber('ms-cu')).toBe('MSCU')
     expect(formatContainerNumber('---')).toBe('')
+  })
+})
+
+describe('maskContainerInput', () => {
+  it('keeps four letters then seven digits and drops other characters', () => {
+    expect(maskContainerInput('bsiu 816924-7')).toBe('BSIU8169247')
+    expect(maskContainerInput('BSIU8169247 extra')).toBe('BSIU8169247')
+  })
+})
+
+describe('chassis number format', () => {
+  it('masks to four letters then six digits with no check dash', () => {
+    expect(maskChassisInput('aimz-481345')).toBe('AIMZ481345')
+    expect(formatChassisNumber('AIMZ481345')).toBe('AIMZ 481345')
+    expect(formatChassisNumber('aimz 481')).toBe('AIMZ 481')
+    expect(isCompleteChassisNumber('AIMZ 481345')).toBe(true)
+    expect(isCompleteChassisNumber('AIMZ48134')).toBe(false)
   })
 })
 

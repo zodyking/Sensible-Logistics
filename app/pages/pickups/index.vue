@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { TRIP_STATUS_CHIP, TRIP_STATUS_GLYPH, TRIP_STATUS_LABELS } from '#shared/utils/domain'
 import type { TripStatus } from '#shared/utils/domain'
+import { formatContainerNumber } from '#shared/utils/iso6346'
 
 useHead({ title: 'My Trips' })
 
@@ -225,7 +226,7 @@ function selectDay(iso: string) {
                   {{ TRIP_STATUS_GLYPH[trip.status] }}
                 </div>
                 <div class="row-main">
-                  <b class="mono">{{ trip.containerNumber ?? trip.reference }}</b>
+                  <b class="mono">{{ trip.containerNumber ? (formatContainerNumber(trip.containerNumber) || trip.containerNumber) : trip.reference }}</b>
                   <small>{{ tripSubtitle(trip) }}</small>
                 </div>
                 <div class="row-end">

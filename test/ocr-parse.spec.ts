@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { extractChassisTokens, extractIsoWindows, isTesseractTsv, parseEquipmentReadings, visibleOcrTranscript } from '../shared/utils/ocr-parse'
+import { classifyEquipmentReadings, extractChassisTokens, extractIsoWindows, isTesseractTsv, parseEquipmentReadings, stitchOcrFragments, visibleOcrTranscript } from '../shared/utils/ocr-parse'
 
 describe('extractIsoWindows', () => {
   it('finds a valid number in a noisy transcript', () => {
@@ -67,5 +67,29 @@ describe('parseEquipmentReadings', () => {
   it('returns chassis tokens that are not ISO-shaped', () => {
     const ranked = parseEquipmentReadings(['TRLR88421'], 'chassis')
     expect(ranked.map(c => c.value)).toContain('TRLR88421')
+  })
+})
+
+describe('classifyEquipmentReadings', () => {
+  it('splits a stacked container code from the chassis plate in the same photo', () => {
+    const classified = classifyEquipmentReadings([
+      'BSIU',
+      '816924',
+      '7',
+      'SUPER HEAVY',
+      'AIMZ 481345',
+    ])
+    expect(classified.container).toBe('BSIU8169247')
+    expect(classified.chassis).toBe('AIMZ481345')
+  })
+
+  it('does not treat the container serial as a chassis plate', () => {
+    const classified = classifyEquipmentReadings(['BSIU 816924 7'])
+    expect(classified.container).toBe('BSIU8169247')
+    expect(classified.chassis).toBeNull()
+  })
+
+  it('joins letter then digit fragments', () => {
+    expect(stitchOcrFragments(['BSIU', '8169247'])).toContain('BSIU8169247')
   })
 })

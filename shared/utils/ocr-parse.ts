@@ -1,4 +1,4 @@
-import { generateCorrectionCandidates, validateContainerNumber } from './iso6346'
+import { generateCorrectionCandidates, maskChassisInput, validateContainerNumber } from './iso6346'
 
 /**
  * Turn raw OCR text into ranked equipment identifiers.
@@ -16,6 +16,7 @@ export interface ParsedOcrCandidate {
 }
 
 const ISO_WINDOW = /^[A-Z]{4}\d{7}$/
+const CHASSIS_WINDOW = /^[A-Z]{4}\d{6}$/
 
 function compactAlnum(text: string): string {
   return (text ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '')
@@ -34,6 +35,26 @@ export function visibleOcrTranscript(text: string): string {
   const compact = compactAlnum(text)
   if (!/[A-Z]{3,}/.test(compact)) return ''
   return text.replace(/\s+/g, ' ').trim().slice(0, 80)
+}
+
+/** Join letter-only prefixes with the digit groups that follow (stacked door codes). */
+export function stitchOcrFragments(texts: string[]): string[] {
+  const extra: string[] = []
+  extra.push(texts.join(' '))
+  extra.push(texts.join(''))
+  const tokens = texts.flatMap(text =>
+    (text ?? '').toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean),
+  )
+  extra.push(tokens.join(''))
+  extra.push(tokens.join(' '))
+  for (let i = 0; i < tokens.length; i++) {
+    const a = tokens[i]!
+    const b = tokens[i + 1]
+    const c = tokens[i + 2]
+    if (b && /^[A-Z]{4}$/.test(a) && /^\d{6,7}$/.test(b)) extra.push(a + b)
+    if (b && c && /^[A-Z]{4}$/.test(a) && /^\d{6}$/.test(b) && /^\d$/.test(c)) extra.push(a + b + c)
+  }
+  return [...texts, ...extra]
 }
 
 /** Sliding 11-character windows that look like ISO 6346 identifiers. */
@@ -75,7 +96,31 @@ export function extractChassisTokens(text: string): string[] {
 
   if (compact.length >= 4 && compact.length <= 17) push(compact)
   for (const token of tokens) push(token)
+  for (const plate of extractChassisWindows(text)) push(plate)
   for (const iso of extractIsoWindows(text)) push(iso)
+  return found
+}
+
+/**
+ * Chassis plates are four letters and six digits — no boxed check digit.
+ * Skip 10-character prefixes of an 11-character container number in the same text.
+ */
+export function extractChassisWindows(text: string): string[] {
+  const compact = compactAlnum(text)
+  const isos = new Set(extractIsoWindows(text))
+  const found: string[] = []
+  const seen = new Set<string>()
+  const push = (value: string) => {
+    if (!value || seen.has(value) || !CHASSIS_WINDOW.test(value)) return
+    if ([...isos].some(iso => iso.startsWith(value))) return
+    seen.add(value)
+    found.push(value)
+  }
+
+  if (compact.length === 10) push(compact)
+  for (let i = 0; i <= compact.length - 10; i++) {
+    push(compact.slice(i, i + 10))
+  }
   return found
 }
 
@@ -142,4 +187,59 @@ export function parseEquipmentReadings(
       if (profile === 'chassis' && a.value.length !== b.value.length) return b.value.length - a.value.length
       return b.confidence - a.confidence
     })
+}
+
+export interface ClassifiedEquipment {
+  container: string | null
+  chassis: string | null
+  containerCandidates: ParsedOcrCandidate[]
+  chassisCandidates: ParsedOcrCandidate[]
+}
+
+/**
+ * Split one photo's OCR lines into a container (4 letters + 7 digits) and a
+ * chassis / trailer plate (4 letters + 6 digits, no dash).
+ */
+export function classifyEquipmentReadings(
+  texts: string[],
+  confidence = 0.72,
+): ClassifiedEquipment {
+  const merged = stitchOcrFragments(texts)
+  const seenWindows = new Set<string>()
+  const windows: string[] = []
+  for (const text of merged) {
+    for (const iso of extractIsoWindows(text)) {
+      if (seenWindows.has(iso)) continue
+      seenWindows.add(iso)
+      windows.push(iso)
+    }
+  }
+
+  const containerCandidates = parseEquipmentReadings(merged, 'container', confidence)
+  const container = windows.find(value => validateContainerNumber(value).checkDigitValid)
+    ?? windows[0]
+    ?? containerCandidates[0]?.value
+    ?? null
+
+  const chassisValues = new Set<string>()
+  for (const text of merged) {
+    for (const token of extractChassisWindows(text)) {
+      if (container && container.startsWith(token)) continue
+      chassisValues.add(maskChassisInput(token))
+    }
+  }
+
+  const chassisCandidates = [...chassisValues].map(value => ({
+    value,
+    confidence,
+    checkDigitValid: false,
+    lowConfidenceIndexes: [],
+  }))
+
+  return {
+    container,
+    chassis: chassisCandidates[0]?.value ?? null,
+    containerCandidates,
+    chassisCandidates,
+  }
 }

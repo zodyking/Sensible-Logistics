@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { DocumentCategory } from '#shared/utils/domain'
 import { DOCUMENT_CATEGORIES, DOCUMENT_CATEGORY_LABELS } from '#shared/utils/domain'
+import { formatContainerNumber } from '#shared/utils/iso6346'
 
 definePageMeta({ layout: 'admin' })
 useHead({ title: 'Documents · Management' })
@@ -202,7 +203,7 @@ function formatBytes(bytes: number | null | undefined): string {
               <span
                 v-if="row.containerNumber"
                 class="mono block"
-              >{{ row.containerNumber }}</span>
+              >{{ formatContainerNumber(row.containerNumber) || row.containerNumber }}</span>
               <small
                 v-if="row.tripReference"
                 class="mono text-[var(--color-ink-500)]"

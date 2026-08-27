@@ -8,6 +8,7 @@ import {
   CONTAINER_TYPES,
   EQUIPMENT_TYPE_LABELS,
 } from '#shared/utils/domain'
+import { formatContainerNumber } from '#shared/utils/iso6346'
 
 definePageMeta({ layout: 'admin' })
 useHead({ title: 'Containers · Management' })
@@ -301,7 +302,7 @@ function nextPage() {
                   :to="`/containers/${row.id}`"
                   class="mono inline-flex min-h-11 items-center"
                 >
-                  {{ row.number }}
+                  {{ formatContainerNumber(row.number) || row.number }}
                 </NuxtLink>
                 <div
                   v-if="row.checkDigitValid === false || row.isDamaged || row.customsHold"

@@ -2,14 +2,11 @@ import { and, eq, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 import { chassis } from '../../database/schema'
 import { requireDriver } from '../../utils/session'
+import { normalizeChassisNumber } from '#shared/utils/iso6346'
 
 const schema = z.object({
   number: z.string().trim().min(4, 'Enter a chassis number.').max(40),
 })
-
-function normalizeChassisNumber(value: string): string {
-  return value.replace(/[^A-Za-z0-9]/g, '').toUpperCase()
-}
 
 /**
  * Find or create a chassis by plate/inventory number so a scanned or typed

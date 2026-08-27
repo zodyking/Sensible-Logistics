@@ -1,18 +1,25 @@
 <script setup lang="ts">
 import { ACTIVE_POOL_LABELS, CONTAINER_TYPES, CONTAINER_TYPE_LABELS, EQUIPMENT_TYPES, EQUIPMENT_TYPE_LABELS, LOCATION_GLYPH } from '#shared/utils/domain'
 import type { ContainerType, EquipmentType } from '#shared/utils/domain'
-import { formatContainerNumber, normalizeContainerNumber, validateContainerNumber } from '#shared/utils/iso6346'
+import {
+  formatChassisNumber,
+  formatContainerNumber,
+  isCompleteChassisNumber,
+  maskChassisInput,
+  maskContainerInput,
+  normalizeContainerNumber,
+  validateContainerNumber,
+} from '#shared/utils/iso6346'
 
 useHead({ title: 'New pickup' })
 
-type Step = 'location' | 'container' | 'containerType' | 'equipmentType' | 'chassis' | 'load' | 'seal' | 'notes' | 'confirm'
+type Step = 'location' | 'equipment' | 'containerType' | 'equipmentType' | 'load' | 'seal' | 'notes' | 'confirm'
 
 const STEP_TITLES: Record<Step, string> = {
   location: 'Where are you picking up?',
-  container: 'Container number',
+  equipment: 'Container and chassis',
   containerType: 'Container type',
   equipmentType: 'Equipment size',
-  chassis: 'Chassis number',
   load: 'Loaded or empty?',
   seal: 'Seal number',
   notes: 'Notes',
@@ -39,11 +46,11 @@ const resolution = ref<Resolution | null>(null)
 const needsClassification = computed(() => resolution.value?.outcome === 'CREATE')
 
 const STEPS = computed<Step[]>(() => {
-  const steps: Step[] = ['location', 'container']
+  const steps: Step[] = ['location', 'equipment']
   if (needsClassification.value) {
     steps.push('containerType', 'equipmentType')
   }
-  steps.push('chassis', 'load')
+  steps.push('load')
   if (isLoaded.value) steps.push('seal')
   steps.push('notes', 'confirm')
   return steps
@@ -54,7 +61,7 @@ const stepIndex = computed(() => Math.max(0, STEPS.value.indexOf(step.value)))
 
 watch(STEPS, (steps) => {
   if (steps.includes(step.value)) return
-  const order: Step[] = ['location', 'container', 'containerType', 'equipmentType', 'chassis', 'load', 'seal', 'notes', 'confirm']
+  const order: Step[] = ['location', 'equipment', 'containerType', 'equipmentType', 'load', 'seal', 'notes', 'confirm']
   const from = order.indexOf(step.value)
   const following = order.slice(from + 1).find(name => steps.includes(name))
   const previous = [...order.slice(0, Math.max(0, from))].reverse().find(name => steps.includes(name))
@@ -71,12 +78,16 @@ const originLocation = computed(() =>
   locationData.value?.items.find(l => l.id === originLocationId.value) ?? null)
 
 const route = useRoute()
-rawNumber.value = String(route.query.number ?? '')
-if (route.query.chassis) chassisNumber.value = String(route.query.chassis)
+rawNumber.value = maskContainerInput(String(route.query.number ?? ''))
+if (route.query.chassis) chassisNumber.value = maskChassisInput(String(route.query.chassis))
 
 const submitting = ref(false)
 const errorMessage = ref('')
-const cameraFor = ref<'container' | 'chassis' | null>(null)
+const cameraOpen = ref(false)
+const capturedPhoto = ref('')
+const readingPhoto = ref(false)
+const ocrMessage = ref('')
+const cameraAutoOpened = ref(false)
 
 /* --- ISO 6346 validation (mirrors the server implementation) ----- */
 const normalized = computed(() => normalizeContainerNumber(rawNumber.value))
@@ -134,15 +145,15 @@ async function hydrateFromTrip(id: string) {
     }
     tripId.value = data.trip.id
     originLocationId.value = data.trip.originLocationId
-    rawNumber.value = data.container?.numberNormalized ?? data.container?.number ?? ''
+    rawNumber.value = maskContainerInput(data.container?.numberNormalized ?? data.container?.number ?? '')
     if (data.container?.containerType) containerType.value = data.container.containerType
     if (data.container?.equipmentType) equipmentType.value = data.container.equipmentType
     chassisId.value = data.trip.chassisId
-    chassisNumber.value = data.chassis?.number ?? ''
+    chassisNumber.value = maskChassisInput(data.chassis?.number ?? '')
     isLoaded.value = Boolean(data.trip.isLoaded)
     sealNumber.value = data.trip.sealNumber ?? ''
     notes.value = data.trip.driverNotes ?? ''
-    step.value = 'chassis'
+    step.value = 'equipment'
   }
   catch (error) {
     errorMessage.value = apiErrorMessage(error, 'Could not resume that pickup.')
@@ -167,17 +178,23 @@ onMounted(async () => {
   }
 })
 
-const claimStep = computed<Step>(() => needsClassification.value ? 'equipmentType' : 'container')
+const claimStep = computed<Step>(() => needsClassification.value ? 'equipmentType' : 'equipment')
+
+const chassisOk = computed(() => !chassisNumber.value || isCompleteChassisNumber(chassisNumber.value))
 
 const canAdvance = computed(() => {
   switch (step.value) {
     case 'location':
       return Boolean(originLocationId.value)
-    case 'container':
-      return validation.value.structureValid && !blockedByConflict.value && !resolving.value && Boolean(resolution.value)
+    case 'equipment':
+      return validation.value.structureValid
+        && chassisOk.value
+        && !blockedByConflict.value
+        && !resolving.value
+        && Boolean(resolution.value)
+        && !readingPhoto.value
     case 'containerType':
     case 'equipmentType':
-    case 'chassis':
     case 'load':
     case 'seal':
     case 'notes':
@@ -204,7 +221,7 @@ async function attachChassis() {
 async function next() {
   errorMessage.value = ''
 
-  if (step.value === 'chassis') {
+  if (step.value === 'equipment') {
     try {
       await attachChassis()
     }
@@ -313,20 +330,43 @@ async function abandon() {
   }
 }
 
-function onCaptured(value: string) {
-  if (cameraFor.value === 'chassis') {
-    chassisNumber.value = value
+watch(step, (current) => {
+  if (current !== 'equipment') return
+  if (cameraAutoOpened.value || tripId.value || rawNumber.value || cameraOpen.value) return
+  cameraAutoOpened.value = true
+  cameraOpen.value = true
+})
+
+async function onPhoto(dataUrl: string) {
+  cameraOpen.value = false
+  capturedPhoto.value = dataUrl
+  readingPhoto.value = true
+  ocrMessage.value = ''
+  errorMessage.value = ''
+  try {
+    const result = await $fetch('/api/scan/recognize', {
+      method: 'POST',
+      timeout: 180_000,
+      headers: { 'Cache-Control': 'no-store' },
+      body: { image: dataUrl },
+    })
+    if (result.container) rawNumber.value = maskContainerInput(result.container)
+    if (result.chassis) chassisNumber.value = maskChassisInput(result.chassis)
+    if (!result.container) {
+      ocrMessage.value = result.message || 'No container number could be read. Edit the fields or retake.'
+    }
   }
-  else {
-    rawNumber.value = value
+  catch (error) {
+    ocrMessage.value = apiErrorMessage(error, 'Could not read the photo. Edit the fields or retake.')
   }
-  cameraFor.value = null
+  finally {
+    readingPhoto.value = false
+  }
 }
 
-async function skipChassis() {
-  chassisId.value = null
-  chassisNumber.value = ''
-  await next()
+function retakePhoto() {
+  ocrMessage.value = ''
+  cameraOpen.value = true
 }
 
 async function skipNotes() {
@@ -458,37 +498,36 @@ async function skipNotes() {
       </NuxtLink>
     </template>
 
-    <!-- ── Container number ────────────────────────────────────── -->
-    <template v-else-if="step === 'container'">
-      <button
-        type="button"
-        class="btn-primary-action"
-        :disabled="Boolean(tripId)"
-        @click="cameraFor = 'container'"
+    <!-- ── Container + chassis (one photo) ──────────────────────── -->
+    <template v-else-if="step === 'equipment'">
+      <p
+        v-if="readingPhoto"
+        class="banner info"
+        role="status"
       >
-        Take photo
-      </button>
+        <span aria-hidden="true">▸</span>
+        <span>Reading the photo…</span>
+      </p>
 
-      <p class="my-4 text-center text-sm font-semibold text-[var(--color-ink-500)]">
-        or type it
+      <p
+        v-else-if="ocrMessage"
+        class="banner warn"
+        role="status"
+      >
+        <span aria-hidden="true">!</span>
+        <span>{{ ocrMessage }}</span>
       </p>
 
       <div class="card p-4">
-        <label class="field !mb-0">
+        <label class="field">
           <span>Container number</span>
-          <input
+          <ContainerNumberInput
             v-model="rawNumber"
-            class="input mono"
-            :class="{ invalid: showValidation && !validation.structureValid }"
-            placeholder="MSCU4521894"
-            autocapitalize="characters"
-            autocomplete="off"
-            spellcheck="false"
-            maxlength="15"
-            :readonly="Boolean(tripId)"
-            aria-describedby="container-validation"
-          >
-          <small class="field-hint">Four letters, six digits and a check digit.</small>
+            :disabled="Boolean(tripId)"
+            :invalid="showValidation && !validation.structureValid"
+            describedby="container-validation"
+          />
+          <small class="field-hint">Four letters, six digits, dash, then the boxed check digit.</small>
         </label>
 
         <div
@@ -531,6 +570,23 @@ async function skipNotes() {
             </p>
           </template>
         </div>
+
+        <label
+          class="field !mb-0 mt-5"
+          for="chassis-number"
+        >
+          <span>Trailer / chassis number</span>
+          <ChassisNumberInput
+            id="chassis-number"
+            v-model="chassisNumber"
+            :invalid="Boolean(chassisNumber) && !chassisOk"
+            describedby="chassis-hint"
+          />
+          <small
+            id="chassis-hint"
+            class="field-hint"
+          >Four letters and six digits. Leave blank if there is no chassis.</small>
+        </label>
       </div>
 
       <div
@@ -580,6 +636,16 @@ async function skipNotes() {
           </p>
         </div>
       </template>
+
+      <button
+        v-if="!tripId"
+        type="button"
+        class="btn-ghost mt-4 w-full"
+        :disabled="readingPhoto"
+        @click="retakePhoto"
+      >
+        {{ capturedPhoto ? 'Retake photo' : 'Open camera' }}
+      </button>
     </template>
 
     <!-- ── Container type (new records only) ───────────────────── -->
@@ -614,44 +680,6 @@ async function skipNotes() {
           {{ EQUIPMENT_TYPE_LABELS[type] }}
         </button>
       </div>
-    </template>
-
-    <!-- ── Chassis number ──────────────────────────────────────── -->
-    <template v-else-if="step === 'chassis'">
-      <button
-        type="button"
-        class="btn-primary-action"
-        @click="cameraFor = 'chassis'"
-      >
-        Take photo
-      </button>
-
-      <p class="my-4 text-center text-sm font-semibold text-[var(--color-ink-500)]">
-        or type it
-      </p>
-
-      <div class="card p-4">
-        <label class="field !mb-0">
-          <span>Chassis number</span>
-          <input
-            v-model="chassisNumber"
-            class="input mono"
-            placeholder="TRAC481029"
-            autocapitalize="characters"
-            autocomplete="off"
-            spellcheck="false"
-            maxlength="20"
-          >
-        </label>
-      </div>
-
-      <button
-        type="button"
-        class="btn-ghost mt-4 w-full"
-        @click="skipChassis"
-      >
-        No chassis
-      </button>
     </template>
 
     <!-- ── Load state ──────────────────────────────────────────── -->
@@ -723,7 +751,7 @@ async function skipNotes() {
         :is-loaded="isLoaded"
         :container-number="formatContainerNumber(normalized)"
         :equipment-type="equipmentType"
-        :chassis-number="chassisNumber || undefined"
+        :chassis-number="chassisNumber ? formatChassisNumber(chassisNumber) : undefined"
         :seal-number="sealNumber"
         :origin-name="originLocation?.name"
         destination-name="Chosen on arrival"
@@ -775,10 +803,10 @@ async function skipNotes() {
     </button>
 
     <CaptureCamera
-      v-if="cameraFor"
-      :profile="cameraFor"
-      @close="cameraFor = null"
-      @captured="onCaptured"
+      v-if="cameraOpen"
+      title="Container and chassis"
+      @close="cameraOpen = false"
+      @photo="onPhoto"
     />
   </section>
 </template>
