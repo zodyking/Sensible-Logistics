@@ -62,6 +62,51 @@ export function formatHours(minutes: number | null | undefined): string {
   return `${(minutes / 60).toFixed(1)} h`
 }
 
+/** Calendar day as UTC `YYYY-MM-DD`. */
+export function toIsoDate(value: DateInput): string | null {
+  const date = toDate(value)
+  if (!date) return null
+  return date.toISOString().slice(0, 10)
+}
+
+/** Monday (UTC) of the week containing an ISO date. */
+export function startOfWeekMonday(isoDate: string): Date {
+  const [y, m, d] = isoDate.split('-').map(Number)
+  const date = new Date(Date.UTC(y!, m! - 1, d!))
+  const dow = date.getUTCDay()
+  date.setUTCDate(date.getUTCDate() + (dow === 0 ? -6 : 1 - dow))
+  return date
+}
+
+/** `Week of Aug 18 – Aug 24` */
+export function formatWeekRange(isoDate: string): string {
+  const start = startOfWeekMonday(isoDate)
+  const end = new Date(start)
+  end.setUTCDate(end.getUTCDate() + 6)
+  const fmt = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+  return `Week of ${fmt.format(start)} – ${fmt.format(end)}`
+}
+
+/** `Today · Aug 24` / `Yesterday · Aug 23` / `Thursday · Aug 21` */
+export function formatDayHeading(isoDate: string, todayIso = new Date().toISOString().slice(0, 10)): string {
+  const [y, m, d] = isoDate.split('-').map(Number)
+  const date = new Date(Date.UTC(y!, m! - 1, d!))
+  const pretty = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(date)
+  if (isoDate === todayIso) return `Today · ${pretty}`
+  const yesterday = new Date(`${todayIso}T00:00:00Z`)
+  yesterday.setUTCDate(yesterday.getUTCDate() - 1)
+  if (isoDate === yesterday.toISOString().slice(0, 10)) return `Yesterday · ${pretty}`
+  const weekday = new Intl.DateTimeFormat('en-US', { weekday: 'long', timeZone: 'UTC' }).format(date)
+  return `${weekday} · ${pretty}`
+}
+
+/** Short ledger heading: `Mon 24` */
+export function formatLedgerDay(isoDate: string): string {
+  const [y, m, d] = isoDate.split('-').map(Number)
+  return new Intl.DateTimeFormat('en-US', { weekday: 'short', day: 'numeric', timeZone: 'UTC' })
+    .format(new Date(Date.UTC(y!, m! - 1, d!)))
+}
+
 /** `06:42:11` running clock for the live on-duty elapsed readout. */
 export function formatElapsedClock(totalSeconds: number): string {
   const safe = Math.max(0, Math.floor(totalSeconds))

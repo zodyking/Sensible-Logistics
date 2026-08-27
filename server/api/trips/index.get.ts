@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from 'drizzle-orm'
+import { aliasedTable, and, desc, eq, inArray } from 'drizzle-orm'
 import { z } from 'zod'
 import { containers, locations, trips } from '../../database/schema'
 import { requireAuth } from '../../utils/session'
@@ -15,6 +15,9 @@ export default defineEventHandler(async (event) => {
   const auth = await requireAuth(event)
   const query = readValidatedQuery(event, querySchema)
   const db = useDb()
+
+  const origin = aliasedTable(locations, 'origin_location')
+  const destination = aliasedTable(locations, 'destination_location')
 
   const filters = [eq(trips.companyId, auth.companyId)]
 
@@ -36,11 +39,13 @@ export default defineEventHandler(async (event) => {
       pickedUpAt: trips.pickedUpAt,
       completedAt: trips.completedAt,
       containerNumber: containers.number,
-      originName: locations.name,
+      originName: origin.name,
+      destinationName: destination.name,
     })
     .from(trips)
     .leftJoin(containers, eq(containers.id, trips.containerId))
-    .leftJoin(locations, eq(locations.id, trips.originLocationId))
+    .leftJoin(origin, eq(origin.id, trips.originLocationId))
+    .leftJoin(destination, eq(destination.id, trips.destinationLocationId))
     .where(and(...filters))
     .orderBy(desc(trips.createdAt))
     .limit(query.limit)

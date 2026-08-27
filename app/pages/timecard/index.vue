@@ -1,41 +1,21 @@
 <script setup lang="ts">
-import { SHORT_HAUL_LABELS } from '#shared/utils/domain'
-
 useHead({ title: 'Timecard' })
 
+const { user } = useUserSession()
 const { data, status, error, refresh } = await useFetch('/api/timecard')
-
-const now = ref(Date.now())
-let ticker: ReturnType<typeof setInterval> | undefined
-
-onMounted(() => {
-  ticker = setInterval(() => {
-    now.value = Date.now()
-  }, 1000)
-})
-
-onBeforeUnmount(() => {
-  if (ticker) clearInterval(ticker)
-})
-
-const today = computed(() => data.value?.today)
-
-const elapsed = computed(() => {
-  const card = today.value
-  if (!card?.reportedForDutyAt) return '00:00:00'
-  // Once released, show the server's authoritative total, which nets out breaks.
-  if (!card.isOnDuty) return formatElapsedClock(card.onDutyMinutes * 60)
-  return formatElapsedClock((now.value - new Date(card.reportedForDutyAt).getTime()) / 1000)
-})
 
 const punching = ref(false)
 const punchError = ref('')
+const sheet = ref<'add' | 'audit' | null>(null)
+const showPdf = ref(false)
+
+const today = computed(() => data.value?.today)
+const isOnDuty = computed(() => Boolean(today.value?.isOnDuty))
 
 async function punch(direction: 'in' | 'out') {
   if (punching.value) return
   punching.value = true
   punchError.value = ''
-
   try {
     await $fetch(`/api/timecard/clock-${direction}`, { method: 'POST' })
     await refresh()
@@ -48,22 +28,23 @@ async function punch(direction: 'in' | 'out') {
   }
 }
 
-const cyclePercent = computed(() => {
-  const cycle = data.value?.cycle
-  if (!cycle?.limitMinutes) return 0
-  return Math.min(100, Math.round((cycle.minutes / cycle.limitMinutes) * 100))
+const mast = computed(() => {
+  const company = data.value?.legalName || data.value?.companyName || ''
+  const usdot = data.value?.usdotNumber ? `USDOT ${data.value.usdotNumber}` : null
+  return [company, usdot].filter(Boolean).join(' · ')
 })
 
-const todayDate = computed(() => today.value?.workDate ?? new Date().toISOString().slice(0, 10))
+const driverLine = computed(() => {
+  const unit = data.value?.unitNumber
+  const code = data.value?.driverCode
+  const name = data.value?.driverName ?? user.value?.fullName ?? ''
+  const extra = unit || code
+  return extra ? `${name} · ${extra}` : name
+})
 </script>
 
 <template>
   <section class="d-page">
-    <PageHeader
-      eyebrow="49 CFR §395.1(e)(1)"
-      title="Short-haul time record"
-    />
-
     <div
       v-if="status === 'pending'"
       class="card p-6 text-center text-sm text-[var(--color-ink-500)]"
@@ -82,199 +63,244 @@ const todayDate = computed(() => today.value?.workDate ?? new Date().toISOString
     </p>
 
     <template v-else-if="data">
-      <!-- ── Short-haul status banner ─────────────────────────── -->
       <p
-        v-if="today?.shortHaulStatus === 'NOT_AVAILABLE'"
+        v-if="punchError"
         class="banner err"
         role="alert"
       >
-        <span aria-hidden="true">!</span>
-        <span>
-          <b>{{ SHORT_HAUL_LABELS.NOT_AVAILABLE }}</b>
-          The timecard alone is not sufficient HOS documentation for this day.
-        </span>
-      </p>
-      <p
-        v-else-if="today?.shortHaulStatus === 'AT_RISK'"
-        class="banner warn"
-        role="alert"
-      >
-        <span aria-hidden="true">!</span>
-        <span>
-          <b>Approaching the 14-hour limit</b>
-          You must be released from duty within 14 consecutive hours of reporting.
-        </span>
-      </p>
-      <p
-        v-else
-        class="banner info"
-      >
-        <span aria-hidden="true">▸</span>
-        <span>
-          <b>Time record — not an ELD</b>
-          This is a §395.1(e)(1) short-haul time record, not a RODS graph-grid log.
-        </span>
+        <span aria-hidden="true">✕</span>
+        <span>{{ punchError }}</span>
       </p>
 
-      <!-- ── Duty card ───────────────────────────────────────── -->
-      <div
-        class="duty-card"
-        :class="{ off: !today?.isOnDuty }"
-      >
-        <div class="duty-head">
-          <span class="eyebrow">{{ formatWorkDate(todayDate) }}</span>
-          <StatusChip
-            :variant="today?.isOnDuty ? 'transit' : 'idle'"
-            :label="today?.isOnDuty ? 'On duty' : 'Off duty'"
-          />
-        </div>
-
-        <div class="duty-body">
-          <div
-            class="duty-elapsed"
-            role="timer"
-          >
-            {{ elapsed }}
+      <div class="tc-paper">
+        <div class="tc-mast">
+          <div class="co">
+            {{ mast }}
           </div>
-          <p class="duty-sub">
-            {{ today?.isOnDuty ? 'Current elapsed on-duty' : "Total on-duty hours for the day" }}
-          </p>
-
-          <div class="duty-facts">
-            <div class="duty-fact">
-              <small>Reported for duty</small>
-              <b>{{ formatTime(today?.reportedForDutyAt) }}</b>
-            </div>
-            <div class="duty-fact">
-              <small>Released from duty</small>
-              <b>{{ today?.releasedFromDutyAt ? formatTime(today.releasedFromDutyAt) : 'IN PROGRESS' }}</b>
-            </div>
-          </div>
-
-          <p
-            v-if="punchError"
-            class="banner err"
-            role="alert"
-          >
-            <span aria-hidden="true">✕</span>
-            <span>{{ punchError }}</span>
-          </p>
-
-          <div class="grid grid-cols-2 gap-3">
-            <button
-              class="btn-dark !bg-white !text-[var(--color-navy-900)]"
-              :disabled="punching || today?.isOnDuty"
-              @click="punch('in')"
-            >
-              Clock In
-            </button>
-            <button
-              class="btn-primary-action !min-h-12 !text-base"
-              :disabled="punching || !today?.isOnDuty"
-              @click="punch('out')"
-            >
-              Clock Out
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <NuxtLink
-        :to="`/timecard/${todayDate}/record`"
-        class="btn-primary-action mb-5"
-      >
-        Show DOT Timecard
-      </NuxtLink>
-
-      <!-- ── Required totals ─────────────────────────────────── -->
-      <div class="card p-4">
-        <span class="eyebrow">Required totals</span>
-
-        <div class="mt-3 flex items-baseline justify-between border-b border-[var(--color-line-200)] pb-3">
-          <div>
-            <b class="block text-sm">Preceding 7 days on duty</b>
-            <small class="text-xs text-[var(--color-ink-500)]">§395.8(j)(2) — required for intermittent drivers</small>
-          </div>
-          <b class="mono text-lg">{{ formatHours(data.preceding7DayMinutes) }}</b>
-        </div>
-
-        <div class="pt-3">
-          <div class="mb-2 flex items-baseline justify-between">
-            <div>
-              <b class="block text-sm">Rolling cycle</b>
-              <small class="text-xs text-[var(--color-ink-500)]">{{ data.cycle.label }}</small>
-            </div>
-            <b class="mono text-lg">{{ formatHours(data.cycle.minutes) }}</b>
-          </div>
-
-          <div
-            class="h-2 overflow-hidden rounded-full bg-[var(--color-paper-100)]"
-            role="progressbar"
-            :aria-valuenow="cyclePercent"
-            aria-valuemin="0"
-            aria-valuemax="100"
-            :aria-label="`Cycle hours used: ${cyclePercent} percent of ${data.cycle.label}`"
-          >
+          <div class="doc">
+            Driver Time Card
             <span
-              class="block h-full rounded-full"
-              :class="cyclePercent >= 90 ? 'bg-[var(--color-err-600)]' : cyclePercent >= 75 ? 'bg-[var(--color-amber-500)]' : 'bg-[var(--color-blue-500)]'"
-              :style="{ width: `${cyclePercent}%` }"
-            />
+              class="chip"
+              :class="isOnDuty ? 'transit' : 'idle'"
+            >{{ isOnDuty ? 'On Duty' : 'Off Duty' }}</span>
           </div>
-          <small class="mt-1 block text-xs text-[var(--color-ink-500)]">
-            {{ cyclePercent }}% of {{ formatHours(data.cycle.limitMinutes) }}
-          </small>
         </div>
-      </div>
 
-      <!-- ── History ─────────────────────────────────────────── -->
-      <div class="section-label">
-        <span>Recorded days</span>
-      </div>
+        <div class="tc-facts">
+          <div>
+            <small>Driver / unit</small>
+            <b>{{ driverLine }}</b>
+          </div>
+          <div>
+            <small>Week of</small>
+            <b>{{ data.weekOf }}</b>
+          </div>
+          <div>
+            <small>Reporting location</small>
+            <b>{{ data.reportingLocationName ?? 'Not set' }}</b>
+          </div>
+          <div>
+            <small>Exemption</small>
+            <b>150 air-mile · §395.1(e)(1)</b>
+          </div>
+        </div>
 
-      <div
-        v-if="data.history.length"
-        class="card rowlist"
-      >
-        <NuxtLink
-          v-for="card in data.history"
-          :key="card.id"
-          :to="`/timecard/${card.workDate}/record`"
-          class="row"
+        <div class="tc-bar">
+          <button
+            type="button"
+            @click="sheet = 'add'"
+          >
+            + Entry
+          </button>
+          <button
+            type="button"
+            class="tc-pdf-btn"
+            @click="showPdf = true"
+          >
+            PDF
+          </button>
+          <button
+            type="button"
+            class="tc-in"
+            :disabled="punching || isOnDuty"
+            @click="punch('in')"
+          >
+            In
+          </button>
+          <button
+            type="button"
+            class="tc-out"
+            :disabled="punching || !isOnDuty"
+            @click="punch('out')"
+          >
+            Out
+          </button>
+        </div>
+
+        <div
+          class="tc-cols"
+          aria-hidden="true"
         >
-          <span
-            class="row-ico"
-            aria-hidden="true"
-          >◷</span>
-          <span class="row-main">
-            <b>{{ formatWorkDate(card.workDate) }}</b>
-            <small>
-              {{ formatTime(card.reportedForDutyAt) }} –
-              {{ card.releasedFromDutyAt ? formatTime(card.releasedFromDutyAt) : 'in progress' }}
-            </small>
-          </span>
-          <span class="row-end flex flex-col items-end gap-1">
-            <b class="mono text-sm text-[var(--color-ink-900)]">{{ formatHours(card.totalOnDutyMinutes) }}</b>
-            <StatusChip
-              v-if="card.shortHaulStatus === 'NOT_AVAILABLE'"
-              variant="err"
-              label="Not covered"
-            />
-          </span>
-        </NuxtLink>
+          <span>Arrived</span>
+          <span>Left</span>
+          <span>Location / annotation</span>
+        </div>
+
+        <div
+          v-for="day in data.weekDays"
+          :key="day.workDate"
+          class="tc-day"
+          :class="{ off: day.isOff }"
+        >
+          <div class="tc-day-h">
+            {{ formatLedgerDay(day.workDate) }}
+            <b>{{ day.isOff ? 'Off' : formatHours(day.onDutyMinutes) }}</b>
+          </div>
+
+          <div
+            v-if="day.isOff"
+            class="tc-offline"
+          >
+            No punches — 10-hour rest
+          </div>
+
+          <button
+            v-for="(punchRow, index) in day.punches"
+            :key="index"
+            type="button"
+            class="tc-punch"
+            :class="{ open: punchRow.open }"
+            @click="sheet = 'audit'"
+          >
+            <span class="arr">{{ formatTime(punchRow.arrivedAt) }}</span>
+            <span :class="punchRow.open ? 'open-t' : 'left'">
+              {{ punchRow.open ? '—' : formatTime(punchRow.leftAt) }}
+            </span>
+            <span class="tc-place">
+              <b class="tc-loc">{{ punchRow.location }}</b>
+              <small class="tc-note">{{ punchRow.note }}</small>
+            </span>
+          </button>
+        </div>
+
+        <div class="tc-sum">
+          <small>7-day on-duty</small>
+          <b>{{ formatHours(data.weekOnDutyMinutes) }}</b>
+        </div>
+        <p class="tc-cert">
+          I certify these time records are true and correct. I operated within 150 air-miles of the reporting location and returned there within 14 hours except as noted.
+          Signature: /s/ {{ data.driverName }}
+        </p>
       </div>
-
-      <EmptyState
-        v-else
-        glyph="◷"
-        title="No recorded days yet"
-        description="Clock in to start today's short-haul time record."
-      />
-
-      <p class="mt-6 text-xs text-[var(--color-ink-500)]">
-        Time records are retained for at least six months and cannot be deleted inside that window.
-        Corrections preserve the original value, who changed it, when, and why.
-      </p>
     </template>
+
+    <BottomSheet
+      :open="sheet === 'add'"
+      title="Add punch"
+      @close="sheet = null"
+    >
+      <p class="text-sm text-[var(--color-ink-500)]">
+        Manual punches are corrections. That flow is next — Clock In / Clock Out on the bar records duty for this day.
+      </p>
+      <div class="sheet-actions">
+        <button
+          type="button"
+          class="btn-cancel"
+          @click="sheet = null"
+        >
+          Close
+        </button>
+      </div>
+    </BottomSheet>
+
+    <BottomSheet
+      :open="sheet === 'audit'"
+      title="Audit punch"
+      @close="sheet = null"
+    >
+      <p class="text-sm text-[var(--color-ink-500)]">
+        Corrections preserve the original value, who changed it, when, and why. Editing a punch from here is next.
+      </p>
+      <div class="sheet-actions">
+        <button
+          type="button"
+          class="btn-cancel"
+          @click="sheet = null"
+        >
+          Close
+        </button>
+      </div>
+    </BottomSheet>
+
+    <Teleport to="body">
+      <div
+        v-if="showPdf && data"
+        class="tc-pdf-overlay"
+        @click.self="showPdf = false"
+      >
+        <button
+          type="button"
+          class="pdf-close"
+          @click="showPdf = false"
+        >
+          Close PDF
+        </button>
+        <article class="tc-pdf">
+          <div class="pdf-co">
+            {{ mast }}
+          </div>
+          <h2>Driver Time Card</h2>
+          <div class="pdf-sub">
+            49 CFR § 395.1(e)(1) · 150 air-mile short-haul · Produce on request
+          </div>
+          <div class="pdf-meta">
+            <div><b>Driver:</b> {{ driverLine }}</div>
+            <div><b>Period:</b> {{ data.weekOf }}</div>
+            <div><b>Reporting location:</b> {{ data.reportingLocationName ?? '—' }}</div>
+            <div><b>Week on-duty:</b> {{ formatHours(data.weekOnDutyMinutes) }}</div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Arrived</th>
+                <th>Left</th>
+                <th>Location</th>
+                <th>Annotation</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template
+                v-for="day in data.weekDays"
+                :key="day.workDate"
+              >
+                <tr class="dayh">
+                  <td colspan="4">
+                    {{ formatDayHeading(day.workDate) }}
+                    <template v-if="day.isOff">
+                      — Off duty
+                    </template>
+                  </td>
+                </tr>
+                <tr
+                  v-for="(punchRow, index) in day.punches"
+                  :key="index"
+                >
+                  <td>{{ formatTime(punchRow.arrivedAt) }}</td>
+                  <td>{{ punchRow.open ? 'Open' : formatTime(punchRow.leftAt) }}</td>
+                  <td>{{ punchRow.location }}</td>
+                  <td>{{ punchRow.note }}</td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+          <p>
+            I certify these punches are true and correct. I stayed within 150 air-miles of the reporting location and returned there within 14 hours except as noted.
+          </p>
+          <p>
+            <b>Signature:</b> /s/ {{ data.driverName }}
+          </p>
+        </article>
+      </div>
+    </Teleport>
   </section>
 </template>

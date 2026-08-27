@@ -44,7 +44,7 @@ export default defineEventHandler(async (event) => {
       /** Drives the single contextual primary action on the home card. */
       primaryAction: activeTrip.status === 'PICKUP_IN_PROGRESS'
         ? { label: 'Continue pickup', to: `/pickups/new?trip=${activeTrip.id}` }
-        : { label: 'Start drop-off', to: `/trips/${activeTrip.id}` },
+        : { label: 'Arrive', to: `/trips/${activeTrip.id}` },
     }
   }
 
