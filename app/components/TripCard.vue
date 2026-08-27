@@ -14,6 +14,8 @@ defineProps<{
   originLabel?: string
   destinationLabel?: string
   canChangeDropoff?: boolean
+  statusLabel?: string | null
+  statusHint?: string | null
 }>()
 
 const emit = defineEmits<{ changeDropoff: [] }>()
@@ -55,6 +57,14 @@ const emit = defineEmits<{ changeDropoff: [] }>()
         </div>
       </div>
     </div>
+
+    <p
+      v-if="statusLabel"
+      class="trip-status"
+    >
+      <b>{{ statusLabel }}</b>
+      <small v-if="statusHint">{{ statusHint }}</small>
+    </p>
 
     <div class="route-strip">
       <div class="route-point">

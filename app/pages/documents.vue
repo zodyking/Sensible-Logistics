@@ -12,8 +12,14 @@ useHead({ title: 'My Documents' })
     />
     <EmptyState
       glyph="▤"
-      title="No documents yet"
-      description="EIRs, PODs and gate tickets attach to a pickup or drop-off once object storage is on."
+      title="Documents live on a swap"
+      description="EIRs, PODs, gate tickets and photos attach from Home when you swap an empty for a load. Open the dashboard to upload against the current stop."
     />
+    <NuxtLink
+      to="/"
+      class="btn-dark home-cta"
+    >
+      Back to Home
+    </NuxtLink>
   </section>
 </template>

@@ -94,10 +94,61 @@ export class NotConfiguredStorageService implements StorageService {
 let instance: StorageService | undefined
 
 /**
+ * Local-disk fallback so swap photos and EIRs can land before SeaweedFS is
+ * wired. Files stay private and are only streamed through authenticated routes.
+ */
+export class LocalDiskStorageService implements StorageService {
+  constructor(private readonly root: string) {}
+
+  private fullPath(key: string): string {
+    const safe = key.replace(/\.\./g, '')
+    return `${this.root.replace(/\/$/, '')}/${safe}`
+  }
+
+  async put(key: string, body: Buffer, contentType: string): Promise<StoredObject> {
+    const { mkdir, writeFile } = await import('node:fs/promises')
+    const { dirname } = await import('node:path')
+    const full = this.fullPath(key)
+    await mkdir(dirname(full), { recursive: true })
+    await writeFile(full, body)
+    return { key, size: body.length, contentType, checksum: null }
+  }
+
+  async get(key: string): Promise<Buffer> {
+    const { readFile } = await import('node:fs/promises')
+    try {
+      return await readFile(this.fullPath(key))
+    }
+    catch {
+      throw createError({ statusCode: 404, statusMessage: 'File not found.' })
+    }
+  }
+
+  async delete(key: string): Promise<void> {
+    const { unlink } = await import('node:fs/promises')
+    await unlink(this.fullPath(key)).catch(() => undefined)
+  }
+
+  async signedUrl(): Promise<string> {
+    throw createError({
+      statusCode: 501,
+      statusMessage: 'Local disk storage does not issue signed URLs. Use the authenticated download route.',
+    })
+  }
+
+  async healthCheck() {
+    return { healthy: true, message: `Local uploads at ${this.root}` }
+  }
+}
+
+/**
  * Deliberately not named `useStorage` — that identifier belongs to Nitro's
  * built-in unstorage helper.
  */
 export function useObjectStorage(): StorageService {
-  if (!instance) instance = new NotConfiguredStorageService()
+  if (!instance) {
+    const root = process.env.NUXT_UPLOAD_DIR?.trim() || `${process.cwd()}/.data/uploads`
+    instance = new LocalDiskStorageService(root)
+  }
   return instance
 }

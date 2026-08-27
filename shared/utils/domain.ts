@@ -18,7 +18,7 @@ export type ActivePoolState = (typeof ACTIVE_POOL_STATES)[number]
 export const ACTIVE_POOL_LABELS: Record<ActivePoolState, string> = {
   INACTIVE: 'Inactive',
   PICKUP_IN_PROGRESS: 'Pickup in progress',
-  DRIVER_CUSTODY: 'Driver custody',
+  DRIVER_CUSTODY: 'Connected',
   AT_LOCATION: 'At location',
   EXCEPTION: 'Exception',
 }
@@ -163,6 +163,8 @@ export const EVENT_TYPES = [
   'RELEASED',
   'ACTIVATED',
   'PICKUP_CANCELLED',
+  'CONNECTED',
+  'SWAPPED',
 ] as const
 export type EventType = (typeof EVENT_TYPES)[number]
 
@@ -187,6 +189,8 @@ export const EVENT_TYPE_LABELS: Record<EventType, string> = {
   RELEASED: 'Released from network',
   ACTIVATED: 'Added to active pool',
   PICKUP_CANCELLED: 'Pickup cancelled',
+  CONNECTED: 'Connected',
+  SWAPPED: 'Swap',
 }
 
 /** Timeline node glyph — mirrors the design template's custody history rail. */
@@ -211,6 +215,8 @@ export const EVENT_GLYPH: Record<EventType, string> = {
   RELEASED: '✓',
   ACTIVATED: '＋',
   PICKUP_CANCELLED: '✕',
+  CONNECTED: '●',
+  SWAPPED: '⇅',
 }
 
 export const EVENT_SOURCES = ['MANUAL', 'OCR', 'GEOFENCE', 'IMPORT', 'API', 'ADMIN_EDIT', 'SYSTEM'] as const

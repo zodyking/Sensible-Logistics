@@ -206,6 +206,32 @@ async function main() {
       appointmentRequired: false,
       hours: 'Mon–Fri 07:00–16:00',
     },
+    {
+      name: 'CSX Hialeah Intermodal',
+      type: 'RAIL_TERMINAL' as const,
+      addressLine1: '3301 NW 12th Street',
+      city: 'Miami',
+      state: 'FL',
+      postalCode: '33125',
+      latitude: '25.7850000',
+      longitude: '-80.2450000',
+      capacity: 180,
+      appointmentRequired: true,
+      hours: 'Mon–Sat 06:00–18:00',
+    },
+    {
+      name: 'Coastal Tile Imports',
+      type: 'CUSTOMER' as const,
+      addressLine1: '2100 NW 89th Court',
+      city: 'Doral',
+      state: 'FL',
+      postalCode: '33172',
+      latitude: '25.8500000',
+      longitude: '-80.3450000',
+      capacity: 24,
+      appointmentRequired: true,
+      hours: 'Mon–Fri 07:00–16:00',
+    },
   ]
 
   const locationIds: Record<string, string> = {}
@@ -256,6 +282,8 @@ async function main() {
   const portId = locationIds['Port Everglades Terminal 3']!
   const warehouseId = locationIds['Medley Distribution Center']!
   const depotId = locationIds['Hialeah Empty Depot']!
+  const railId = locationIds['CSX Hialeah Intermodal']!
+  const customerId = locationIds['Coastal Tile Imports']!
 
   /* ---- Driver + truck ------------------------------------------ */
   const [driver] = await db
@@ -324,7 +352,7 @@ async function main() {
     'containerType' | 'equipmentType' | 'isLoaded' | 'activePoolState' | 'currentLocationId'
   > & Partial<Pick<
     schema.NewContainer,
-    'sealNumber' | 'steamshipLine' | 'commodity' | 'lastFreeDay' | 'customerReference' | 'isReefer' | 'isUrgent'
+    'sealNumber' | 'steamshipLine' | 'commodity' | 'lastFreeDay' | 'customerReference' | 'isReefer' | 'isUrgent' | 'currentDriverId'
   >> & { number: string }
 
   const containerSeed: ContainerSeed[] = [
@@ -382,6 +410,55 @@ async function main() {
       currentLocationId: null,
       steamshipLine: 'King Ocean',
     },
+    {
+      number: containerNumber('TCLU', '118204'),
+      containerType: 'TROPICAL' as const,
+      equipmentType: 'DRY_40' as const,
+      isLoaded: false,
+      activePoolState: 'DRIVER_CUSTODY' as const,
+      currentLocationId: yardId,
+      steamshipLine: 'Tropical Shipping',
+    },
+    {
+      number: containerNumber('CMAU', '552901'),
+      containerType: 'CMA' as const,
+      equipmentType: 'HC_40' as const,
+      isLoaded: false,
+      activePoolState: 'AT_LOCATION' as const,
+      currentLocationId: yardId,
+      steamshipLine: 'CMA CGM',
+    },
+    {
+      number: containerNumber('ZCSU', '774310'),
+      containerType: 'ZIM' as const,
+      equipmentType: 'HC_40' as const,
+      isLoaded: true,
+      activePoolState: 'AT_LOCATION' as const,
+      currentLocationId: railId,
+      sealNumber: 'SL-441902',
+      steamshipLine: 'ZIM',
+      commodity: 'Retail freight',
+    },
+    {
+      number: containerNumber('MSCU', '883002'),
+      containerType: 'ZIM' as const,
+      equipmentType: 'DRY_40' as const,
+      isLoaded: false,
+      activePoolState: 'AT_LOCATION' as const,
+      currentLocationId: portId,
+      steamshipLine: 'ZIM',
+    },
+    {
+      number: containerNumber('TGHU', '441882'),
+      containerType: 'CMA' as const,
+      equipmentType: 'DRY_40' as const,
+      isLoaded: true,
+      activePoolState: 'AT_LOCATION' as const,
+      currentLocationId: customerId,
+      steamshipLine: 'CMA CGM',
+      commodity: 'Ceramic tile',
+      customerReference: 'PO-44812',
+    },
   ]
 
   const containerIds: Record<string, string> = {}
@@ -418,6 +495,47 @@ async function main() {
       .returning({ id: containers.id })
 
     if (row) containerIds[normalized] = row.id
+  }
+
+  const overnightNumber = normalizeContainerNumber(containerNumber('TCLU', '118204'))
+  const overnightId = containerIds[overnightNumber]
+  if (overnightId) {
+    await db
+      .update(containers)
+      .set({
+        activePoolState: 'DRIVER_CUSTODY',
+        currentDriverId: driver.id,
+        currentLocationId: yardId,
+        isLoaded: false,
+        lastActivityAt: daysAgo(1, 22, 15),
+        updatedAt: new Date(),
+      })
+      .where(eq(containers.id, overnightId))
+
+    const existingConnect = await db
+      .select({ id: containerEvents.id })
+      .from(containerEvents)
+      .where(and(
+        eq(containerEvents.containerId, overnightId),
+        eq(containerEvents.eventType, 'CONNECTED'),
+      ))
+      .limit(1)
+
+    if (!existingConnect[0]) {
+      await db.insert(containerEvents).values({
+        id: randomUUID(),
+        companyId: company.id,
+        containerId: overnightId,
+        eventType: 'CONNECTED',
+        occurredAt: daysAgo(1, 22, 15),
+        actorUserId: driverUser.id,
+        actorDriverId: driver.id,
+        source: 'MANUAL',
+        locationId: yardId,
+        payload: { driverName: 'Marcus Vega', overnight: true },
+        notes: 'Connected to Marcus Vega',
+      })
+    }
   }
 
   /* ---- One completed trip with its event timeline ---------------- */

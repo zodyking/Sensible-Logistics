@@ -106,6 +106,8 @@ export const eventTypeEnum = pgEnum('event_type', [
   'RELEASED',
   'ACTIVATED',
   'PICKUP_CANCELLED',
+  'CONNECTED',
+  'SWAPPED',
 ])
 
 export const eventSourceEnum = pgEnum('event_source', [

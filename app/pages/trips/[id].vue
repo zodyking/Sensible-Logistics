@@ -12,6 +12,7 @@ const showDropoff = ref(false)
 const destinationLocationId = ref<string | null>(null)
 const retainChassis = ref(false)
 const isFinalRelease = ref(false)
+const remainConnected = ref(false)
 const placeInYard = ref(false)
 const notes = ref('')
 const submitting = ref(false)
@@ -45,6 +46,7 @@ async function completeDropoff() {
         placement: placeInYard.value ? { x: 0, y: 0, rotation: 0 } : null,
         retainChassis: retainChassis.value,
         isFinalRelease: isFinalRelease.value,
+        remainConnected: remainConnected.value,
         notes: notes.value || null,
       },
     })
@@ -243,6 +245,15 @@ async function completeDropoff() {
           class="size-5"
         >
         Final release from the tracked network
+      </label>
+      <label class="flex min-h-11 items-center gap-3 text-sm font-semibold">
+        <input
+          v-model="remainConnected"
+          type="checkbox"
+          class="size-5"
+          :disabled="isFinalRelease"
+        >
+        Stay connected here (end of day at yard)
       </label>
 
       <label class="field !mb-0">

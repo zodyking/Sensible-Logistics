@@ -21,6 +21,7 @@ const props = defineProps<{ entries: TimelineEntry[] }>()
 /** Immutable history reads newest-first; the rail marks the first and last. */
 function nodeClass(entry: TimelineEntry, index: number) {
   if (entry.eventType === 'RELEASED' || entry.eventType === 'DROPOFF_CONFIRMED') return 'final'
+  if (entry.eventType === 'SWAPPED') return 'final'
   if (entry.eventType === 'DAMAGE_REPORTED' || entry.eventType === 'PICKUP_CANCELLED') return 'alert'
   if (index === props.entries.length - 1) return 'start'
   return ''

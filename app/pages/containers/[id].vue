@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { CONTAINER_TYPE_LABELS, EQUIPMENT_TYPE_SHORT } from '#shared/utils/domain'
+import { custodyStatusLabel } from '#shared/utils/workflow'
 
 const route = useRoute()
 const { data, status, error } = await useFetch(() => `/api/containers/${route.params.id}`)
@@ -78,7 +79,11 @@ const flags = computed(() => {
             />
             <StatusChip
               variant="transit"
-              :label="data.currentLocation ? `At ${data.currentLocation.name}` : (data.currentDriver ? `With ${data.currentDriver.name}` : 'In transit')"
+              :label="custodyStatusLabel({
+                activePoolState: data.container.activePoolState,
+                driverName: data.currentDriver?.name,
+                locationName: data.currentLocation?.name,
+              })"
             />
             <StatusChip
               v-for="flag in flags"
