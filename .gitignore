@@ -27,3 +27,5 @@ Agent-Files/*
 
 # Tests
 coverage
+__pycache__/
+*.py[cod]

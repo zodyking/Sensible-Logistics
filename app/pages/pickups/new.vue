@@ -10,6 +10,7 @@ import {
   normalizeContainerNumber,
   validateContainerNumber,
 } from '#shared/utils/iso6346'
+import { driverOcrMessage } from '#shared/utils/ocr-parse'
 
 useHead({ title: 'New pickup' })
 
@@ -357,7 +358,10 @@ async function onPhoto(dataUrl: string) {
     }
   }
   catch (error) {
-    ocrMessage.value = apiErrorMessage(error, 'Could not read the photo. Edit the fields or retake.')
+    ocrMessage.value = driverOcrMessage(
+      apiErrorMessage(error, 'Could not read the photo. Edit the fields or retake.'),
+      'Could not read the photo. Edit the fields or retake.',
+    )
   }
   finally {
     readingPhoto.value = false

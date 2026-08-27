@@ -1,5 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, mkdirSync } from 'node:fs'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -196,13 +196,17 @@ class OpenOcrWorker {
     }
 
     await new Promise<void>((resolve, reject) => {
+      const workdir = process.env.OPENOCR_WORKDIR || join(tmpdir(), 'openocr')
+      mkdirSync(workdir, { recursive: true })
       const child = spawn(pythonBin(), ['-u', script], {
         stdio: ['pipe', 'pipe', 'pipe'],
+        cwd: workdir,
         env: {
           ...process.env,
           PYTHONUNBUFFERED: '1',
           HOME: process.env.HOME || tmpdir(),
           HF_HOME: process.env.HF_HOME || join(tmpdir(), 'huggingface'),
+          OPENOCR_WORKDIR: workdir,
           ...this.modelEnv(),
         },
       })

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { classifyEquipmentReadings, extractChassisTokens, extractIsoWindows, isTesseractTsv, parseEquipmentReadings, stitchOcrFragments, visibleOcrTranscript } from '../shared/utils/ocr-parse'
+import { classifyEquipmentReadings, driverOcrMessage, extractChassisTokens, extractIsoWindows, isTesseractTsv, parseEquipmentReadings, stitchOcrFragments, visibleOcrTranscript } from '../shared/utils/ocr-parse'
 
 describe('extractIsoWindows', () => {
   it('finds a valid number in a noisy transcript', () => {
@@ -91,5 +91,17 @@ describe('classifyEquipmentReadings', () => {
 
   it('joins letter then digit fragments', () => {
     expect(stitchOcrFragments(['BSIU', '8169247'])).toContain('BSIU8169247')
+  })
+})
+
+describe('driverOcrMessage', () => {
+  it('hides Python permission errors from the driver UI', () => {
+    expect(driverOcrMessage('[Errno 13] Permission denied: e2e_results/')).toBe(
+      'No container number could be read. Frame the four letters and seven digits, then retake.',
+    )
+  })
+
+  it('keeps a real engine message', () => {
+    expect(driverOcrMessage('No text detected.')).toBe('No text detected.')
   })
 })

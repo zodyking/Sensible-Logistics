@@ -37,6 +37,18 @@ export function visibleOcrTranscript(text: string): string {
   return text.replace(/\s+/g, ' ').trim().slice(0, 80)
 }
 
+const FALLBACK_READ_MESSAGE = 'No container number could be read. Frame the four letters and seven digits, then retake.'
+
+/** Hide Python errno / traceback text from the driver UI. */
+export function driverOcrMessage(raw: string | undefined, fallback = FALLBACK_READ_MESSAGE): string {
+  const text = (raw ?? '').trim()
+  if (!text) return fallback
+  if (/errno|permission denied|e2e_results|traceback|no such file|oserror/i.test(text)) {
+    return fallback
+  }
+  return text
+}
+
 /** Join letter-only prefixes with the digit groups that follow (stacked door codes). */
 export function stitchOcrFragments(texts: string[]): string[] {
   const extra: string[] = []

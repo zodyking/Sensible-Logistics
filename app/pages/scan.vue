@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { formatContainerNumber, isCompleteChassisNumber, maskChassisInput, maskContainerInput, validateContainerNumber } from '#shared/utils/iso6346'
+import { driverOcrMessage } from '#shared/utils/ocr-parse'
 
 useHead({ title: 'Scan' })
 
@@ -35,7 +36,10 @@ async function onPhoto(dataUrl: string) {
     }
   }
   catch (error) {
-    errorMessage.value = apiErrorMessage(error, 'Could not read the photo. Edit the fields or retake.')
+    errorMessage.value = driverOcrMessage(
+      apiErrorMessage(error, 'Could not read the photo. Edit the fields or retake.'),
+      'Could not read the photo. Edit the fields or retake.',
+    )
   }
   finally {
     reading.value = false

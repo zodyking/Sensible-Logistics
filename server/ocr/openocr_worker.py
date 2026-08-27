@@ -113,8 +113,35 @@ def _looks_like_equipment(lines: list[dict]) -> bool:
     return bool(re.search(r'[A-Z]{4}\d{6,7}', _compact(lines)))
 
 
+def _workdir() -> str:
+    root = os.environ.get('OPENOCR_WORKDIR') or os.path.join(tempfile.gettempdir(), 'openocr')
+    os.makedirs(root, exist_ok=True)
+    return root
+
+
+def _save_dir() -> str:
+    path = os.path.join(_workdir(), 'e2e_results')
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
 def _run(ocr, image_path: str):
-    out = ocr(image_path=image_path)
+    # OpenOCR defaults save_dir='e2e_results/' in the process cwd (/app), which
+    # the non-root app user cannot create. Prefer in-memory numpy so nothing is
+    # written; if we must use a path, point save_dir at a writable temp folder.
+    save_dir = _save_dir()
+    img = None
+    try:
+        import cv2
+        img = cv2.imread(image_path)
+    except Exception:
+        img = None
+
+    if img is not None:
+        out = ocr(img_numpy=img, save_dir=save_dir, is_visualize=False)
+    else:
+        out = ocr(image_path=image_path, save_dir=save_dir, is_visualize=False)
+
     if isinstance(out, tuple):
         results = out[0] if out else None
         timing = out[1] if len(out) > 1 else None
@@ -162,6 +189,10 @@ def _reply(payload: dict) -> None:
 
 
 def main() -> int:
+    try:
+        os.chdir(_workdir())
+    except OSError:
+        pass
     ocr = _boot()
     _reply({
         'ok': True,

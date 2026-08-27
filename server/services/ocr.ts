@@ -1,4 +1,4 @@
-import { classifyEquipmentReadings, visibleOcrTranscript } from '#shared/utils/ocr-parse'
+import { classifyEquipmentReadings, driverOcrMessage, visibleOcrTranscript } from '#shared/utils/ocr-parse'
 import { generateCorrectionCandidates, validateContainerNumber } from '#shared/utils/iso6346'
 import { OPENOCR_ENGINE, OPENOCR_PIPELINE, useOpenOcrWorker } from './openocr'
 
@@ -120,7 +120,7 @@ class OpenOcrService implements OcrService {
         chassis: classified.chassis,
         message: classified.container
           ? undefined
-          : (result.error || 'No container number could be read. Frame the four letters and seven digits, then retake.'),
+          : driverOcrMessage(result.error),
       }
     }
     catch (error) {
@@ -136,9 +136,10 @@ class OpenOcrService implements OcrService {
         latencyMs: Date.now() - started,
         container: null,
         chassis: null,
-        message: error instanceof Error
-          ? error.message
-          : 'OpenOCR could not read the photo. Type the numbers instead.',
+        message: driverOcrMessage(
+          error instanceof Error ? error.message : undefined,
+          'OpenOCR could not read the photo. Type the numbers instead.',
+        ),
       }
     }
   }

@@ -39,6 +39,7 @@ ENV HF_HOME=/tmp/huggingface
 ENV OPENOCR_WORKER=/app/ocr/openocr_worker.py
 ENV OPENOCR_DET_MODEL=/opt/openocr/openocr_det_model.onnx
 ENV OPENOCR_REC_MODEL=/opt/openocr/openocr_rec_model.onnx
+ENV OPENOCR_WORKDIR=/tmp/openocr
 
 # uid 1001: the base image already has `node` at uid 1000.
 RUN groupadd --system --gid 1001 nodejs \
