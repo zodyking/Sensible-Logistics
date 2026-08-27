@@ -9,7 +9,7 @@ useHead({ title: () => data.value?.container.number ?? 'Container' })
 
 const backTo = computed(() => {
   const locationId = data.value?.currentLocation?.id
-  return locationId ? `/containers?locationId=${locationId}` : '/containers'
+  return locationId ? `/locations/${locationId}` : '/containers'
 })
 
 const flags = computed(() => {
@@ -52,7 +52,7 @@ const flags = computed(() => {
           :to="backTo"
           class="backbtn"
         >
-          ‹ {{ data.currentLocation?.name ? 'Yard map' : 'Locations' }}
+          ‹ {{ data.currentLocation?.name ? data.currentLocation.name : 'Locations' }}
         </NuxtLink>
       </div>
 

@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { LOCATION_TYPE_LABELS } from '#shared/utils/domain'
-
 useHead({ title: 'Home' })
 
 const { data, status, error, refresh } = await useFetch('/api/home')
@@ -12,23 +10,9 @@ watchEffect(() => {
 
 const active = computed(() => data.value?.active)
 
-const sheet = ref<'dropoff' | 'documents' | 'sms' | 'contacts' | 'cancel' | null>(null)
-const locationSearch = ref('')
-const selectedDestinationId = ref<string | null>(null)
-const savingDropoff = ref(false)
-const dropoffError = ref('')
+const sheet = ref<'documents' | 'sms' | 'contacts' | 'cancel' | null>(null)
 const cancelling = ref(false)
 const cancelError = ref('')
-
-const { data: locationData } = await useFetch('/api/locations', {
-  query: computed(() => ({ q: locationSearch.value || undefined, limit: 50 })),
-})
-
-watch(active, (value) => {
-  selectedDestinationId.value = value?.destination?.id ?? null
-}, { immediate: true })
-
-const filteredLocations = computed(() => locationData.value?.items ?? [])
 
 const canAttachContainer = computed(() =>
   Boolean(
@@ -71,26 +55,6 @@ async function confirmCancelTrip() {
   }
   finally {
     cancelling.value = false
-  }
-}
-
-async function saveDropoff() {
-  if (!active.value || !selectedDestinationId.value) return
-  savingDropoff.value = true
-  dropoffError.value = ''
-  try {
-    await $fetch(`/api/trips/${active.value.trip.id}/destination`, {
-      method: 'POST',
-      body: { destinationLocationId: selectedDestinationId.value },
-    })
-    sheet.value = null
-    await refresh()
-  }
-  catch (err) {
-    dropoffError.value = apiErrorMessage(err, 'Could not change drop-off.')
-  }
-  finally {
-    savingDropoff.value = false
   }
 }
 </script>
@@ -146,7 +110,7 @@ async function saveDropoff() {
         :origin-name="active.origin?.name"
         :destination-name="active.destination?.name"
         can-change-dropoff
-        @change-dropoff="sheet = 'dropoff'"
+        @change-dropoff="navigateTo(`/trips/${active.trip.id}/dropoff`)"
       />
 
       <div
@@ -248,62 +212,6 @@ async function saveDropoff() {
         </button>
       </div>
     </template>
-
-    <BottomSheet
-      :open="sheet === 'dropoff'"
-      title="Change drop-off location"
-      @close="sheet = null"
-    >
-      <p
-        v-if="dropoffError"
-        class="banner err"
-        role="alert"
-      >
-        <span aria-hidden="true">✕</span>
-        <span>{{ dropoffError }}</span>
-      </p>
-      <div class="sheet-search">
-        ⌕
-        <input
-          v-model="locationSearch"
-          type="search"
-          placeholder="Search yards, customers, terminals…"
-          aria-label="Search drop-off locations"
-        >
-      </div>
-      <button
-        v-for="location in filteredLocations"
-        :key="location.id"
-        type="button"
-        class="sheet-loc"
-        :class="{ sel: selectedDestinationId === location.id }"
-        @click="selectedDestinationId = location.id"
-      >
-        <b>{{ location.name }}</b>
-        <small>
-          {{ LOCATION_TYPE_LABELS[location.type] }}
-          <template v-if="location.addressLine1"> · {{ location.addressLine1 }}</template>
-          <template v-if="location.city"> · {{ location.city }}</template>
-        </small>
-      </button>
-      <div class="sheet-actions">
-        <button
-          type="button"
-          class="btn-cancel"
-          @click="sheet = null"
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          class="btn-save"
-          :disabled="!selectedDestinationId || savingDropoff"
-          @click="saveDropoff"
-        >
-          {{ savingDropoff ? 'Saving…' : 'Save location' }}
-        </button>
-      </div>
-    </BottomSheet>
 
     <BottomSheet
       :open="sheet === 'documents'"

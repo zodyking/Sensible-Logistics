@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { BoundingBox } from '#shared/utils/geo'
 import { isValidBbox } from '#shared/utils/geo'
+import { OSM_ATTRIBUTION, osmTileUrl } from '~/utils/map-tiles'
 
 const props = defineProps<{
   latitude: number | null
@@ -91,9 +92,9 @@ async function boot() {
       zoomControl: true,
       attributionControl: true,
     })
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    L.tileLayer(osmTileUrl(), {
+      maxZoom: 22,
+      attribution: OSM_ATTRIBUTION,
     }).addTo(map)
 
     const start = props.bbox

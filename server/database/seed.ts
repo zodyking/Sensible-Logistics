@@ -16,6 +16,7 @@ import { drizzle } from 'drizzle-orm/node-postgres'
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres'
 import { Pool } from 'pg'
 import { computeCheckDigit, normalizeContainerNumber, validateContainerNumber } from '../../shared/utils/iso6346'
+import { bboxAround, localMetersFromLatLng, offsetLatLng, polygonFromBbox } from '../../shared/utils/geo'
 import * as schema from './schema'
 
 const {
@@ -23,6 +24,7 @@ const {
   companies,
   companyMemberships,
   containerEvents,
+  containerPlacements,
   containers,
   driverTimecards,
   drivers,
@@ -161,8 +163,9 @@ async function main() {
       city: 'Fort Lauderdale',
       state: 'FL',
       postalCode: '33316',
-      latitude: '26.0930000',
-      longitude: '-80.1180000',
+      latitude: 26.093,
+      longitude: -80.118,
+      halfMeters: 90,
       capacity: null,
       appointmentRequired: true,
       hours: 'Mon–Fri 06:00–17:00',
@@ -174,8 +177,9 @@ async function main() {
       city: 'Davie',
       state: 'FL',
       postalCode: '33314',
-      latitude: '26.0680000',
-      longitude: '-80.2470000',
+      latitude: 26.068,
+      longitude: -80.247,
+      halfMeters: 70,
       capacity: 240,
       appointmentRequired: false,
       hours: 'Open 24 hours',
@@ -187,8 +191,9 @@ async function main() {
       city: 'Medley',
       state: 'FL',
       postalCode: '33178',
-      latitude: '25.8620000',
-      longitude: '-80.3400000',
+      latitude: 25.862,
+      longitude: -80.34,
+      halfMeters: 55,
       capacity: 60,
       appointmentRequired: true,
       hours: 'Mon–Sat 07:00–19:00',
@@ -200,8 +205,9 @@ async function main() {
       city: 'Hialeah',
       state: 'FL',
       postalCode: '33013',
-      latitude: '25.8460000',
-      longitude: '-80.2800000',
+      latitude: 25.846,
+      longitude: -80.28,
+      halfMeters: 80,
       capacity: 400,
       appointmentRequired: false,
       hours: 'Mon–Fri 07:00–16:00',
@@ -209,8 +215,13 @@ async function main() {
   ]
 
   const locationIds: Record<string, string> = {}
+  const locationBoxes: Record<string, ReturnType<typeof bboxAround>> = {}
 
   for (const seed of locationSeed) {
+    const box = bboxAround(seed.latitude, seed.longitude, seed.halfMeters)
+    const boundary = polygonFromBbox(box)
+    locationBoxes[seed.name] = box
+
     const existing = await db
       .select({ id: locations.id })
       .from(locations)
@@ -219,6 +230,14 @@ async function main() {
 
     if (existing[0]) {
       locationIds[seed.name] = existing[0].id
+      await db
+        .update(locations)
+        .set({
+          latitude: seed.latitude.toFixed(7),
+          longitude: seed.longitude.toFixed(7),
+          boundary,
+        })
+        .where(eq(locations.id, existing[0].id))
       continue
     }
 
@@ -238,8 +257,9 @@ async function main() {
           .replace(/[^a-z0-9 ]/g, '')
           .replace(/\s+/g, ' ')
           .trim(),
-        latitude: seed.latitude,
-        longitude: seed.longitude,
+        latitude: seed.latitude.toFixed(7),
+        longitude: seed.longitude.toFixed(7),
+        boundary,
         capacity: seed.capacity,
         appointmentRequired: seed.appointmentRequired,
         hours: seed.hours,
@@ -378,9 +398,36 @@ async function main() {
       containerType: 'KING_OCEAN' as const,
       equipmentType: 'DRY_20' as const,
       isLoaded: true,
-      activePoolState: 'INACTIVE' as const,
-      currentLocationId: null,
+      activePoolState: 'AT_LOCATION' as const,
+      currentLocationId: yardId,
       steamshipLine: 'King Ocean',
+    },
+    {
+      number: containerNumber('TCKU', '118902'),
+      containerType: 'TROPICAL' as const,
+      equipmentType: 'DRY_40' as const,
+      isLoaded: false,
+      activePoolState: 'AT_LOCATION' as const,
+      currentLocationId: yardId,
+      steamshipLine: 'Tropical Shipping',
+    },
+    {
+      number: containerNumber('CMAU', '552017'),
+      containerType: 'CMA' as const,
+      equipmentType: 'HC_40' as const,
+      isLoaded: true,
+      activePoolState: 'AT_LOCATION' as const,
+      currentLocationId: yardId,
+      steamshipLine: 'CMA CGM',
+    },
+    {
+      number: containerNumber('ZIMU', '773401'),
+      containerType: 'ZIM' as const,
+      equipmentType: 'DRY_20' as const,
+      isLoaded: false,
+      activePoolState: 'AT_LOCATION' as const,
+      currentLocationId: depotId,
+      steamshipLine: 'ZIM',
     },
   ]
 
@@ -413,11 +460,80 @@ async function main() {
       })
       .onConflictDoUpdate({
         target: [containers.companyId, containers.numberNormalized],
-        set: { lastActivityAt: daysAgo(1, 14) },
+        set: {
+          lastActivityAt: daysAgo(1, 14),
+          activePoolState: seed.activePoolState,
+          currentLocationId: seed.currentLocationId,
+          isLoaded: seed.isLoaded,
+        },
       })
       .returning({ id: containers.id })
 
     if (row) containerIds[normalized] = row.id
+  }
+
+  /* ---- Map placements (OpenStreetMap pins inside each fence) ------ */
+  const placementSeeds: Array<{
+    number: string
+    locationName: string
+    east: number
+    north: number
+    rotation: number
+  }> = [
+    { number: containerSeed[0]!.number, locationName: 'Sensible Yard — Davie', east: -12, north: 18, rotation: 90 },
+    { number: containerNumber('KOCU', '610233'), locationName: 'Sensible Yard — Davie', east: -12, north: 8, rotation: 90 },
+    { number: containerNumber('TCKU', '118902'), locationName: 'Sensible Yard — Davie', east: 10, north: 16, rotation: 0 },
+    { number: containerNumber('CMAU', '552017'), locationName: 'Sensible Yard — Davie', east: 10, north: 4, rotation: 0 },
+    { number: containerNumber('CAIU', '298455'), locationName: 'Port Everglades Terminal 3', east: -8, north: 12, rotation: 80 },
+    { number: containerNumber('HLXU', '884560'), locationName: 'Medley Distribution Center', east: 6, north: 8, rotation: 12 },
+    { number: containerNumber('TGHU', '731004'), locationName: 'Hialeah Empty Depot', east: -14, north: 10, rotation: 95 },
+    { number: containerNumber('ZIMU', '773401'), locationName: 'Hialeah Empty Depot', east: -14, north: 0, rotation: 95 },
+  ]
+
+  for (const seed of placementSeeds) {
+    const containerId = containerIds[normalizeContainerNumber(seed.number)]
+    const locationId = locationIds[seed.locationName]
+    const box = locationBoxes[seed.locationName]
+    if (!containerId || !locationId || !box) continue
+
+    const pin = offsetLatLng((box.north + box.south) / 2, (box.west + box.east) / 2, seed.east, seed.north)
+    const local = localMetersFromLatLng(box, pin.latitude, pin.longitude)
+
+    const [live] = await db
+      .select({ id: containerPlacements.id })
+      .from(containerPlacements)
+      .where(and(
+        eq(containerPlacements.containerId, containerId),
+        eq(containerPlacements.locationId, locationId),
+        sql`${containerPlacements.supersededAt} is null`,
+      ))
+      .limit(1)
+
+    if (live) {
+      await db
+        .update(containerPlacements)
+        .set({
+          x: local.x,
+          y: local.y,
+          rotation: seed.rotation,
+          latitude: pin.latitude.toFixed(7),
+          longitude: pin.longitude.toFixed(7),
+        })
+        .where(eq(containerPlacements.id, live.id))
+      continue
+    }
+
+    await db.insert(containerPlacements).values({
+      companyId: company.id,
+      containerId,
+      locationId,
+      x: local.x,
+      y: local.y,
+      rotation: seed.rotation,
+      latitude: pin.latitude.toFixed(7),
+      longitude: pin.longitude.toFixed(7),
+      placedByUserId: admin.id,
+    })
   }
 
   /* ---- One completed trip with its event timeline ---------------- */

@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { previewResolution } from '../../services/activePool'
-import { requireDriver } from '../../utils/session'
+import { requireAuth } from '../../utils/session'
 
 const querySchema = z.object({
   number: z.string().trim().min(1, 'Enter a container number.').max(40),
@@ -13,8 +13,8 @@ const querySchema = z.object({
  * before any claim is made (spec 5.3).
  */
 export default defineEventHandler(async (event) => {
-  const auth = await requireDriver(event)
+  const auth = await requireAuth(event)
   const { number } = readValidatedQuery(event, querySchema)
 
-  return previewResolution(useDb(), auth.companyId, auth.driverId, number)
+  return previewResolution(useDb(), auth.companyId, auth.driverId ?? '', number)
 })

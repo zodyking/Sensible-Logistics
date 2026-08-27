@@ -298,7 +298,7 @@ export const locations = pgTable('locations', {
   /** Site centre point. Proximity search reads these directly. */
   latitude: numeric('latitude', { precision: 10, scale: 7 }),
   longitude: numeric('longitude', { precision: 10, scale: 7 }),
-  /** Operational perimeter drawn by the user. TODO(Phase 2): Terra Draw editor. */
+  /** Operational perimeter drawn on OpenStreetMap. */
   boundary: jsonb('boundary').$type<GeoJsonPolygon>(),
 
   timezone: text('timezone').notNull().default('America/New_York'),
@@ -586,10 +586,13 @@ export const containerPlacements = pgTable('container_placements', {
   layoutId: uuid('layout_id'),
   zoneId: uuid('zone_id'),
   slotCode: text('slot_code'),
-  /** Local yard-plane coordinates, never CSS pixels (spec 32.2). */
+  /** Local metres east/north of the location's south-west corner. */
   x: real('x').notNull(),
   y: real('y').notNull(),
   rotation: real('rotation').notNull().default(0),
+  /** WGS 84 pin used to draw the box on OpenStreetMap. */
+  latitude: numeric('latitude', { precision: 10, scale: 7 }),
+  longitude: numeric('longitude', { precision: 10, scale: 7 }),
   stackLevel: integer('stack_level').notNull().default(0),
   /** Null while this is the container's current position. */
   supersededAt: utc('superseded_at'),

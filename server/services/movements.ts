@@ -6,11 +6,13 @@ import {
   containerPlacements,
   containers,
   drivers,
+  locations,
   trips,
 } from '../database/schema'
 import type { Container, Trip } from '../database/schema'
 import { claimContainerForPickup, nextTripReference, releasePickupClaim } from './activePool'
 import { eventExists, recordEvent } from './events'
+import { writePlacement, type GeoPlacementInput } from './placements'
 import type { AuthContext } from '../utils/session'
 import { normalizeContainerNumber } from '#shared/utils/iso6346'
 import type { TripKind } from '#shared/utils/domain'
@@ -677,8 +679,8 @@ export interface CompleteDropoffInput {
   eventId: string
   tripId: string
   destinationLocationId: string
-  /** Optional exact yard placement. TODO(Phase 2): Konva editor supplies these. */
-  placement?: { x: number, y: number, rotation: number, zoneId?: string | null, slotCode?: string | null } | null
+  /** Geographic pin on the location's OpenStreetMap fence. */
+  placement?: (GeoPlacementInput & { x?: number, y?: number, zoneId?: string | null, slotCode?: string | null }) | null
   retainChassis: boolean
   /** Removes the container from the active pool entirely. */
   isFinalRelease: boolean
@@ -794,28 +796,50 @@ export async function completeDropoff(
       })
     }
 
-    if (input.placement) {
-      await tx
-        .update(containerPlacements)
-        .set({ supersededAt: now })
-        .where(and(
-          eq(containerPlacements.containerId, trip.containerId),
-          eq(containerPlacements.companyId, auth.companyId),
-          sql`${containerPlacements.supersededAt} is null`,
-        ))
+    if (input.placement && trip.containerId) {
+      const [destination] = await tx
+        .select()
+        .from(locations)
+        .where(eq(locations.id, input.destinationLocationId))
+        .limit(1)
 
-      await tx.insert(containerPlacements).values({
-        companyId: auth.companyId,
-        containerId: trip.containerId,
-        locationId: input.destinationLocationId,
-        zoneId: input.placement.zoneId ?? null,
-        slotCode: input.placement.slotCode ?? null,
-        x: input.placement.x,
-        y: input.placement.y,
-        rotation: input.placement.rotation,
-        eventId: input.eventId,
-        placedByUserId: auth.userId,
-      })
+      if (destination && input.placement.latitude != null && input.placement.longitude != null) {
+        await writePlacement(tx, auth, {
+          containerId: trip.containerId,
+          location: destination,
+          placement: {
+            latitude: input.placement.latitude,
+            longitude: input.placement.longitude,
+            rotation: input.placement.rotation,
+          },
+          eventId: input.eventId,
+        })
+      }
+      else {
+        await tx
+          .update(containerPlacements)
+          .set({ supersededAt: now })
+          .where(and(
+            eq(containerPlacements.containerId, trip.containerId),
+            eq(containerPlacements.companyId, auth.companyId),
+            sql`${containerPlacements.supersededAt} is null`,
+          ))
+
+        await tx.insert(containerPlacements).values({
+          companyId: auth.companyId,
+          containerId: trip.containerId,
+          locationId: input.destinationLocationId,
+          zoneId: input.placement.zoneId ?? null,
+          slotCode: input.placement.slotCode ?? null,
+          x: input.placement.x ?? 0,
+          y: input.placement.y ?? 0,
+          rotation: input.placement.rotation,
+          latitude: input.placement.latitude != null ? String(input.placement.latitude) : null,
+          longitude: input.placement.longitude != null ? String(input.placement.longitude) : null,
+          eventId: input.eventId,
+          placedByUserId: auth.userId,
+        })
+      }
     }
 
     const [updatedTrip] = await tx

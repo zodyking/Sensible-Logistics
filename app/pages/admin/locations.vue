@@ -174,10 +174,13 @@ function occupancyPercent(occupancy: number, capacity: number | null): number {
             :key="row.id"
           >
             <td>
-              <span class="flex min-h-11 items-center gap-2 font-semibold">
+              <NuxtLink
+                :to="`/locations/${row.id}`"
+                class="flex min-h-11 items-center gap-2 font-semibold"
+              >
                 <span aria-hidden="true">{{ LOCATION_GLYPH[row.type] }}</span>
                 {{ row.name }}
-              </span>
+              </NuxtLink>
             </td>
             <td>{{ LOCATION_TYPE_LABELS[row.type] }}</td>
             <td>
@@ -238,45 +241,5 @@ function occupancyPercent(occupancy: number, capacity: number | null): number {
         Create a location
       </NuxtLink>
     </EmptyState>
-
-    <section class="card mt-5 p-5">
-      <div class="mb-1 flex flex-wrap items-center gap-2">
-        <h2 class="font-[family-name:var(--font-display)] text-lg font-bold">
-          Yard editor & boundary drawing
-        </h2>
-        <StatusChip
-          variant="idle"
-          label="Phase 2"
-        />
-      </div>
-      <p class="mb-4 text-sm text-[var(--color-ink-500)]">
-        Visual yard management ships in Phase 2. Locations created today carry a geocoded pin, and
-        boundaries plus 2D yard layouts attach to these same records later — no migration needed.
-      </p>
-      <ul class="mb-4 grid gap-2 text-sm sm:grid-cols-2">
-        <li class="rounded-[var(--radius-md)] border border-[var(--color-line-200)] p-3">
-          <b class="block">Geofence boundaries</b>
-          <span class="text-[var(--color-ink-500)]">MapLibre GL JS with Terra Draw polygon tools.</span>
-        </li>
-        <li class="rounded-[var(--radius-md)] border border-[var(--color-line-200)] p-3">
-          <b class="block">2D yard editor</b>
-          <span class="text-[var(--color-ink-500)]">Konva + vue-konva drag-and-drop slot placement.</span>
-        </li>
-        <li class="rounded-[var(--radius-md)] border border-[var(--color-line-200)] p-3">
-          <b class="block">Geocoding</b>
-          <span class="text-[var(--color-ink-500)]">Self-hosted Nominatim — no third-party lookups.</span>
-        </li>
-        <li class="rounded-[var(--radius-md)] border border-[var(--color-line-200)] p-3">
-          <b class="block">Map tiles</b>
-          <span class="text-[var(--color-ink-500)]">Planetiler-generated PMTiles served locally.</span>
-        </li>
-      </ul>
-      <NuxtLink
-        to="/locations/new"
-        class="btn-ghost"
-      >
-        ＋ Create a location now
-      </NuxtLink>
-    </section>
   </div>
 </template>

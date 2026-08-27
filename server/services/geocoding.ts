@@ -262,3 +262,74 @@ export async function findDuplicateCandidates(
 
   return [...suggestions.values()]
 }
+
+interface OverpassElement {
+  type: string
+  geometry?: Array<{ lat: number, lon: number }>
+}
+
+/**
+ * Heading of the nearest OSM highway to a point, in degrees from north.
+ * Used to auto-align a dropped container with the street.
+ */
+export async function nearestStreetHeading(
+  latitude: number,
+  longitude: number,
+  radiusMeters = 80,
+): Promise<{ heading: number, source: 'OSM' | 'NONE', message?: string } | null> {
+  const query = `[out:json][timeout:8];way(around:${Math.round(radiusMeters)},${latitude},${longitude})["highway"~"^(residential|service|unclassified|tertiary|secondary|primary|living_street|industrial|trunk)$"];out geom;`
+  try {
+    const response = await fetch('https://overpass-api.de/api/interpreter', {
+      method: 'POST',
+      headers: {
+        'User-Agent': userAgent(),
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+      },
+      body: `data=${encodeURIComponent(query)}`,
+      signal: AbortSignal.timeout(9_000),
+    })
+    if (!response.ok) {
+      return { heading: 0, source: 'NONE', message: `Overpass responded ${response.status}` }
+    }
+    const payload = await response.json() as { elements?: OverpassElement[] }
+    let best: { distance: number, heading: number } | null = null
+    for (const element of payload.elements ?? []) {
+      const geom = element.geometry ?? []
+      for (let i = 0; i < geom.length - 1; i++) {
+        const a = geom[i]!
+        const b = geom[i + 1]!
+        const midLat = (a.lat + b.lat) / 2
+        const midLon = (a.lon + b.lon) / 2
+        const distance = geodesicMeters(latitude, longitude, midLat, midLon)
+        if (!best || distance < best.distance) {
+          best = { distance, heading: geodesicBearing(a.lat, a.lon, b.lat, b.lon) }
+        }
+      }
+    }
+    if (!best) return { heading: 0, source: 'NONE', message: 'No nearby street.' }
+    return { heading: best.heading, source: 'OSM' }
+  }
+  catch (error) {
+    const message = error instanceof Error ? error.message : 'Overpass unreachable.'
+    return { heading: 0, source: 'NONE', message }
+  }
+}
+
+function geodesicMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const φ1 = (lat1 * Math.PI) / 180
+  const φ2 = (lat2 * Math.PI) / 180
+  const Δφ = ((lat2 - lat1) * Math.PI) / 180
+  const Δλ = ((lng2 - lng1) * Math.PI) / 180
+  const a = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2
+  return 2 * EARTH_RADIUS_METERS * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
+function geodesicBearing(fromLat: number, fromLng: number, toLat: number, toLng: number): number {
+  const φ1 = (fromLat * Math.PI) / 180
+  const φ2 = (toLat * Math.PI) / 180
+  const Δλ = ((toLng - fromLng) * Math.PI) / 180
+  const y = Math.sin(Δλ) * Math.cos(φ2)
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ)
+  const deg = (Math.atan2(y, x) * 180) / Math.PI
+  return (deg + 360) % 360
+}

@@ -2,7 +2,6 @@
 import { LOCATION_GLYPH, LOCATION_TYPE_LABELS, LOCATION_TYPES } from '#shared/utils/domain'
 import type { LocationType } from '#shared/utils/domain'
 import { bboxAround, polygonFromBbox, type BoundingBox } from '#shared/utils/geo'
-import { generateYardModel } from '#shared/utils/yard-model'
 
 const { user } = useUserSession()
 setPageLayout(user.value?.role === 'ADMIN' ? 'admin' : 'default')
@@ -12,20 +11,8 @@ useHead({ title: 'Add location' })
 const route = useRoute()
 const returnTo = computed(() => {
   const raw = String(route.query.returnTo ?? '')
-  return raw.startsWith('/') ? raw : '/locations'
+  return raw.startsWith('/') ? raw : '/containers'
 })
-
-const DEFAULT_CAPACITY: Record<LocationType, number> = {
-  MARINE_TERMINAL: 240,
-  RAIL_TERMINAL: 80,
-  CUSTOMER: 6,
-  WAREHOUSE: 40,
-  COMPANY_YARD: 48,
-  DEPOT: 80,
-  REPAIR_SHOP: 8,
-  STAGING: 20,
-  TEMPORARY: 12,
-}
 
 type Step = 'type' | 'name' | 'address' | 'map'
 const STEPS: Step[] = ['type', 'name', 'address', 'map']
@@ -33,7 +20,7 @@ const STEP_TITLES: Record<Step, string> = {
   type: 'What kind of location?',
   name: 'What do you call it?',
   address: 'Where is it?',
-  map: 'Fence the yard',
+  map: 'Draw the fence',
 }
 
 type PlaceHit = {
@@ -58,18 +45,11 @@ const form = reactive({
   city: '',
   state: '',
   postalCode: '',
-  capacity: DEFAULT_CAPACITY.CUSTOMER,
 })
 
 const latitude = ref<number | null>(null)
 const longitude = ref<number | null>(null)
 const bbox = ref<BoundingBox | null>(null)
-
-watch(() => form.type, (type, previous) => {
-  if (form.capacity === DEFAULT_CAPACITY[previous]) {
-    form.capacity = DEFAULT_CAPACITY[type]
-  }
-})
 
 const suggestions = ref<PlaceHit[]>([])
 const searching = ref(false)
@@ -111,22 +91,17 @@ function applySuggestion(hit: PlaceHit) {
   form.addressQuery = hit.displayName
   latitude.value = hit.latitude
   longitude.value = hit.longitude
-  bbox.value = hit.bbox ?? bboxAround(hit.latitude, hit.longitude, 160)
+  bbox.value = hit.bbox ?? bboxAround(hit.latitude, hit.longitude, 80)
   suggestions.value = []
   step.value = 'map'
 }
-
-const model = computed(() => {
-  if (!bbox.value) return null
-  return generateYardModel(bbox.value, Number(form.capacity) || 0)
-})
 
 const canAdvance = computed(() => {
   switch (step.value) {
     case 'type': return Boolean(form.type)
     case 'name': return form.name.trim().length >= 2
     case 'address': return Boolean(latitude.value && longitude.value && form.addressLine1)
-    case 'map': return Boolean(bbox.value && form.capacity >= 0)
+    case 'map': return Boolean(bbox.value)
   }
   return false
 })
@@ -180,7 +155,6 @@ async function submit() {
         latitude: latitude.value,
         longitude: longitude.value,
         boundary: polygonFromBbox(bbox.value),
-        capacity: Number(form.capacity) || 0,
         acknowledgeDuplicates: acknowledgeDuplicates.value,
       },
     })
@@ -252,7 +226,7 @@ function createAnyway() {
       <NuxtLink
         v-for="dupe in duplicates"
         :key="dupe.id"
-        :to="`/containers?locationId=${dupe.id}`"
+        :to="`/locations/${dupe.id}`"
         class="row -mx-4 px-4"
       >
         <span class="row-main">
@@ -311,7 +285,7 @@ function createAnyway() {
             autocapitalize="words"
           >
           <small class="field-hint">
-            Suggestions come from OpenStreetMap. No API key. Pick a result to drop the pin.
+            Pick a result to drop the pin. Next you will draw the yard fence on the map.
           </small>
         </label>
 
@@ -355,23 +329,9 @@ function createAnyway() {
     </template>
 
     <template v-else>
-      <div class="card p-4 mb-4">
-        <label class="field">
-          <span>Capacity (container slots)</span>
-          <input
-            v-model.number="form.capacity"
-            class="input mono"
-            type="number"
-            min="0"
-            max="100000"
-            inputmode="numeric"
-          >
-          <small class="field-hint">
-            Used to generate the 2D yard — rows of slots inside the fence you draw.
-          </small>
-        </label>
-      </div>
-
+      <p class="mb-3 text-sm text-[var(--color-ink-500)]">
+        Drag the gold corners so the fence matches the real yard. Containers can only be placed inside this boundary.
+      </p>
       <ClientOnly>
         <LocationMapEditor
           :latitude="latitude"
@@ -380,13 +340,6 @@ function createAnyway() {
           @update:bbox="bbox = $event"
         />
       </ClientOnly>
-
-      <div class="mt-4">
-        <YardModelPreview
-          :model="model"
-          :location-name="form.name"
-        />
-      </div>
     </template>
 
     <div class="mt-6 flex gap-3">

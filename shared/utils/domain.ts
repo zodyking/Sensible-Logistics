@@ -43,6 +43,26 @@ export const CONTAINER_TYPE_LABELS: Record<ContainerType, string> = {
   KING_OCEAN: 'King Ocean',
 }
 
+/** Map paint for each steamship brand — fill/stroke on OSM rectangles. */
+export const CONTAINER_TYPE_PAINT: Record<ContainerType, { fill: string, stroke: string, emptyFill: string }> = {
+  KING_OCEAN: { fill: '#C45C26', stroke: '#8A3A14', emptyFill: '#F3DDD0' },
+  TROPICAL: { fill: '#2F6E62', stroke: '#1C443C', emptyFill: '#D5E8E3' },
+  CMA: { fill: '#1D3A57', stroke: '#0C1E30', emptyFill: '#D5DEE6' },
+  ZIM: { fill: '#5B3A9E', stroke: '#3D2470', emptyFill: '#E4DCF3' },
+}
+
+export type ContainerTypeCounts = Record<ContainerType, number>
+
+export function emptyTypeCounts(): ContainerTypeCounts {
+  return { KING_OCEAN: 0, TROPICAL: 0, CMA: 0, ZIM: 0 }
+}
+
+export function countContainersByType(items: Array<{ containerType: ContainerType }>): ContainerTypeCounts {
+  const counts = emptyTypeCounts()
+  for (const item of items) counts[item.containerType] += 1
+  return counts
+}
+
 /** Physical equipment size/type — distinct from the business classification. */
 export const EQUIPMENT_TYPES = [
   'DRY_20',
@@ -82,7 +102,7 @@ export const EQUIPMENT_TYPE_SHORT: Record<EquipmentType, string> = {
   OTHER: 'Other',
 }
 
-/** Nominal length in feet — drives proportional sizing in the yard editor. */
+/** Nominal length in feet — drives proportional sizing on the map. */
 export const EQUIPMENT_LENGTH_FT: Record<EquipmentType, number> = {
   DRY_20: 20,
   DRY_40: 40,
@@ -93,6 +113,17 @@ export const EQUIPMENT_LENGTH_FT: Record<EquipmentType, number> = {
   OPEN_TOP: 40,
   FLAT_RACK: 40,
   OTHER: 40,
+}
+
+const FT_TO_M = 0.3048
+const CONTAINER_WIDTH_FT = 8
+
+/** ISO footprint in metres for drawing a box on OpenStreetMap. */
+export function equipmentFootprintMeters(type: EquipmentType): { length: number, width: number } {
+  return {
+    length: EQUIPMENT_LENGTH_FT[type] * FT_TO_M,
+    width: CONTAINER_WIDTH_FT * FT_TO_M,
+  }
 }
 
 export const TRIP_KINDS = ['CONTAINER', 'BARE_CHASSIS'] as const
