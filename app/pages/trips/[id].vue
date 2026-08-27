@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { LOCATION_TYPE_LABELS, TRIP_STATUS_CHIP, TRIP_STATUS_LABELS } from '#shared/utils/domain'
-import { formatContainerNumber } from '#shared/utils/iso6346'
+import { formatChassisNumber, formatContainerNumber } from '#shared/utils/iso6346'
 
 const route = useRoute()
 const tripId = computed(() => String(route.params.id))
@@ -31,6 +31,25 @@ watch(data, (value) => {
 
 const isLive = computed(() =>
   ['PICKUP_IN_PROGRESS', 'IN_TRANSIT', 'DROPOFF_IN_PROGRESS'].includes(data.value?.trip.status ?? ''))
+
+const equipmentLabel = computed(() => {
+  const container = data.value?.container?.number
+  if (container) return formatContainerNumber(container) || container
+  const chassis = data.value?.chassis?.number
+  if (chassis) return formatChassisNumber(chassis) || chassis
+  return data.value?.trip.reference ?? 'Trip'
+})
+
+const pickupStamp = computed(() => data.value?.trip.pickedUpAt ?? null)
+const dropoffStamp = computed(() => data.value?.trip.droppedOffAt ?? data.value?.trip.completedAt ?? null)
+
+const durationLabel = computed(() => formatDurationBetween(pickupStamp.value, dropoffStamp.value))
+
+const dropoffTimeLabel = computed(() => {
+  if (dropoffStamp.value) return formatDateTime(dropoffStamp.value)
+  if (data.value?.trip.status === 'CANCELLED') return 'Cancelled'
+  return 'Open'
+})
 
 async function completeDropoff() {
   if (!destinationLocationId.value || submitting.value) return
@@ -89,35 +108,87 @@ async function completeDropoff() {
         back-label="Trips"
       />
 
-      <div class="mb-4 flex flex-wrap gap-2">
+      <div class="mb-4 flex flex-wrap items-center gap-2">
         <StatusChip
           :variant="TRIP_STATUS_CHIP[data.trip.status]"
           :label="TRIP_STATUS_LABELS[data.trip.status]"
         />
+        <span
+          v-if="durationLabel"
+          class="trip-duration"
+        >{{ durationLabel }}</span>
       </div>
 
-      <TripCard
-        :trip-kind="data.trip.kind === 'BARE_CHASSIS' ? 'BARE_CHASSIS' : 'CONTAINER'"
-        :container-type="data.container?.containerType"
-        :is-loaded="data.trip.isLoaded"
-        :container-number="data.container?.number"
-        :equipment-type="data.container?.equipmentType"
-        :chassis-number="data.chassis?.number"
-        :seal-number="data.trip.sealNumber"
-        :origin-name="data.origin?.name"
-        :destination-name="data.destination?.name"
-        can-change-dropoff
-        @change-dropoff="showDropoff = true"
+      <div class="trip-run card">
+        <div class="trip-run-route">
+          <div class="trip-hist-point">
+            <small>Origin</small>
+            <strong>{{ data.origin?.name ?? 'Not set' }}</strong>
+            <span
+              v-if="data.origin?.city"
+              class="trip-run-city"
+            >{{ data.origin.city }}</span>
+          </div>
+          <span
+            class="trip-hist-arrow"
+            aria-hidden="true"
+          >→</span>
+          <div class="trip-hist-point dest">
+            <small>Drop-off</small>
+            <strong>{{ data.destination?.name ?? 'Choose at drop-off' }}</strong>
+            <span
+              v-if="data.destination?.city"
+              class="trip-run-city"
+            >{{ data.destination.city }}</span>
+            <button
+              v-if="isLive || !data.destination"
+              type="button"
+              class="route-change"
+              @click="showDropoff = true"
+            >
+              Change
+            </button>
+          </div>
+        </div>
+
+        <ol class="trip-run-log">
+          <li>
+            <span
+              class="trip-run-dot pickup"
+              aria-hidden="true"
+            />
+            <div>
+              <small>Picked up</small>
+              <b>{{ pickupStamp ? formatDateTime(pickupStamp) : 'Not yet picked up' }}</b>
+              <p>{{ data.origin?.name ?? 'Origin not set' }}</p>
+            </div>
+          </li>
+          <li>
+            <span
+              class="trip-run-dot"
+              :class="dropoffStamp ? 'dropoff' : 'pending'"
+              aria-hidden="true"
+            />
+            <div>
+              <small>Dropped off</small>
+              <b>{{ dropoffTimeLabel }}</b>
+              <p>{{ data.destination?.name ?? 'Destination open' }}</p>
+            </div>
+          </li>
+        </ol>
+      </div>
+
+      <NuxtLink
+        v-if="data.container"
+        :to="`/containers/${data.container.id}`"
+        class="equip-link"
       >
-        <template
-          v-if="data.container"
-          #number
-        >
-          <NuxtLink :to="`/containers/${data.container.id}`">
-            {{ formatContainerNumber(data.container.number) || data.container.number }}
-          </NuxtLink>
-        </template>
-      </TripCard>
+        <span>
+          <small>Equipment</small>
+          <b class="mono">{{ equipmentLabel }}</b>
+        </span>
+        <span class="equip-link-go">View record →</span>
+      </NuxtLink>
 
       <div class="home-actions">
         <NuxtLink
@@ -152,7 +223,7 @@ async function completeDropoff() {
             class="act-ico"
             aria-hidden="true"
           >☰</span>
-          History
+          Equipment
         </NuxtLink>
       </div>
 
@@ -171,23 +242,6 @@ async function completeDropoff() {
       >
         Arrive
       </button>
-
-      <div class="section-label">
-        <span>Movement timeline</span>
-      </div>
-
-      <div
-        v-if="data.timeline.length"
-        class="card"
-      >
-        <EventTimeline :entries="data.timeline" />
-      </div>
-
-      <EmptyState
-        v-else
-        glyph="⇄"
-        title="No events yet"
-      />
     </template>
 
     <BottomSheet

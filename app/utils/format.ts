@@ -62,6 +62,18 @@ export function formatHours(minutes: number | null | undefined): string {
   return `${(minutes / 60).toFixed(1)} h`
 }
 
+/** Elapsed time between two stamps, e.g. `2h 2m`. */
+export function formatDurationBetween(start: DateInput, end: DateInput): string | null {
+  const from = toDate(start)
+  const to = toDate(end)
+  if (!from || !to) return null
+  const minutes = Math.max(0, Math.round((to.getTime() - from.getTime()) / 60000))
+  if (minutes < 60) return `${minutes} min`
+  const hours = Math.floor(minutes / 60)
+  const rest = minutes % 60
+  return rest ? `${hours}h ${rest}m` : `${hours}h`
+}
+
 /** Calendar day as UTC `YYYY-MM-DD`. */
 export function toIsoDate(value: DateInput): string | null {
   const date = toDate(value)

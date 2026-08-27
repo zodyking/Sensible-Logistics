@@ -975,7 +975,7 @@
     background: #fff;
     border: 1px solid var(--color-line-300);
     color: var(--color-ink-700);
-    min-height: 36px;
+    min-height: 44px;
   }
 
   .fchip.on {
@@ -1814,6 +1814,8 @@
     font-size: var(--text-xs);
     font-weight: 600;
     padding: 7px 14px;
+    min-height: 44px;
+    min-width: 44px;
     border-radius: var(--radius-sm);
     color: var(--color-ink-500);
   }
@@ -1893,17 +1895,249 @@
     font-size: 0.95rem;
   }
 
-  .trips-calendar {
+  .trips-cal-wrap {
     display: none;
-    padding: var(--s4);
   }
 
-  .trips-calendar.on {
+  .trips-cal-wrap.on {
     display: block;
+  }
+
+  .trips-calendar {
+    padding: var(--s4);
   }
 
   .trips-list-wrap.off {
     display: none;
+  }
+
+  .trip-hist {
+    display: block;
+    background: #fff;
+    border: 1px solid var(--color-line-200);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-1);
+    margin-bottom: var(--s3);
+    padding: var(--s4);
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .trip-hist:last-child {
+    margin-bottom: 0;
+  }
+
+  a.trip-hist:active {
+    background: var(--color-blue-50);
+  }
+
+  .trip-hist-route {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: start;
+    gap: var(--s2);
+  }
+
+  .trip-hist-point {
+    min-width: 0;
+  }
+
+  .trip-hist-point small,
+  .trip-hist-times small,
+  .trip-run-log small,
+  .equip-link small {
+    display: block;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-ink-400);
+    margin-bottom: 4px;
+  }
+
+  .trip-hist-point strong {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    display: block;
+    line-height: 1.3;
+  }
+
+  .trip-hist-point.dest {
+    text-align: right;
+  }
+
+  .trip-hist-arrow {
+    width: 32px;
+    height: 32px;
+    margin-top: 10px;
+    border-radius: 50%;
+    background: var(--color-amber-500);
+    display: grid;
+    place-items: center;
+    color: var(--color-navy-950);
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  .trip-hist-times {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--s3);
+    margin-top: var(--s3);
+    padding-top: var(--s3);
+    border-top: 1px solid var(--color-line-200);
+  }
+
+  .trip-hist-times b {
+    font-family: var(--font-display);
+    font-size: var(--text-lg);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    display: block;
+  }
+
+  .trip-hist-times .dest {
+    text-align: right;
+  }
+
+  .trip-hist-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s3);
+    margin-top: var(--s3);
+    padding-top: var(--s3);
+    border-top: 1px solid var(--color-line-200);
+  }
+
+  .trip-hist-foot .mono {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--color-ink-700);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .trip-duration {
+    font-size: var(--text-xs);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--color-ink-500);
+  }
+
+  .trip-run {
+    padding: 0;
+    overflow: hidden;
+    margin-bottom: var(--s4);
+  }
+
+  .trip-run-route {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: start;
+    gap: var(--s2);
+    padding: var(--s4);
+    background: var(--color-paper-50);
+    border-bottom: 1px solid var(--color-line-200);
+  }
+
+  .trip-run-city {
+    display: block;
+    margin-top: 2px;
+    font-size: var(--text-xs);
+    color: var(--color-ink-500);
+  }
+
+  .trip-run-log {
+    list-style: none;
+    padding: var(--s4);
+    display: flex;
+    flex-direction: column;
+    gap: var(--s4);
+  }
+
+  .trip-run-log li {
+    display: grid;
+    grid-template-columns: 16px 1fr;
+    gap: var(--s3);
+    position: relative;
+  }
+
+  .trip-run-log li:not(:last-child)::before {
+    content: '';
+    position: absolute;
+    left: 7px;
+    top: 18px;
+    bottom: -16px;
+    width: 2px;
+    background: var(--color-line-200);
+  }
+
+  .trip-run-dot {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 2px solid var(--color-navy-800);
+    background: #fff;
+    margin-top: 2px;
+  }
+
+  .trip-run-dot.pickup {
+    background: var(--color-navy-800);
+  }
+
+  .trip-run-dot.dropoff {
+    background: var(--color-ok-600);
+    border-color: var(--color-ok-600);
+  }
+
+  .trip-run-dot.pending {
+    border-style: dashed;
+    border-color: var(--color-ink-400);
+  }
+
+  .trip-run-log b {
+    display: block;
+    font-family: var(--font-display);
+    font-size: var(--text-lg);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  .trip-run-log p {
+    margin: 2px 0 0;
+    font-size: var(--text-sm);
+    color: var(--color-ink-700);
+  }
+
+  .equip-link {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s3);
+    background: #fff;
+    border: 1px solid var(--color-line-200);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-1);
+    padding: var(--s3) var(--s4);
+    margin-bottom: var(--s4);
+    text-decoration: none;
+    color: inherit;
+    min-height: 48px;
+  }
+
+  .equip-link b {
+    display: block;
+    font-size: var(--text-sm);
+  }
+
+  .equip-link-go {
+    font-size: var(--text-xs);
+    font-weight: 700;
+    color: var(--color-blue-500);
+    white-space: nowrap;
   }
 
   .cal-head {
@@ -1919,8 +2153,8 @@
   }
 
   .cal-nav {
-    width: 34px;
-    height: 34px;
+    width: 44px;
+    height: 44px;
     border-radius: var(--radius-sm);
     background: #fff;
     border: 1px solid var(--color-line-200);
@@ -1948,6 +2182,7 @@
 
   .cal-day {
     aspect-ratio: 1;
+    min-height: 44px;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -1966,7 +2201,12 @@
     background: var(--color-paper-50);
   }
 
-  .cal-day.today {
+  .cal-day.today:not(.sel) {
+    box-shadow: inset 0 0 0 2px var(--color-navy-800);
+    font-weight: 700;
+  }
+
+  .cal-day.sel {
     background: var(--color-navy-800);
     color: #fff;
     border-color: var(--color-navy-800);
@@ -1981,6 +2221,18 @@
     height: 5px;
     border-radius: 50%;
     background: var(--color-amber-500);
+  }
+
+  .cal-day.sel.has-trip::after {
+    background: var(--color-amber-500);
+  }
+
+  .cal-day-panel {
+    margin-top: var(--s5);
+  }
+
+  .cal-day-panel .section-label {
+    margin-top: 0;
   }
 
   /* --- Electronic time card (ledger) --- */

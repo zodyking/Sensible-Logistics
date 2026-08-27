@@ -37,6 +37,7 @@ export default defineEventHandler(async (event) => {
       isLoaded: trips.isLoaded,
       createdAt: trips.createdAt,
       pickedUpAt: trips.pickedUpAt,
+      droppedOffAt: trips.droppedOffAt,
       completedAt: trips.completedAt,
       containerNumber: containers.number,
       chassisNumber: chassis.number,

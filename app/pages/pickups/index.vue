@@ -1,36 +1,32 @@
 <script setup lang="ts">
-import { TRIP_STATUS_CHIP, TRIP_STATUS_GLYPH, TRIP_STATUS_LABELS } from '#shared/utils/domain'
-import type { TripStatus } from '#shared/utils/domain'
-import { formatChassisNumber, formatContainerNumber } from '#shared/utils/iso6346'
+import { tripOccursOnDay, tripPickupDay, toLocalIsoDate } from '#shared/utils/trip-days'
 
 useHead({ title: 'My Trips' })
 
 const view = ref<'list' | 'calendar'>('list')
 const dayFilter = ref<'all' | 'today'>('all')
 const cursor = ref(new Date())
+const selectedIso = ref(toLocalIsoDate(new Date()) ?? '')
 
 const { data, status, error } = await useFetch('/api/trips', {
   query: { scope: 'mine', limit: 200 },
 })
 
-const todayIso = computed(() => new Date().toISOString().slice(0, 10))
+const todayIso = computed(() => toLocalIsoDate(new Date()) ?? '')
 
 const trips = computed(() => data.value?.items ?? [])
 
 const visibleTrips = computed(() => {
   if (dayFilter.value !== 'today') return trips.value
-  return trips.value.filter((trip) => {
-    const stamp = trip.pickedUpAt ?? trip.createdAt
-    return toIsoDate(stamp) === todayIso.value
-  })
+  return trips.value.filter(trip => tripOccursOnDay(trip, todayIso.value))
 })
 
-/** Week → day → trips, newest week first. */
+/** Week → day → trips, newest week first. Days are pickup (or opened) dates. */
 const grouped = computed(() => {
   const weeks = new Map<string, Map<string, typeof visibleTrips.value>>()
 
   for (const trip of visibleTrips.value) {
-    const iso = toIsoDate(trip.pickedUpAt ?? trip.createdAt) ?? todayIso.value
+    const iso = tripPickupDay(trip) ?? todayIso.value
     const weekKey = startOfWeekMonday(iso).toISOString().slice(0, 10)
     const days = weeks.get(weekKey) ?? new Map()
     const bucket = days.get(iso) ?? []
@@ -53,8 +49,9 @@ const grouped = computed(() => {
 const tripDays = computed(() => {
   const set = new Set<string>()
   for (const trip of trips.value) {
-    const iso = toIsoDate(trip.pickedUpAt ?? trip.createdAt)
-    if (iso) set.add(iso)
+    for (const iso of [tripPickupDay(trip), toLocalIsoDate(trip.droppedOffAt)]) {
+      if (iso) set.add(iso)
+    }
   }
   return set
 })
@@ -66,13 +63,20 @@ const calendarCells = computed(() => {
   const startOffset = first.getDay()
   const daysInMonth = new Date(year, month + 1, 0).getDate()
   const prevDays = new Date(year, month, 0).getDate()
-  const cells: Array<{ day: number, iso: string, muted: boolean, today: boolean, hasTrip: boolean }> = []
+  const cells: Array<{ day: number, iso: string, muted: boolean, today: boolean, selected: boolean, hasTrip: boolean }> = []
 
   for (let i = startOffset - 1; i >= 0; i--) {
     const day = prevDays - i
     const date = new Date(year, month - 1, day)
-    const iso = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-    cells.push({ day, iso, muted: true, today: false, hasTrip: tripDays.value.has(iso) })
+    const iso = toLocalIsoDate(date)!
+    cells.push({
+      day,
+      iso,
+      muted: true,
+      today: iso === todayIso.value,
+      selected: iso === selectedIso.value,
+      hasTrip: tripDays.value.has(iso),
+    })
   }
 
   for (let day = 1; day <= daysInMonth; day++) {
@@ -82,6 +86,7 @@ const calendarCells = computed(() => {
       iso,
       muted: false,
       today: iso === todayIso.value,
+      selected: iso === selectedIso.value,
       hasTrip: tripDays.value.has(iso),
     })
   }
@@ -89,8 +94,15 @@ const calendarCells = computed(() => {
   while (cells.length % 7 !== 0) {
     const day = cells.length - (startOffset + daysInMonth) + 1
     const date = new Date(year, month + 1, day)
-    const iso = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-    cells.push({ day, iso, muted: true, today: false, hasTrip: tripDays.value.has(iso) })
+    const iso = toLocalIsoDate(date)!
+    cells.push({
+      day,
+      iso,
+      muted: true,
+      today: iso === todayIso.value,
+      selected: iso === selectedIso.value,
+      hasTrip: tripDays.value.has(iso),
+    })
   }
 
   return cells
@@ -100,29 +112,42 @@ const monthLabel = computed(() =>
   new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(cursor.value),
 )
 
+const selectedDayLabel = computed(() => formatDayHeading(selectedIso.value, todayIso.value))
+
+const selectedDayTrips = computed(() =>
+  trips.value
+    .filter(trip => tripOccursOnDay(trip, selectedIso.value))
+    .sort((a, b) => {
+      const aStamp = new Date(a.pickedUpAt ?? a.createdAt).getTime()
+      const bStamp = new Date(b.pickedUpAt ?? b.createdAt).getTime()
+      return bStamp - aStamp
+    }),
+)
+
 function shiftMonth(delta: number) {
   const next = new Date(cursor.value)
   next.setMonth(next.getMonth() + delta)
   cursor.value = next
 }
 
-function rowIconStyle(statusKey: TripStatus) {
-  const variant = TRIP_STATUS_CHIP[statusKey]
-  if (variant === 'ok') return { background: 'var(--color-ok-100)', color: 'var(--color-ok-600)' }
-  if (variant === 'err') return { background: 'var(--color-err-100)', color: 'var(--color-err-600)' }
-  if (variant === 'warn') return { background: 'var(--color-warn-100)', color: 'var(--color-warn-600)' }
-  if (variant === 'transit') return { background: 'var(--color-info-100)', color: 'var(--color-info-600)' }
-  return { background: 'var(--color-paper-100)', color: 'var(--color-ink-500)' }
-}
-
-function tripSubtitle(trip: { originName?: string | null, destinationName?: string | null, createdAt: string, pickedUpAt?: string | null, reference: string }) {
-  const route = [trip.originName ?? 'No origin', trip.destinationName ?? 'Open dest'].join(' → ')
-  return `${route} · ${formatTime(trip.pickedUpAt ?? trip.createdAt)} · ${trip.reference}`
-}
-
 function selectDay(iso: string) {
-  dayFilter.value = iso === todayIso.value ? 'today' : 'all'
-  view.value = 'list'
+  selectedIso.value = iso
+  const [year, month] = iso.split('-').map(Number)
+  if (year && month) {
+    const next = new Date(year, month - 1, 1)
+    if (next.getFullYear() !== cursor.value.getFullYear() || next.getMonth() !== cursor.value.getMonth()) {
+      cursor.value = next
+    }
+  }
+}
+
+function calendarDayLabel(cell: { iso: string, hasTrip: boolean, selected: boolean, today: boolean }) {
+  const date = formatDayHeading(cell.iso, todayIso.value)
+  const parts = [date]
+  if (cell.today) parts.push('today')
+  if (cell.selected) parts.push('selected')
+  if (cell.hasTrip) parts.push('has trips')
+  return parts.join(', ')
 }
 </script>
 
@@ -134,9 +159,15 @@ function selectDay(iso: string) {
     </h1>
 
     <div class="trips-toolbar">
-      <div class="view-toggle">
+      <div
+        class="view-toggle"
+        role="tablist"
+        aria-label="Trip view"
+      >
         <button
           type="button"
+          role="tab"
+          :aria-selected="view === 'list'"
           :class="{ on: view === 'list' }"
           @click="view = 'list'"
         >
@@ -144,17 +175,25 @@ function selectDay(iso: string) {
         </button>
         <button
           type="button"
+          role="tab"
+          :aria-selected="view === 'calendar'"
           :class="{ on: view === 'calendar' }"
           @click="view = 'calendar'"
         >
           Calendar
         </button>
       </div>
-      <div class="filters">
+      <div
+        v-if="view === 'list'"
+        class="filters"
+        role="group"
+        aria-label="Day filter"
+      >
         <button
           type="button"
           class="fchip"
           :class="{ on: dayFilter === 'all' }"
+          :aria-pressed="dayFilter === 'all'"
           @click="dayFilter = 'all'"
         >
           All
@@ -163,6 +202,7 @@ function selectDay(iso: string) {
           type="button"
           class="fchip"
           :class="{ on: dayFilter === 'today' }"
+          :aria-pressed="dayFilter === 'today'"
           @click="dayFilter = 'today'"
         >
           Today
@@ -212,30 +252,19 @@ function selectDay(iso: string) {
               <div class="day-label">
                 {{ day.label }}
               </div>
-              <NuxtLink
+              <TripHistoryCard
                 v-for="trip in day.items"
                 :key="trip.id"
                 :to="`/trips/${trip.id}`"
-                class="trip-row"
-              >
-                <div
-                  class="row-ico"
-                  :style="rowIconStyle(trip.status)"
-                  aria-hidden="true"
-                >
-                  {{ TRIP_STATUS_GLYPH[trip.status] }}
-                </div>
-                <div class="row-main">
-                  <b class="mono">{{ trip.containerNumber ? (formatContainerNumber(trip.containerNumber) || trip.containerNumber) : (trip.chassisNumber ? (formatChassisNumber(trip.chassisNumber) || trip.chassisNumber) : trip.reference) }}</b>
-                  <small>{{ tripSubtitle(trip) }}</small>
-                </div>
-                <div class="row-end">
-                  <StatusChip
-                    :variant="TRIP_STATUS_CHIP[trip.status]"
-                    :label="TRIP_STATUS_LABELS[trip.status]"
-                  />
-                </div>
-              </NuxtLink>
+                :status="trip.status"
+                :reference="trip.reference"
+                :origin-name="trip.originName"
+                :destination-name="trip.destinationName"
+                :picked-up-at="trip.pickedUpAt"
+                :dropped-off-at="trip.droppedOffAt"
+                :container-number="trip.containerNumber"
+                :chassis-number="trip.chassisNumber"
+              />
             </div>
           </div>
         </div>
@@ -244,51 +273,88 @@ function selectDay(iso: string) {
           v-else
           glyph="⇄"
           title="No trips yet"
-          :description="dayFilter === 'today' ? 'Nothing recorded today.' : 'Start a pickup and it will appear here.'"
+          :description="dayFilter === 'today' ? 'Nothing picked up or dropped off today.' : 'Completed pickups and drop-offs will appear here.'"
         />
       </div>
 
       <div
-        class="trips-calendar card"
+        class="trips-cal-wrap"
         :class="{ on: view === 'calendar' }"
       >
-        <div class="cal-head">
-          <button
-            type="button"
-            class="cal-nav"
-            aria-label="Previous month"
-            @click="shiftMonth(-1)"
-          >
-            ‹
-          </button>
-          <b>{{ monthLabel }}</b>
-          <button
-            type="button"
-            class="cal-nav"
-            aria-label="Next month"
-            @click="shiftMonth(1)"
-          >
-            ›
-          </button>
-        </div>
-        <div class="cal-grid">
-          <div
-            v-for="dow in ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']"
-            :key="dow"
-            class="cal-dow"
-          >
-            {{ dow }}
+        <div class="trips-calendar card">
+          <div class="cal-head">
+            <button
+              type="button"
+              class="cal-nav"
+              aria-label="Previous month"
+              @click="shiftMonth(-1)"
+            >
+              ‹
+            </button>
+            <b>{{ monthLabel }}</b>
+            <button
+              type="button"
+              class="cal-nav"
+              aria-label="Next month"
+              @click="shiftMonth(1)"
+            >
+              ›
+            </button>
           </div>
-          <button
-            v-for="cell in calendarCells"
-            :key="cell.iso + cell.muted"
-            type="button"
-            class="cal-day"
-            :class="{ 'muted': cell.muted, 'today': cell.today, 'has-trip': cell.hasTrip }"
-            @click="selectDay(cell.iso)"
-          >
-            {{ cell.day }}
-          </button>
+          <div class="cal-grid">
+            <div
+              v-for="dow in ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']"
+              :key="dow"
+              class="cal-dow"
+            >
+              {{ dow }}
+            </div>
+            <button
+              v-for="cell in calendarCells"
+              :key="cell.iso + String(cell.muted)"
+              type="button"
+              class="cal-day"
+              :class="{
+                'muted': cell.muted,
+                'today': cell.today,
+                'sel': cell.selected,
+                'has-trip': cell.hasTrip,
+              }"
+              :aria-label="calendarDayLabel(cell)"
+              :aria-pressed="cell.selected"
+              @click="selectDay(cell.iso)"
+            >
+              {{ cell.day }}
+            </button>
+          </div>
+        </div>
+
+        <div class="cal-day-panel">
+          <div class="section-label">
+            <span>{{ selectedDayLabel }}</span>
+            <span v-if="selectedDayTrips.length">{{ selectedDayTrips.length }}</span>
+          </div>
+
+          <TripHistoryCard
+            v-for="trip in selectedDayTrips"
+            :key="trip.id"
+            :to="`/trips/${trip.id}`"
+            :status="trip.status"
+            :reference="trip.reference"
+            :origin-name="trip.originName"
+            :destination-name="trip.destinationName"
+            :picked-up-at="trip.pickedUpAt"
+            :dropped-off-at="trip.droppedOffAt"
+            :container-number="trip.containerNumber"
+            :chassis-number="trip.chassisNumber"
+          />
+
+          <EmptyState
+            v-if="!selectedDayTrips.length"
+            glyph="⇄"
+            title="No trips this day"
+            description="Nothing was picked up or dropped off on this date."
+          />
         </div>
       </div>
     </template>
