@@ -12,9 +12,9 @@ dist
 .env.*
 !.env.example
 
-# Internal reference material (product spec, design template) — kept locally,
-# not published to the public repository.
-Agent-Files/
+# Internal Agent-Files notes stay local; the HTML design template is tracked.
+Agent-Files/*
+!Agent-Files/design-template.html
 
 # Logs and OS
 *.log
