@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ACTIVE_POOL_CHIP, ACTIVE_POOL_LABELS, CONTAINER_TYPE_LABELS, EQUIPMENT_TYPE_LABELS, LOCATION_GLYPH, SHORT_HAUL_LABELS } from '#shared/utils/domain'
+import { LOCATION_TYPE_LABELS } from '#shared/utils/domain'
 
 useHead({ title: 'Home' })
 
@@ -10,55 +10,48 @@ watchEffect(() => {
   pendingSync.value = (data.value?.pendingSync.events ?? 0) + (data.value?.pendingSync.photos ?? 0)
 })
 
-/* --- Live on-duty elapsed clock --------------------------------- */
-const now = ref(Date.now())
-let ticker: ReturnType<typeof setInterval> | undefined
+const active = computed(() => data.value?.active)
 
-onMounted(() => {
-  ticker = setInterval(() => {
-    now.value = Date.now()
-  }, 1000)
+const sheet = ref<'dropoff' | 'documents' | 'sms' | 'contacts' | null>(null)
+const locationSearch = ref('')
+const selectedDestinationId = ref<string | null>(null)
+const savingDropoff = ref(false)
+const dropoffError = ref('')
+
+const { data: locationData } = await useFetch('/api/locations', {
+  query: computed(() => ({ q: locationSearch.value || undefined, limit: 50 })),
 })
 
-onBeforeUnmount(() => {
-  if (ticker) clearInterval(ticker)
+watch(active, (value) => {
+  selectedDestinationId.value = value?.destination?.id ?? null
+}, { immediate: true })
+
+const filteredLocations = computed(() => locationData.value?.items ?? [])
+
+const primaryAction = computed(() => {
+  if (!active.value) return { label: 'New Pickup', to: '/pickups/new' }
+  return active.value.primaryAction
 })
 
-const duty = computed(() => data.value?.duty)
-
-/**
- * An open tour ticks live from the authoritative Clock In timestamp; a closed
- * day shows the stored total and never keeps counting.
- */
-const elapsed = computed(() => {
-  const card = duty.value
-  if (!card?.reportedForDutyAt) return '00:00:00'
-  const start = new Date(card.reportedForDutyAt).getTime()
-  const end = card.releasedFromDutyAt ? new Date(card.releasedFromDutyAt).getTime() : now.value
-  return formatElapsedClock((end - start) / 1000)
-})
-
-const punching = ref(false)
-const dutyError = ref('')
-
-async function togglePunch() {
-  if (punching.value) return
-  punching.value = true
-  dutyError.value = ''
-
+async function saveDropoff() {
+  if (!active.value || !selectedDestinationId.value) return
+  savingDropoff.value = true
+  dropoffError.value = ''
   try {
-    await $fetch(duty.value?.isOnDuty ? '/api/timecard/clock-out' : '/api/timecard/clock-in', { method: 'POST' })
+    await $fetch(`/api/trips/${active.value.trip.id}/destination`, {
+      method: 'POST',
+      body: { destinationLocationId: selectedDestinationId.value },
+    })
+    sheet.value = null
     await refresh()
   }
   catch (err) {
-    dutyError.value = apiErrorMessage(err, 'Could not record the punch.')
+    dropoffError.value = apiErrorMessage(err, 'Could not change drop-off.')
   }
   finally {
-    punching.value = false
+    savingDropoff.value = false
   }
 }
-
-const active = computed(() => data.value?.active)
 </script>
 
 <template>
@@ -84,265 +77,244 @@ const active = computed(() => data.value?.active)
     </p>
 
     <template v-else-if="data">
-      <!-- ── Duty status ─────────────────────────────────────── -->
-      <div
-        class="duty-card"
-        :class="{ off: !duty?.isOnDuty }"
-      >
-        <div class="duty-head">
-          <span class="eyebrow">Duty status</span>
-          <StatusChip
-            :variant="duty?.isOnDuty ? 'transit' : 'idle'"
-            :label="duty?.isOnDuty ? 'On duty' : 'Off duty'"
-          />
-        </div>
-
-        <div class="duty-body">
-          <div
-            class="duty-elapsed"
-            role="timer"
-            :aria-label="duty?.isOnDuty ? 'Time on duty today' : 'Total on duty today'"
-          >
-            {{ elapsed }}
-          </div>
-          <p class="duty-sub">
-            {{ duty?.isOnDuty ? 'Elapsed since you reported for duty' : "Today's recorded on-duty time" }}
-          </p>
-
-          <div class="duty-facts">
-            <div class="duty-fact">
-              <small>Reported for duty</small>
-              <b>{{ formatTime(duty?.reportedForDutyAt) }}</b>
-            </div>
-            <div class="duty-fact">
-              <small>Released</small>
-              <b>{{ duty?.releasedFromDutyAt ? formatTime(duty.releasedFromDutyAt) : 'In progress' }}</b>
-            </div>
-          </div>
-
-          <p
-            v-if="duty?.shortHaulStatus === 'NOT_AVAILABLE' || duty?.shortHaulStatus === 'AT_RISK'"
-            class="banner"
-            :class="duty.shortHaulStatus === 'NOT_AVAILABLE' ? 'err' : 'warn'"
-            role="alert"
-          >
-            <span aria-hidden="true">!</span>
-            <span>{{ SHORT_HAUL_LABELS[duty.shortHaulStatus] }}</span>
-          </p>
-
-          <p
-            v-if="dutyError"
-            class="banner err"
-            role="alert"
-          >
-            <span aria-hidden="true">✕</span>
-            <span>{{ dutyError }}</span>
-          </p>
-
-          <button
-            class="btn-primary-action"
-            :disabled="punching"
-            @click="togglePunch"
-          >
-            {{ punching ? 'Recording…' : duty?.isOnDuty ? 'Clock Out' : 'Clock In' }}
-          </button>
-        </div>
-      </div>
-
-      <!-- ── Active movement ─────────────────────────────────── -->
       <template v-if="active">
-        <div class="section-label">
-          <span>Active movement</span>
-          <NuxtLink :to="`/trips/${active.trip.id}`">Trip details</NuxtLink>
-        </div>
+        <TripCard
+          :container-type="active.container?.containerType"
+          :is-loaded="active.trip.isLoaded"
+          :container-number="active.container?.number"
+          :equipment-type="active.container?.equipmentType"
+          :chassis-number="active.chassis?.number"
+          :seal-number="active.trip.sealNumber"
+          :origin-name="active.origin?.name"
+          :destination-name="active.destination?.name"
+          can-change-dropoff
+          @change-dropoff="sheet = 'dropoff'"
+        />
 
-        <div class="trip-card">
-          <div class="trip-card-head">
-            <div class="trip-card-meta">
-              <span class="trip-flag line">
-                {{ active.container ? CONTAINER_TYPE_LABELS[active.container.containerType] : active.trip.reference }}
-              </span>
-              <span
-                class="trip-flag"
-                :class="active.trip.isLoaded ? 'loaded' : 'empty'"
-              >
-                {{ active.trip.isLoaded ? 'Loaded' : 'Empty' }}
-              </span>
-            </div>
-
-            <div class="trip-cno">
-              {{ active.container?.number ?? '—' }}
-            </div>
-
-            <div class="trip-facts">
-              <div class="trip-fact">
-                <small>Equipment</small>
-                <b>{{ active.container ? EQUIPMENT_TYPE_LABELS[active.container.equipmentType] : '—' }}</b>
-              </div>
-              <div class="trip-fact">
-                <small>Chassis</small>
-                <b>{{ active.chassis?.number ?? 'None' }}</b>
-              </div>
-              <div class="trip-fact">
-                <small>Seal</small>
-                <b>{{ active.trip.sealNumber ?? '—' }}</b>
-              </div>
-            </div>
-          </div>
-
-          <div class="route-strip">
-            <div class="route-point">
-              <small>Origin</small>
-              <strong>{{ active.origin?.name ?? 'Not set' }}</strong>
-            </div>
-            <div
-              class="route-arrow"
+        <div class="home-actions">
+          <button
+            type="button"
+            @click="sheet = 'documents'"
+          >
+            <span
+              class="act-ico"
               aria-hidden="true"
-            >
-              →
-            </div>
-            <div class="route-point dest">
-              <small>Drop-off</small>
-              <strong>{{ active.destination?.name ?? 'Choose at drop-off' }}</strong>
-            </div>
-          </div>
+            >▤</span>
+            Documents
+          </button>
+          <button
+            type="button"
+            @click="sheet = 'sms'"
+          >
+            <span
+              class="act-ico"
+              aria-hidden="true"
+            >✉</span>
+            Send SMS
+          </button>
+          <button
+            type="button"
+            @click="sheet = 'contacts'"
+          >
+            <span
+              class="act-ico"
+              aria-hidden="true"
+            >☎</span>
+            Contacts
+          </button>
+          <NuxtLink :to="`/trips/${active.trip.id}`">
+            <span
+              class="act-ico"
+              aria-hidden="true"
+            >☰</span>
+            Trip Details
+          </NuxtLink>
         </div>
 
         <NuxtLink
-          :to="active.primaryAction.to"
-          class="btn-primary-action mb-4"
+          :to="primaryAction.to"
+          class="btn-primary-action home-cta"
         >
-          {{ active.primaryAction.label }}
+          {{ primaryAction.label }}
         </NuxtLink>
       </template>
 
-      <!-- ── No active movement ──────────────────────────────── -->
       <template v-else>
-        <div class="section-label">
-          <span>Start work</span>
+        <div class="trip-card">
+          <div class="trip-card-head">
+            <div class="trip-card-meta">
+              <span class="trip-flag line">Ready</span>
+              <span class="trip-flag empty">No load</span>
+            </div>
+            <div class="trip-cno">
+              No active trip
+            </div>
+            <p class="text-center text-sm text-[var(--color-ink-500)]">
+              Start a pickup to put a container on this card.
+            </p>
+          </div>
+        </div>
+
+        <div class="home-actions">
+          <button
+            type="button"
+            @click="sheet = 'documents'"
+          >
+            <span
+              class="act-ico"
+              aria-hidden="true"
+            >▤</span>
+            Documents
+          </button>
+          <button
+            type="button"
+            @click="sheet = 'sms'"
+          >
+            <span
+              class="act-ico"
+              aria-hidden="true"
+            >✉</span>
+            Send SMS
+          </button>
+          <button
+            type="button"
+            @click="sheet = 'contacts'"
+          >
+            <span
+              class="act-ico"
+              aria-hidden="true"
+            >☎</span>
+            Contacts
+          </button>
+          <NuxtLink to="/pickups">
+            <span
+              class="act-ico"
+              aria-hidden="true"
+            >☰</span>
+            Trip Details
+          </NuxtLink>
         </div>
 
         <NuxtLink
           to="/pickups/new"
-          class="btn-primary-action mb-3"
+          class="btn-primary-action home-cta"
         >
           New Pickup
         </NuxtLink>
       </template>
-
-      <div class="home-actions">
-        <NuxtLink to="/scan">
-          <span
-            class="act-ico"
-            aria-hidden="true"
-          >⊙</span>
-          Quick Scan
-        </NuxtLink>
-        <NuxtLink to="/containers">
-          <span
-            class="act-ico"
-            aria-hidden="true"
-          >▦</span>
-          Containers
-        </NuxtLink>
-        <NuxtLink to="/locations">
-          <span
-            class="act-ico"
-            aria-hidden="true"
-          >◫</span>
-          Locations
-        </NuxtLink>
-        <NuxtLink to="/timecard">
-          <span
-            class="act-ico"
-            aria-hidden="true"
-          >◷</span>
-          Timecard
-        </NuxtLink>
-      </div>
-
-      <!-- ── Recently handled ────────────────────────────────── -->
-      <div class="section-label">
-        <span>Recent containers</span>
-        <NuxtLink to="/containers">View all</NuxtLink>
-      </div>
-
-      <div
-        v-if="data.recentContainers.length"
-        class="card rowlist"
-      >
-        <NuxtLink
-          v-for="item in data.recentContainers"
-          :key="item.id"
-          :to="`/containers/${item.id}`"
-          class="row"
-        >
-          <span
-            class="row-ico"
-            aria-hidden="true"
-          >▦</span>
-          <span class="row-main">
-            <b class="mono">{{ item.number }}</b>
-            <small>{{ item.locationName ?? 'In transit' }} · {{ formatRelative(item.lastActivityAt) }}</small>
-          </span>
-          <span class="row-end">
-            <StatusChip
-              :variant="ACTIVE_POOL_CHIP[item.activePoolState]"
-              :label="ACTIVE_POOL_LABELS[item.activePoolState]"
-            />
-          </span>
-        </NuxtLink>
-      </div>
-
-      <EmptyState
-        v-else
-        title="No active containers"
-        description="Containers appear here once you start a pickup."
-      />
-
-      <div class="section-label">
-        <span>Recent locations</span>
-        <NuxtLink to="/locations">View all</NuxtLink>
-      </div>
-
-      <div
-        v-if="data.recentLocations.length"
-        class="card rowlist"
-      >
-        <NuxtLink
-          v-for="item in data.recentLocations"
-          :key="item.id"
-          :to="`/containers?locationId=${item.id}`"
-          class="row"
-        >
-          <span
-            class="row-ico"
-            aria-hidden="true"
-          >{{ LOCATION_GLYPH[item.type] }}</span>
-          <span class="row-main">
-            <b>{{ item.name }}</b>
-            <small>{{ item.city ?? '—' }}</small>
-          </span>
-          <span
-            class="row-end"
-            aria-hidden="true"
-          >›</span>
-        </NuxtLink>
-      </div>
-
-      <EmptyState
-        v-else
-        glyph="◫"
-        title="No locations yet"
-        description="Create the yards, terminals and customers you work with."
-      >
-        <NuxtLink
-          to="/locations/new"
-          class="btn-ghost"
-        >
-          Add a location
-        </NuxtLink>
-      </EmptyState>
     </template>
+
+    <BottomSheet
+      :open="sheet === 'dropoff'"
+      title="Change drop-off location"
+      @close="sheet = null"
+    >
+      <p
+        v-if="dropoffError"
+        class="banner err"
+        role="alert"
+      >
+        <span aria-hidden="true">✕</span>
+        <span>{{ dropoffError }}</span>
+      </p>
+      <div class="sheet-search">
+        ⌕
+        <input
+          v-model="locationSearch"
+          type="search"
+          placeholder="Search yards, customers, terminals…"
+          aria-label="Search drop-off locations"
+        >
+      </div>
+      <button
+        v-for="location in filteredLocations"
+        :key="location.id"
+        type="button"
+        class="sheet-loc"
+        :class="{ sel: selectedDestinationId === location.id }"
+        @click="selectedDestinationId = location.id"
+      >
+        <b>{{ location.name }}</b>
+        <small>
+          {{ LOCATION_TYPE_LABELS[location.type] }}
+          <template v-if="location.addressLine1"> · {{ location.addressLine1 }}</template>
+          <template v-if="location.city"> · {{ location.city }}</template>
+        </small>
+      </button>
+      <div class="sheet-actions">
+        <button
+          type="button"
+          class="btn-cancel"
+          @click="sheet = null"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          class="btn-save"
+          :disabled="!selectedDestinationId || savingDropoff"
+          @click="saveDropoff"
+        >
+          {{ savingDropoff ? 'Saving…' : 'Save location' }}
+        </button>
+      </div>
+    </BottomSheet>
+
+    <BottomSheet
+      :open="sheet === 'documents'"
+      title="Trip documents"
+      @close="sheet = null"
+    >
+      <p class="text-sm text-[var(--color-ink-500)]">
+        EIRs, PODs and gate tickets attach to this movement once object storage is on. Nothing is queued for this trip yet.
+      </p>
+      <div class="sheet-actions">
+        <button
+          type="button"
+          class="btn-cancel"
+          @click="sheet = null"
+        >
+          Close
+        </button>
+      </div>
+    </BottomSheet>
+
+    <BottomSheet
+      :open="sheet === 'sms'"
+      title="Send SMS"
+      @close="sheet = null"
+    >
+      <p class="text-sm text-[var(--color-ink-500)]">
+        Dispatch SMS from this trip is not wired yet. Use your phone’s messages app for now.
+      </p>
+      <div class="sheet-actions">
+        <button
+          type="button"
+          class="btn-cancel"
+          @click="sheet = null"
+        >
+          Close
+        </button>
+      </div>
+    </BottomSheet>
+
+    <BottomSheet
+      :open="sheet === 'contacts'"
+      title="Contacts"
+      @close="sheet = null"
+    >
+      <p class="text-sm text-[var(--color-ink-500)]">
+        Terminal, customer and dispatch contacts will live here. None are on file for this trip yet.
+      </p>
+      <div class="sheet-actions">
+        <button
+          type="button"
+          class="btn-cancel"
+          @click="sheet = null"
+        >
+          Close
+        </button>
+      </div>
+    </BottomSheet>
   </section>
 </template>

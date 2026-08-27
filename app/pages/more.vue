@@ -2,8 +2,20 @@
 useHead({ title: 'More' })
 
 const { user, clear } = useUserSession()
-const { appName } = useRuntimeConfig().public
+const { data: home } = await useFetch('/api/home')
 
+const pendingSync = useState('pending-sync', () => 0)
+watchEffect(() => {
+  const events = home.value?.pendingSync.events ?? 0
+  const photos = home.value?.pendingSync.photos ?? 0
+  pendingSync.value = events + photos
+})
+
+const initials = computed(() =>
+  `${user.value?.firstName?.[0] ?? ''}${user.value?.lastName?.[0] ?? ''}`.toUpperCase() || '—',
+)
+
+const onTrip = computed(() => Boolean(home.value?.active))
 const signingOut = ref(false)
 
 async function signOut() {
@@ -12,80 +24,101 @@ async function signOut() {
   await clear()
   await navigateTo('/login', { replace: true })
 }
-
-const links = [
-  { to: '/locations', glyph: '◫', label: 'Locations', hint: 'Yards, terminals, customers' },
-  { to: '/timecard', glyph: '◷', label: 'Timecard', hint: 'Punches and DOT time record' },
-  { to: '/containers?scope=all', glyph: '▣', label: 'Full container history', hint: 'Including released containers' },
-]
 </script>
 
 <template>
   <section class="d-page">
-    <PageHeader
-      eyebrow="Account"
-      title="More"
-    />
-
-    <div class="card mb-5 p-4">
-      <div class="flex items-center gap-3">
-        <span
-          class="grid size-12 shrink-0 place-items-center rounded-full bg-[var(--color-navy-800)] font-[family-name:var(--font-display)] text-lg font-semibold text-[var(--color-amber-500)]"
-          aria-hidden="true"
-        >
-          {{ (user?.firstName?.[0] ?? '') + (user?.lastName?.[0] ?? '') }}
-        </span>
-        <div class="min-w-0">
-          <b class="block font-[family-name:var(--font-display)] text-lg font-semibold">{{ user?.fullName }}</b>
-          <small class="text-xs text-[var(--color-ink-500)]">{{ user?.email }} · {{ user?.companyName }}</small>
+    <span class="eyebrow">Account</span>
+    <h1 class="d-title">
+      More
+    </h1>
+    <div class="card rowlist">
+      <div class="row">
+        <div class="av">
+          {{ initials }}
+        </div>
+        <div class="row-main">
+          <b>{{ user?.fullName }}</b>
+          <small>Driver · {{ user?.companyName }}</small>
+        </div>
+        <div class="row-end">
+          <StatusChip
+            :variant="onTrip ? 'ok' : 'idle'"
+            :label="onTrip ? 'On Trip' : 'Off Duty'"
+          />
         </div>
       </div>
-    </div>
-
-    <div class="card rowlist">
       <NuxtLink
-        v-for="link in links"
-        :key="link.to"
-        :to="link.to"
+        to="/documents"
         class="row"
       >
-        <span
+        <div
           class="row-ico"
           aria-hidden="true"
-        >{{ link.glyph }}</span>
-        <span class="row-main">
-          <b>{{ link.label }}</b>
-          <small>{{ link.hint }}</small>
-        </span>
-        <span
+        >
+          ▤
+        </div>
+        <div class="row-main">
+          <b>My Documents</b>
+          <small>EIRs, PODs, gate tickets</small>
+        </div>
+        <div
           class="row-end"
           aria-hidden="true"
-        >›</span>
+        >
+          ›
+        </div>
+      </NuxtLink>
+      <div class="row">
+        <div
+          class="row-ico"
+          aria-hidden="true"
+        >
+          ⇅
+        </div>
+        <div class="row-main">
+          <b>Pending Sync</b>
+          <small>
+            {{ pendingSync === 0 ? 'All work is synced' : `${pendingSync} item${pendingSync === 1 ? '' : 's'} queued` }}
+          </small>
+        </div>
+        <div class="row-end">
+          <StatusChip
+            v-if="pendingSync > 0"
+            variant="warn"
+            :label="String(pendingSync)"
+          />
+        </div>
+      </div>
+      <NuxtLink
+        to="/settings"
+        class="row"
+      >
+        <div
+          class="row-ico"
+          aria-hidden="true"
+        >
+          ⚙
+        </div>
+        <div class="row-main">
+          <b>Settings</b>
+          <small>Profile, truck, notifications</small>
+        </div>
+        <div
+          class="row-end"
+          aria-hidden="true"
+        >
+          ›
+        </div>
       </NuxtLink>
     </div>
 
-    <div class="section-label">
-      <span>Sync</span>
-    </div>
-
-    <div class="card p-4">
-      <p class="text-sm">
-        <b>Offline queue — Phase 2.</b>
-        Work you record is written straight to the server today. The durable IndexedDB queue that
-        keeps pickups and drop-offs working through dead zones ships next.
-      </p>
-    </div>
-
     <button
-      class="btn-ghost mt-5"
+      class="btn-ghost mt-5 w-full"
       :disabled="signingOut"
       @click="signOut"
     >
       {{ signingOut ? 'Signing out…' : 'Sign out' }}
     </button>
-
-    <p class="mt-6 text-center text-xs text-[var(--color-ink-400)]">
-      {{ appName }} · Phase 1
-    </p>
   </section>
 </template>

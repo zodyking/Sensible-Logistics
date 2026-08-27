@@ -9,13 +9,17 @@ defineProps<{
 
 <template>
   <div class="mb-1">
-    <NuxtLink
+    <div
       v-if="backTo"
-      :to="backTo"
-      class="mb-2 inline-flex min-h-11 items-center gap-1.5 rounded-[var(--radius-md)] py-2 pr-3 text-sm font-semibold text-[var(--color-blue-500)]"
+      class="backbar"
     >
-      <span aria-hidden="true">‹</span>{{ backLabel ?? 'Back' }}
-    </NuxtLink>
+      <NuxtLink
+        :to="backTo"
+        class="backbtn"
+      >
+        ‹ {{ backLabel ?? 'Back' }}
+      </NuxtLink>
+    </div>
     <span
       v-if="eyebrow"
       class="eyebrow block"

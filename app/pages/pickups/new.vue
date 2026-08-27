@@ -659,53 +659,17 @@ const selectedChassis = computed(() =>
 
     <!-- ── Step 5 · Confirm ────────────────────────────────────── -->
     <template v-else>
-      <div class="trip-card">
-        <div class="trip-card-head">
-          <div class="trip-card-meta">
-            <span class="trip-flag line">{{ CONTAINER_TYPE_LABELS[containerType] }}</span>
-            <span
-              class="trip-flag"
-              :class="isLoaded ? 'loaded' : 'empty'"
-            >{{ isLoaded ? 'Loaded' : 'Empty' }}</span>
-          </div>
-
-          <div class="trip-cno">
-            {{ formatContainerNumber(normalized) }}
-          </div>
-
-          <div class="trip-facts">
-            <div class="trip-fact">
-              <small>Equipment</small>
-              <b>{{ EQUIPMENT_TYPE_LABELS[equipmentType] }}</b>
-            </div>
-            <div class="trip-fact">
-              <small>Chassis</small>
-              <b>{{ selectedChassis?.number ?? 'None' }}</b>
-            </div>
-            <div class="trip-fact">
-              <small>Seal</small>
-              <b>{{ sealNumber || '—' }}</b>
-            </div>
-          </div>
-        </div>
-
-        <div class="route-strip">
-          <div class="route-point">
-            <small>Pickup</small>
-            <strong>{{ originLocation?.name ?? '—' }}</strong>
-          </div>
-          <div
-            class="route-arrow"
-            aria-hidden="true"
-          >
-            →
-          </div>
-          <div class="route-point dest">
-            <small>Drop-off</small>
-            <strong>Chosen on arrival</strong>
-          </div>
-        </div>
-      </div>
+      <TripCard
+        :container-type="containerType"
+        :is-loaded="isLoaded"
+        :container-number="formatContainerNumber(normalized)"
+        :equipment-type="equipmentType"
+        :chassis-number="selectedChassis?.number"
+        :seal-number="sealNumber"
+        :origin-name="originLocation?.name"
+        destination-name="Chosen on arrival"
+        origin-label="Pickup"
+      />
 
       <p class="banner info">
         <span aria-hidden="true">▸</span>

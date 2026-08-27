@@ -12,6 +12,7 @@ import {
   DOCUMENT_CATEGORY_LABELS,
   EQUIPMENT_LENGTH_FT,
   EQUIPMENT_TYPE_LABELS,
+  EQUIPMENT_TYPE_SHORT,
   EQUIPMENT_TYPES,
   EVENT_GLYPH,
   EVENT_TYPE_LABELS,
@@ -26,6 +27,7 @@ import {
   SHORT_HAUL_STATUSES,
   SHORT_HAUL_WINDOW_MINUTES,
   TRIP_STATUS_CHIP,
+  TRIP_STATUS_GLYPH,
   TRIP_STATUS_LABELS,
   TRIP_STATUSES,
 } from '../shared/utils/domain'
@@ -52,11 +54,11 @@ describe('domain vocabulary integrity', () => {
   })
 
   it('keeps EQUIPMENT_TYPES in lockstep with labels and lengths', () => {
-    expectUnionKeysMatch(EQUIPMENT_TYPES, EQUIPMENT_TYPE_LABELS, EQUIPMENT_LENGTH_FT)
+    expectUnionKeysMatch(EQUIPMENT_TYPES, EQUIPMENT_TYPE_LABELS, EQUIPMENT_LENGTH_FT, EQUIPMENT_TYPE_SHORT)
   })
 
   it('keeps TRIP_STATUSES in lockstep with labels and chips', () => {
-    expectUnionKeysMatch(TRIP_STATUSES, TRIP_STATUS_LABELS, TRIP_STATUS_CHIP)
+    expectUnionKeysMatch(TRIP_STATUSES, TRIP_STATUS_LABELS, TRIP_STATUS_CHIP, TRIP_STATUS_GLYPH)
   })
 
   it('keeps EVENT_TYPES in lockstep with labels and glyphs', () => {

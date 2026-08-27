@@ -69,6 +69,19 @@ export const EQUIPMENT_TYPE_LABELS: Record<EquipmentType, string> = {
   OTHER: 'Other',
 }
 
+/** Compact length labels used on the active-trip card (`40' HC`). */
+export const EQUIPMENT_TYPE_SHORT: Record<EquipmentType, string> = {
+  DRY_20: `20' Dry`,
+  DRY_40: `40' Dry`,
+  HC_40: `40' HC`,
+  HC_45: `45' HC`,
+  REEFER: 'Reefer',
+  TANK: 'Tank',
+  OPEN_TOP: 'OT',
+  FLAT_RACK: 'FR',
+  OTHER: 'Other',
+}
+
 /** Nominal length in feet — drives proportional sizing in the yard editor. */
 export const EQUIPMENT_LENGTH_FT: Record<EquipmentType, number> = {
   DRY_20: 20,
@@ -114,6 +127,18 @@ export const TRIP_STATUS_CHIP: Record<TripStatus, 'ok' | 'warn' | 'err' | 'trans
   COMPLETED: 'ok',
   CANCELLED: 'idle',
   EXCEPTION: 'err',
+}
+
+/** Row-icon glyphs on the trips list — mirrors the design template. */
+export const TRIP_STATUS_GLYPH: Record<TripStatus, string> = {
+  DRAFT: '–',
+  PICKUP_IN_PROGRESS: '▸',
+  IN_TRANSIT: '▸',
+  DROPOFF_IN_PROGRESS: '▼',
+  DROPPED_OFF: '✓',
+  COMPLETED: '✓',
+  CANCELLED: '✕',
+  EXCEPTION: '✕',
 }
 
 /** Immutable event vocabulary (spec 5.2/5.3). */
@@ -217,9 +242,9 @@ export const LOCATION_TYPE_LABELS: Record<LocationType, string> = {
 }
 
 export const LOCATION_GLYPH: Record<LocationType, string> = {
-  MARINE_TERMINAL: '⚓',
+  MARINE_TERMINAL: '▣',
   RAIL_TERMINAL: '▤',
-  CUSTOMER: '▥',
+  CUSTOMER: '▤',
   WAREHOUSE: '▦',
   COMPANY_YARD: '◫',
   DEPOT: '▩',
