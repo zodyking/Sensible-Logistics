@@ -107,8 +107,8 @@ async function saveDropoff() {
       >
         <div class="trip-card-head">
           <div class="trip-card-meta">
-            <span class="trip-flag line">Ready</span>
-            <span class="trip-flag empty">No load</span>
+            <span class="trip-flag line">None</span>
+            <span class="trip-flag empty">Bob Tail</span>
           </div>
           <div class="trip-cno">
             No active trip
