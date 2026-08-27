@@ -83,6 +83,16 @@ describe('classifyEquipmentReadings', () => {
     expect(classified.chassis).toBe('AIMZ481345')
   })
 
+  it('corrects I read as 1 in the owner code next to a chassis plate', () => {
+    const classified = classifyEquipmentReadings(['BS1U8169247', 'AIMZ481345'])
+    expect(classified.container).toBe('BSIU8169247')
+    expect(classified.chassis).toBe('AIMZ481345')
+  })
+
+  it('treats a CJK dash as I in a stacked door code', () => {
+    expect(extractIsoWindows('BS一U8169247')).toContain('BSIU8169247')
+  })
+
   it('keeps a chassis plate when the container is read from another orientation', () => {
     const classified = classifyEquipmentReadings([
       'AIMZ 481345',
@@ -102,6 +112,18 @@ describe('classifyEquipmentReadings', () => {
     expect(classified.chassis).toBe('AIMZ481345')
   })
 
+  it('completes a missing boxed check digit on a category-U door code', () => {
+    const classified = classifyEquipmentReadings([
+      'METZ435303',
+      'BS',
+      'I',
+      'U',
+      'BSIU835260',
+    ])
+    expect(classified.container).toBe('BSIU8352601')
+    expect(classified.chassis).toBe('METZ435303')
+  })
+
   it('does not treat the container serial as a chassis plate', () => {
     const classified = classifyEquipmentReadings(['BSIU 816924 7'])
     expect(classified.container).toBe('BSIU8169247')
@@ -110,6 +132,37 @@ describe('classifyEquipmentReadings', () => {
 
   it('joins letter then digit fragments', () => {
     expect(stitchOcrFragments(['BSIU', '8169247'])).toContain('BSIU8169247')
+  })
+
+  it('does not invent a container from bumper stickers plus a door serial', () => {
+    const classified = classifyEquipmentReadings([
+      'METZ435303',
+      'ONLY',
+      'METRO-POOL',
+      'BS',
+      'U835260',
+      '二I',
+    ])
+    expect(classified.container).toBe('BSIU8352601')
+    expect(classified.chassis).toBe('METZ435303')
+    expect(classified.container).not.toBe('LBSU8352609')
+  })
+
+  it('does not glue the chassis serial onto the door owner code', () => {
+    const classified = classifyEquipmentReadings([
+      'BS',
+      'I',
+      'U',
+      '8',
+      '11',
+      '6',
+      '9',
+      '4',
+      'AIMZ481345',
+      'BS1U8169247',
+    ])
+    expect(classified.container).toBe('BSIU8169247')
+    expect(classified.chassis).toBe('AIMZ481345')
   })
 })
 

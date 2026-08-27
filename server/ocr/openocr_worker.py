@@ -18,8 +18,17 @@ import re
 import sys
 import tempfile
 import traceback
+from itertools import permutations
 
 ENGINE = 'openocr'
+
+# OpenOCR sometimes emits CJK lookalikes for a painted Latin I.
+_GLYPH_MAP = str.maketrans({
+    '一': 'I',
+    '丨': 'I',
+    '│': 'I',
+    '｜': 'I',
+})
 
 
 def _version() -> str:
@@ -60,7 +69,7 @@ def _extract_lines(results) -> list[dict]:
     lines: list[dict] = []
 
     def push(text, score=0.0, box=None):
-        cleaned = str(text or '').strip()
+        cleaned = str(text or '').strip().translate(_GLYPH_MAP)
         if not cleaned:
             return
         try:
@@ -104,14 +113,30 @@ def _extract_lines(results) -> list[dict]:
     return lines
 
 
+def _compact_text(text: str) -> str:
+    compact = re.sub(r'[^A-Z0-9]', '', str(text or '').upper())
+    # CJK lookalikes plus a Latin I collapse to one I (the thin door-code glyph).
+    if re.fullmatch(r'I{2,3}', compact):
+        return 'I'
+    return compact
+
+
 def _compact(lines: list[dict]) -> str:
-    blob = ''.join(line.get('text', '') for line in lines).upper()
-    return re.sub(r'[^A-Z0-9]', '', blob)
+    return ''.join(_compact_text(line.get('text', '')) for line in lines)
+
+
+def _line_has_container(text: str) -> bool:
+    """True when one transcript already looks like ISO 6346 (or I/1 in the owner)."""
+    compact = _compact_text(text)
+    if re.search(r'[A-Z]{4}\d{7}', compact):
+        return True
+    if re.fullmatch(r'[A-Z]{3}U\d{6}', compact):
+        return True
+    return bool(re.fullmatch(r'[A-Z0-9]{4}\d{7}', compact) and re.search(r'[A-Z]', compact[:4]))
 
 
 def _has_container(lines: list[dict]) -> bool:
-    """ISO 6346 door code: four letters + seven digits (the boxed check digit)."""
-    return bool(re.search(r'[A-Z]{4}\d{7}', _compact(lines)))
+    return any(_line_has_container(line.get('text') or '') for line in lines)
 
 
 def _merge_lines(*groups: list[dict]) -> list[dict]:
@@ -177,13 +202,134 @@ def _column_stitches(lines: list[dict]) -> list[dict]:
         if len(column) < 2:
             continue
         column.sort(key=lambda row: row[1])
-        joined = ''.join(row[3] for row in column)
-        compact = re.sub(r'[^A-Z0-9]', '', joined.upper())
-        if len(compact) < 4:
-            continue
-        score = sum(float(row[4] or 0) for row in column) / len(column)
-        extra.append({'text': joined, 'score': score, 'box': None})
+        runs: list[list[tuple]] = []
+        current: list[tuple] = []
+        for item in column:
+            if current:
+                gap = item[1] - current[-1][1]
+                limit = max(36.0, current[-1][2] * 3.2)
+                if gap > limit:
+                    runs.append(current)
+                    current = []
+            current.append(item)
+        if current:
+            runs.append(current)
+
+        for run in runs:
+            if len(run) < 2:
+                continue
+            joined = ''.join(row[3] for row in run)
+            compact = _compact_text(joined)
+            if len(compact) < 4:
+                continue
+            score = sum(float(row[4] or 0) for row in run) / len(run)
+            extra.append({'text': joined, 'score': score, 'box': None})
     return extra
+
+
+# Bumper stickers and warning labels that must not become ISO owner codes.
+_LABEL_DENY = {
+    'ONLY', 'LED', 'HEAV', 'UPER', 'SUPER', 'HEAVY', 'POOL', 'METRO',
+    'DORSEY', 'TROPICAL', 'CAUTION', 'HIGH', 'WARNING', 'NOTICE',
+    'AMAZON', 'METROPOOL', 'OUTOOOOA', 'CHINA',
+}
+
+
+def _owner_candidates(frags: list[str]) -> list[str]:
+    """Build 4-letter category-U prefixes from short stacked glyphs."""
+    unique: list[str] = []
+    seen: set[str] = set()
+    for frag in frags:
+        if not frag or frag in _LABEL_DENY or frag in seen:
+            continue
+        if not re.fullmatch(r'[A-Z]{1,4}', frag):
+            continue
+        seen.add(frag)
+        unique.append(frag)
+
+    owners: set[str] = set()
+    for frag in unique:
+        if re.fullmatch(r'[A-Z]{3}U', frag):
+            owners.add(frag)
+
+    subset = unique[:8]
+    for count in (2, 3):
+        for parts in permutations(subset, count):
+            joined = ''.join(parts)
+            if re.fullmatch(r'[A-Z]{3}U', joined):
+                owners.add(joined)
+
+    has_i = any(frag == 'I' or (len(frag) <= 2 and 'I' in frag) for frag in unique)
+    has_u = any(frag == 'U' or frag.endswith('U') for frag in unique)
+    if has_u and not has_i:
+        for frag in unique:
+            if re.fullmatch(r'[A-Z]{2}', frag) and frag[1] != 'U':
+                owners.add(f'{frag}IU')
+
+    two_letter = [frag for frag in unique if len(frag) == 2 and frag[1] != 'U']
+    if two_letter:
+        owners = {owner for owner in owners if any(owner.startswith(prefix) for prefix in two_letter)}
+    return list(owners)
+
+
+def _assemble_iso_from_lines(lines: list[dict]) -> list[dict]:
+    """Join stacked door-code glyphs without using the chassis plate serial."""
+    tokens = [_compact_text(line.get('text') or '') for line in lines]
+    tokens = [token for token in tokens if token]
+
+    chassis_serials: set[str] = set()
+    chassis_owners: set[str] = set()
+    for token in tokens:
+        if re.fullmatch(r'[A-Z]{4}\d{6}', token):
+            chassis_owners.add(token[:4])
+            chassis_serials.add(token[4:])
+
+    letter_frags: list[str] = []
+    serials: list[str] = []
+    extra: list[dict] = []
+
+    def add_letter(value: str) -> None:
+        if value and value not in letter_frags and value not in chassis_owners and value not in _LABEL_DENY:
+            letter_frags.append(value)
+
+    def add_serial(value: str) -> None:
+        if not value or not value.isdigit() or len(value) not in (6, 7):
+            return
+        if value in chassis_serials or value[-6:] in chassis_serials:
+            return
+        if value not in serials:
+            serials.append(value)
+
+    for token in tokens:
+        if token in _LABEL_DENY or token in chassis_owners:
+            continue
+        if re.fullmatch(r'[A-Z]{3}[UJZ]\d{7}', token) or re.fullmatch(r'[A-Z0-9]{4}\d{7}', token):
+            extra.append({'text': token, 'score': 0.6, 'box': None})
+            continue
+        match = re.fullmatch(r'([A-Z]{1,3}U)(\d{6,7})', token)
+        if match:
+            add_letter(match.group(1))
+            add_serial(match.group(2))
+            continue
+        if re.fullmatch(r'U\d{6,7}', token):
+            add_letter('U')
+            add_serial(token[1:])
+            continue
+        if re.fullmatch(r'\d{6,7}', token):
+            add_serial(token)
+            continue
+        if re.fullmatch(r'[A-Z]{1,4}', token):
+            add_letter(token)
+
+    for owner in _owner_candidates(letter_frags):
+        for serial in serials:
+            extra.append({'text': owner + serial, 'score': 0.62, 'box': None})
+    return extra
+
+
+def _letter_digit_joins(lines: list[dict]) -> list[dict]:
+    """Join stacked owner letters with a 6–7 digit serial from the same view."""
+    return _assemble_iso_from_lines(lines)
 
 
 def _workdir() -> str:
@@ -196,6 +342,93 @@ def _save_dir() -> str:
     path = os.path.join(_workdir(), 'e2e_results')
     os.makedirs(path, exist_ok=True)
     return path
+
+
+def _upscale(img, factor: float):
+    import cv2
+    if factor <= 1:
+        return img
+    height, width = img.shape[:2]
+    return cv2.resize(
+        img,
+        (max(1, int(width * factor)), max(1, int(height * factor))),
+        interpolation=cv2.INTER_CUBIC,
+    )
+
+
+def _door_code_views(img) -> list:
+    """Crops where stacked upright ISO door codes usually sit.
+
+    Door codes are upright glyphs in a column on a corrugation rib — rotating
+    the whole photo makes those letters sideways. Tight, upscaled upper-right
+    (and overlapping) windows let the detector see them.
+    """
+    import cv2
+
+    height, width = img.shape[:2]
+    views = []
+    windows = (
+        (0.00, 0.55, 0.50, 1.00, 2.0),
+        (0.00, 0.50, 0.45, 0.75, 3.0),
+        (0.00, 0.50, 0.50, 0.80, 3.0),
+        (0.00, 0.45, 0.48, 0.72, 3.0),
+        (0.05, 0.50, 0.58, 0.78, 4.0),
+    )
+    for y0, y1, x0, x1, scale in windows:
+        tile = img[int(height * y0):int(height * y1), int(width * x0):int(width * x1)]
+        if tile.size == 0 or min(tile.shape[:2]) < 24:
+            continue
+        views.append(cv2.resize(
+            tile,
+            (max(1, int(tile.shape[1] * scale)), max(1, int(tile.shape[0] * scale))),
+            interpolation=cv2.INTER_CUBIC,
+        ))
+    return views
+
+
+def _rib_view(img, lines: list[dict]):
+    """If the first pass already found a column of short glyphs, zoom that rib."""
+    import cv2
+
+    placed = []
+    for line in lines:
+        text = _compact_text(line.get('text') or '')
+        geo = _box_center(line.get('box'))
+        if not text or len(text) > 4 or not geo:
+            continue
+        (cx, cy), short = geo
+        placed.append((cx, cy, short))
+    if len(placed) < 4:
+        return None
+
+    gap = max(14.0, sorted(item[2] for item in placed)[len(placed) // 2] * 1.8)
+    columns: list[list[tuple]] = []
+    for item in sorted(placed, key=lambda row: row[0]):
+        if not columns or abs(item[0] - columns[-1][-1][0]) > gap:
+            columns.append([item])
+        else:
+            columns[-1].append(item)
+    column = max(columns, key=len)
+    if len(column) < 4:
+        return None
+
+    xs = [row[0] for row in column]
+    ys = [row[1] for row in column]
+    shorts = [row[2] for row in column]
+    pad = max(18.0, (sum(shorts) / len(shorts)) * 2.2)
+    height, width = img.shape[:2]
+    x0 = max(0, int(min(xs) - pad))
+    x1 = min(width, int(max(xs) + pad))
+    y0 = max(0, int(min(ys) - pad * 2))
+    y1 = min(height, int(max(ys) + pad * 3))
+    rib = img[y0:y1, x0:x1]
+    if min(rib.shape[:2]) < 20:
+        return None
+    return cv2.resize(
+        rib,
+        (max(1, rib.shape[1] * 4), max(1, rib.shape[0] * 4)),
+        interpolation=cv2.INTER_CUBIC,
+    )
 
 
 def _parse_ocr_output(out):
@@ -234,33 +467,39 @@ def _run(ocr, image_path: str):
 
 
 def _orientation_pass(ocr, img, lines: list[dict], timing):
-    """Keep the upright reading and add 90° passes for vertical door codes.
+    """Add door-code crops for stacked upright ISO markings.
 
-    Chassis plates are usually horizontal. ISO container markings on the door
-    are often stacked vertically. The first pass therefore often finds the
-    chassis and used to skip rotation — which dropped the container. Merge
-    every orientation instead of replacing the original lines.
+    Chassis plates are horizontal. Container numbers on the rear doors are
+    upright letters stacked down a rib. A 90° rotation of the whole photo
+    makes those letters sideways and is the wrong transform. Zoomed
+    upper-right windows (and a tight rib crop when glyphs were already
+    found) are the right one.
     """
-    combined = _merge_lines(lines, _column_stitches(lines))
+    combined = _merge_lines(lines, _column_stitches(lines), _letter_digit_joins(lines))
+    combined = _merge_lines(combined, _assemble_iso_from_lines(combined))
     if _has_container(combined):
         return combined, timing
 
-    try:
-        import cv2
-    except Exception:
-        return combined, timing
+    views = []
+    rib = _rib_view(img, lines)
+    if rib is not None:
+        views.append(rib)
+    views.extend(_door_code_views(img))
 
     best_timing = timing
-    for flag in (cv2.ROTATE_90_COUNTERCLOCKWISE, cv2.ROTATE_90_CLOCKWISE):
+    for view in views:
         try:
-            rotated, rotated_timing = _run_numpy(ocr, cv2.rotate(img, flag))
-            combined = _merge_lines(combined, rotated, _column_stitches(rotated))
-            if rotated_timing:
-                best_timing = rotated_timing
+            extra, extra_timing = _run_numpy(ocr, view)
+            extra = _merge_lines(extra, _column_stitches(extra), _letter_digit_joins(extra))
+            combined = _merge_lines(combined, extra)
+            combined = _merge_lines(combined, _assemble_iso_from_lines(combined))
+            if extra_timing:
+                best_timing = extra_timing
             if _has_container(combined):
                 return combined, best_timing
         except Exception:
             continue
+    combined = _merge_lines(combined, _assemble_iso_from_lines(combined))
     return combined, best_timing
 
 
