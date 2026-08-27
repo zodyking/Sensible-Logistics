@@ -1,8 +1,8 @@
 import { spawn } from 'node:child_process'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { parseEquipmentReadings } from '#shared/utils/ocr-parse'
+import { isTesseractTsv, parseEquipmentReadings, visibleOcrTranscript } from '#shared/utils/ocr-parse'
 import { generateCorrectionCandidates, validateContainerNumber } from '#shared/utils/iso6346'
 import {
   ensureSafecontainTessdata,
@@ -140,25 +140,60 @@ async function readVersion(): Promise<string | null> {
 }
 
 function parseTsv(tsv: string): OcrRegion[] {
-  const lines = tsv.split(/\r?\n/).slice(1)
+  const lines = tsv.split(/\r?\n/).filter(line => line.trim())
+  if (!lines.length) return []
+
+  let textIdx = 11
+  let confIdx = 10
+  let leftIdx = 6
+  let topIdx = 7
+  let widthIdx = 8
+  let heightIdx = 9
+  let start = 0
+
+  if (/^level\t/i.test(lines[0]!)) {
+    const header = lines[0]!.split('\t').map(h => h.trim().toLowerCase())
+    const indexOf = (name: string, fallback: number) => {
+      const found = header.indexOf(name)
+      return found >= 0 ? found : fallback
+    }
+    textIdx = indexOf('text', 11)
+    confIdx = indexOf('conf', 10)
+    leftIdx = indexOf('left', 6)
+    topIdx = indexOf('top', 7)
+    widthIdx = indexOf('width', 8)
+    heightIdx = indexOf('height', 9)
+    start = 1
+  }
+
   const regions: OcrRegion[] = []
-  for (const line of lines) {
-    if (!line.trim()) continue
+  for (const line of lines.slice(start)) {
     const cols = line.split('\t')
-    if (cols.length < 12) continue
+    if (cols.length <= Math.max(textIdx, confIdx)) continue
     const level = Number(cols[0])
-    // Level 5 is a word.
     if (level !== 5) continue
-    const text = (cols[11] ?? '').trim()
-    if (!text) continue
-    const conf = Number(cols[10])
+    const text = (cols[textIdx] ?? '').trim()
+    if (!text || (/^\d+$/.test(text) && text.length > 8)) continue
+    const conf = Number(cols[confIdx])
     regions.push({
       text,
       confidence: Number.isFinite(conf) ? Math.max(0, Math.min(1, conf / 100)) : 0,
-      box: [Number(cols[6]) || 0, Number(cols[7]) || 0, Number(cols[8]) || 0, Number(cols[9]) || 0],
+      box: [
+        Number(cols[leftIdx]) || 0,
+        Number(cols[topIdx]) || 0,
+        Number(cols[widthIdx]) || 0,
+        Number(cols[heightIdx]) || 0,
+      ],
     })
   }
   return regions
+}
+
+function wordsFromPass(txt: string, tsv: string): { text: string, regions: OcrRegion[] } {
+  const regions = parseTsv(tsv)
+  const fromWords = regions.map(r => r.text).filter(Boolean).join(' ')
+  const fromTxt = isTesseractTsv(txt) ? '' : txt.trim()
+  return { text: fromWords || fromTxt, regions }
 }
 
 async function ocrFile(
@@ -195,9 +230,7 @@ async function ocrFile(
     throw new Error(result.stderr.trim() || `tesseract exited ${result.code}`)
   }
 
-  const regions = parseTsv(tsv)
-  const text = txt.trim() || regions.map(r => r.text).join(' ')
-  return { text, regions }
+  return wordsFromPass(txt, tsv)
 }
 
 class SafecontainOcrService implements OcrService {
@@ -242,28 +275,28 @@ class SafecontainOcrService implements OcrService {
 
     try {
       await writeFile(imagePath, image)
-      // PSM 5 is a vertical block — container door numbers are stacked.
-      const passes = profile === 'container' ? [5, 11, 6, 7] : [7, 6, 11]
+      const tessdataPasses: Array<string | null> = tessdataDir ? [tessdataDir, null] : [null]
       const texts: string[] = []
       let regions: OcrRegion[] = []
 
-      for (const psm of passes) {
-        try {
-          const pass = await ocrFile(imagePath, psm, tessdataDir, dir)
-          if (pass.text.trim()) texts.push(pass.text)
-          if (pass.regions.length > regions.length) regions = pass.regions
+      for (const [index, dataDir] of tessdataPasses.entries()) {
+        const passDir = join(dir, `pass-${index}`)
+        await mkdir(passDir, { recursive: true })
+        const psms = profile === 'container' ? [7, 6, 11] : [7, 6, 11]
+        for (const psm of psms) {
+          try {
+            const pass = await ocrFile(imagePath, psm, dataDir, passDir)
+            if (pass.text.trim() && !isTesseractTsv(pass.text)) texts.push(pass.text)
+            if (pass.regions.length > regions.length) regions = pass.regions
+          }
+          catch (error) {
+            console.warn(`[ocr] SAFEContain psm ${psm} failed:`, error instanceof Error ? error.message : error)
+          }
         }
-        catch (error) {
-          console.warn(`[ocr] SAFEContain psm ${psm} failed:`, error instanceof Error ? error.message : error)
-        }
+        if (profile === 'container' && /[A-Z]{4}/.test(texts.join(''))) break
       }
 
-      const rawText = texts
-        .map(text => text.replace(/\s+/g, ' ').trim())
-        .filter(Boolean)
-        .filter((text, index, all) => all.indexOf(text) === index)
-        .join(' | ')
-
+      const rawText = visibleOcrTranscript(texts.join(' '))
       const meanConf = regions.length
         ? regions.reduce((sum, r) => sum + r.confidence, 0) / regions.length
         : 0.65
@@ -282,9 +315,7 @@ class SafecontainOcrService implements OcrService {
         latencyMs: Date.now() - started,
         message: candidates.length
           ? undefined
-          : rawText
-            ? `Read “${rawText.slice(0, 80)}” but that is not a container number. Try another photo, or type it.`
-            : 'No equipment number could be read. Take another photo, or enter it manually.',
+          : 'No container number could be read. Frame the four letters and seven digits, or type it.',
       }
     }
     finally {

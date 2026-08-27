@@ -49,7 +49,12 @@ async function startCamera() {
   cameraMessage.value = ''
   try {
     stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+      video: {
+        facingMode: { ideal: 'environment' },
+        width: { ideal: 1080 },
+        height: { ideal: 1920 },
+        aspectRatio: { ideal: 0.75 },
+      },
       audio: false,
     })
     if (videoEl.value) {
@@ -74,7 +79,7 @@ onBeforeUnmount(() => {
   stopCamera()
 })
 
-function frameToDataUrl(source: CanvasImageSource, width: number, height: number): string {
+function frameToDataUrl(source: CanvasImageSource, width: number, height: number, enhance = false): string {
   const maxEdge = 1280
   const scale = Math.min(1, maxEdge / Math.max(width, height))
   const canvas = document.createElement('canvas')
@@ -82,8 +87,10 @@ function frameToDataUrl(source: CanvasImageSource, width: number, height: number
   canvas.height = Math.max(1, Math.round(height * scale))
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('Could not capture the photo.')
+  if (enhance) ctx.filter = 'grayscale(1) contrast(1.65) brightness(1.1)'
   ctx.drawImage(source, 0, 0, canvas.width, canvas.height)
-  return canvas.toDataURL('image/jpeg', 0.82)
+  ctx.filter = 'none'
+  return canvas.toDataURL('image/jpeg', 0.85)
 }
 
 function captureShutter(): string {
@@ -120,11 +127,16 @@ async function rotateDataUrl(dataUrl: string, quarterTurns: number): Promise<str
   return frameToDataUrl(canvas, canvas.width, canvas.height)
 }
 
+async function contrastJpeg(dataUrl: string): Promise<string> {
+  const img = await loadImage(dataUrl)
+  return frameToDataUrl(img, img.naturalWidth, img.naturalHeight, true)
+}
+
 async function framesForOcr(image: string): Promise<string[]> {
-  if (props.profile !== 'container') return [image]
-  const rotated90 = await rotateDataUrl(image, 3) // 270° = 90° CCW (door numbers read down)
-  const rotated270 = await rotateDataUrl(image, 1)
-  return [rotated90, image, rotated270]
+  const contrast = await contrastJpeg(image)
+  if (props.profile !== 'container') return [contrast]
+  const rotated = await rotateDataUrl(contrast, 3)
+  return [rotated, contrast]
 }
 
 async function normalizeToJpeg(dataUrl: string): Promise<string> {
@@ -258,73 +270,75 @@ const extras = computed(() => candidates.value.filter(c => c.value !== selected.
       </div>
 
       <div class="capture-stage">
-        <video
-          v-show="phase === 'camera'"
-          ref="videoEl"
-          playsinline
-          muted
-          autoplay
-        />
-        <img
-          v-if="phase !== 'camera' && previewUrl"
-          :src="previewUrl"
-          alt="Captured photo"
-        >
-        <div
-          v-if="phase === 'camera' && cameraState !== 'live'"
-          class="capture-stage-msg"
-        >
-          <p>{{ cameraMessage || 'Starting camera…' }}</p>
-        </div>
-        <div
-          v-else-if="phase === 'reading'"
-          class="capture-stage-msg"
-        >
-          <p>Reading the number…</p>
-        </div>
-        <div
-          v-else-if="phase === 'review' && selected"
-          class="capture-readout"
-        >
-          <span class="mono">{{ formatValue(selected) }}</span>
-          <small>
-            Confirm this reading, or pick another candidate.
-          </small>
-          <small
-            v-if="rawText"
-            class="capture-raw"
-          >OCR: {{ rawText }}</small>
-          <small
-            v-if="engineLabel"
-            class="capture-raw"
-          >Engine: {{ engineLabel }}</small>
-          <div
-            v-if="extras.length"
-            class="capture-alts"
+        <div class="capture-viewport">
+          <video
+            v-show="phase === 'camera'"
+            ref="videoEl"
+            playsinline
+            muted
+            autoplay
+          />
+          <img
+            v-if="phase !== 'camera' && previewUrl"
+            :src="previewUrl"
+            alt="Captured photo"
           >
-            <button
-              v-for="candidate in extras"
-              :key="candidate.value"
-              type="button"
-              @click="selected = candidate.value"
-            >
-              {{ formatValue(candidate.value) }}
-            </button>
+          <div
+            v-if="phase === 'camera' && cameraState !== 'live'"
+            class="capture-stage-msg"
+          >
+            <p>{{ cameraMessage || 'Starting camera…' }}</p>
           </div>
-        </div>
-        <div
-          v-else-if="phase === 'review'"
-          class="capture-readout"
-        >
-          <small>{{ ocrError || 'No number found.' }}</small>
-          <small
-            v-if="rawText"
-            class="capture-raw"
-          >OCR: {{ rawText }}</small>
-          <small
-            v-if="engineLabel"
-            class="capture-raw"
-          >Engine: {{ engineLabel }}</small>
+          <div
+            v-else-if="phase === 'reading'"
+            class="capture-stage-msg"
+          >
+            <p>Reading the number…</p>
+          </div>
+          <div
+            v-else-if="phase === 'review' && selected"
+            class="capture-readout"
+          >
+            <span class="mono">{{ formatValue(selected) }}</span>
+            <small>
+              Confirm this reading, or pick another candidate.
+            </small>
+            <small
+              v-if="rawText"
+              class="capture-raw"
+            >OCR: {{ rawText }}</small>
+            <small
+              v-if="engineLabel"
+              class="capture-raw"
+            >Engine: {{ engineLabel }}</small>
+            <div
+              v-if="extras.length"
+              class="capture-alts"
+            >
+              <button
+                v-for="candidate in extras"
+                :key="candidate.value"
+                type="button"
+                @click="selected = candidate.value"
+              >
+                {{ formatValue(candidate.value) }}
+              </button>
+            </div>
+          </div>
+          <div
+            v-else-if="phase === 'review'"
+            class="capture-readout"
+          >
+            <small>{{ ocrError || 'No number found.' }}</small>
+            <small
+              v-if="rawText"
+              class="capture-raw"
+            >OCR: {{ rawText }}</small>
+            <small
+              v-if="engineLabel"
+              class="capture-raw"
+            >Engine: {{ engineLabel }}</small>
+          </div>
         </div>
       </div>
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { extractChassisTokens, extractIsoWindows, parseEquipmentReadings } from '../shared/utils/ocr-parse'
+import { extractChassisTokens, extractIsoWindows, isTesseractTsv, parseEquipmentReadings, visibleOcrTranscript } from '../shared/utils/ocr-parse'
 
 describe('extractIsoWindows', () => {
   it('finds a valid number in a noisy transcript', () => {
@@ -18,6 +18,22 @@ describe('extractIsoWindows', () => {
     const header = 'level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext'
     expect(extractIsoWindows(header)).toEqual([])
     expect(parseEquipmentReadings([header], 'container').map(c => c.value)).toEqual([])
+  })
+
+  it('finds a stacked door number when OCR returns one character per line', () => {
+    expect(extractIsoWindows('B\nS\nI\nU\n8\n4\n2\n3\n0\n8\n0')).toEqual(['BSIU8423080'])
+  })
+})
+
+describe('isTesseractTsv', () => {
+  it('detects a TSV table dump', () => {
+    expect(isTesseractTsv('level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n5\t1\t1\t1\t1\t1\t162\t8\t2\t88\t87\t8')).toBe(true)
+    expect(visibleOcrTranscript('5\t1\t1\t1\t1\t1\t162\t8\t2\t88\t87\t8')).toBe('')
+  })
+
+  it('does not treat a real reading as TSV', () => {
+    expect(isTesseractTsv('B S I U 8 4 2 3 0 8 0')).toBe(false)
+    expect(visibleOcrTranscript('B S I U 8 4 2 3 0 8 0')).toContain('B S I U')
   })
 })
 

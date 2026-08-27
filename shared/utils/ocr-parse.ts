@@ -21,6 +21,21 @@ function compactAlnum(text: string): string {
   return (text ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '')
 }
 
+/** True when Tesseract wrote a TSV table rather than the words it read. */
+export function isTesseractTsv(text: string): boolean {
+  const line = (text ?? '').split(/\r?\n/).map(l => l.trim()).find(Boolean) ?? ''
+  if (/^level\tpage_num\t/i.test(line)) return true
+  const tabs = line.split('\t')
+  return tabs.length >= 10 && /^\d+$/.test(tabs[0] ?? '') && /^\d+$/.test(tabs[1] ?? '')
+}
+
+export function visibleOcrTranscript(text: string): string {
+  if (!text || isTesseractTsv(text)) return ''
+  const compact = compactAlnum(text)
+  if (!/[A-Z]{3,}/.test(compact)) return ''
+  return text.replace(/\s+/g, ' ').trim().slice(0, 80)
+}
+
 /** Sliding 11-character windows that look like ISO 6346 identifiers. */
 export function extractIsoWindows(text: string): string[] {
   const compact = compactAlnum(text)
@@ -95,6 +110,7 @@ export function parseEquipmentReadings(
       if (compact.length >= 4 && compact.length <= 20) values.add(compact)
     }
     else {
+      if (isTesseractTsv(text)) continue
       for (const iso of extractIsoWindows(text)) values.add(iso)
       const compact = compactAlnum(text)
       // Keep near-ISO 11-character readings (owner code intact) so confusable

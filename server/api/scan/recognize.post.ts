@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { confidenceBand, rankCandidates, useOcrService } from '../../services/ocr'
 import { requireDriver } from '../../utils/session'
 import { validateContainerNumber } from '#shared/utils/iso6346'
+import { visibleOcrTranscript } from '#shared/utils/ocr-parse'
 
 const dataUrl = z.string().min(32, 'Take a photo first.').max(20_000_000)
 
@@ -74,7 +75,7 @@ export default defineEventHandler(async (event) => {
       validation: validateContainerNumber(candidate.value),
     }))
 
-  const rawText = mergedTexts.filter(Boolean).filter((text, i, all) => all.indexOf(text) === i).join(' | ')
+  const rawText = visibleOcrTranscript(mergedTexts.join(' '))
 
   return {
     available,
@@ -86,9 +87,7 @@ export default defineEventHandler(async (event) => {
     latencyMs,
     message: candidates.length
       ? undefined
-      : (rawText
-          ? `Read “${rawText.slice(0, 80)}” but that is not a container number. Try another photo, or type it.`
-          : (message || 'No equipment number could be read. Take another photo, or enter it manually.')),
+      : (message || 'No container number could be read. Frame the four letters and seven digits, or type it.'),
     fallback: {
       manualEntry: true,
       note: 'OCR accelerates the workflow but never blocks it — enter the number by hand.',
