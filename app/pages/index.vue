@@ -12,11 +12,13 @@ watchEffect(() => {
 
 const active = computed(() => data.value?.active)
 
-const sheet = ref<'dropoff' | 'documents' | 'sms' | 'contacts' | null>(null)
+const sheet = ref<'dropoff' | 'documents' | 'sms' | 'contacts' | 'cancel' | null>(null)
 const locationSearch = ref('')
 const selectedDestinationId = ref<string | null>(null)
 const savingDropoff = ref(false)
 const dropoffError = ref('')
+const cancelling = ref(false)
+const cancelError = ref('')
 
 const { data: locationData } = await useFetch('/api/locations', {
   query: computed(() => ({ q: locationSearch.value || undefined, limit: 50 })),
@@ -32,6 +34,29 @@ const primaryAction = computed(() => {
   if (!active.value) return { label: 'New Pickup', to: '/pickups/new' }
   return active.value.primaryAction
 })
+
+async function confirmCancelTrip() {
+  if (!active.value || cancelling.value) return
+  cancelling.value = true
+  cancelError.value = ''
+  try {
+    await $fetch(`/api/trips/${active.value.trip.id}/cancel`, {
+      method: 'POST',
+      body: {
+        eventId: crypto.randomUUID(),
+        reason: 'Driver cancelled from Home.',
+      },
+    })
+    sheet.value = null
+    await refresh()
+  }
+  catch (err) {
+    cancelError.value = apiErrorMessage(err, 'Could not cancel the trip.')
+  }
+  finally {
+    cancelling.value = false
+  }
+}
 
 async function saveDropoff() {
   if (!active.value || !selectedDestinationId.value) return
@@ -182,12 +207,22 @@ async function saveDropoff() {
         </button>
       </div>
 
-      <NuxtLink
-        :to="primaryAction.to"
-        class="btn-primary-action home-cta"
-      >
-        {{ primaryAction.label }}
-      </NuxtLink>
+      <div class="home-ctas">
+        <NuxtLink
+          :to="primaryAction.to"
+          class="btn-primary-action home-cta"
+        >
+          {{ primaryAction.label }}
+        </NuxtLink>
+        <button
+          v-if="active"
+          type="button"
+          class="btn-cancel-trip"
+          @click="sheet = 'cancel'"
+        >
+          Cancel Trip
+        </button>
+      </div>
     </template>
 
     <BottomSheet
@@ -299,6 +334,42 @@ async function saveDropoff() {
           @click="sheet = null"
         >
           Close
+        </button>
+      </div>
+    </BottomSheet>
+
+    <BottomSheet
+      :open="sheet === 'cancel'"
+      title="Cancel Trip"
+      @close="sheet = null"
+    >
+      <p
+        v-if="cancelError"
+        class="banner err"
+        role="alert"
+      >
+        <span aria-hidden="true">✕</span>
+        <span>{{ cancelError }}</span>
+      </p>
+      <p class="text-sm text-[var(--color-ink-700)]">
+        Cancel this trip? You will go back to no active trip. The container stays in the pool.
+      </p>
+      <div class="sheet-actions">
+        <button
+          type="button"
+          class="btn-cancel"
+          :disabled="cancelling"
+          @click="sheet = null"
+        >
+          Keep Trip
+        </button>
+        <button
+          type="button"
+          class="btn-save danger"
+          :disabled="cancelling"
+          @click="confirmCancelTrip"
+        >
+          {{ cancelling ? 'Cancelling…' : 'Cancel Trip' }}
         </button>
       </div>
     </BottomSheet>

@@ -7,7 +7,7 @@ const schema = z.object({
   reason: z.string().trim().max(500).nullish(),
 })
 
-/** Abandon an unconfirmed pickup and clear the temporary pool claim. */
+/** Cancel a live movement and return the driver to no active trip. */
 export default defineEventHandler(async (event) => {
   const auth = await requireDriver(event)
   const tripId = getRouterParam(event, 'id')

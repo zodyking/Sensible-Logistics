@@ -347,8 +347,9 @@ export interface CancelPickupInput {
 }
 
 /**
- * Abandon an unconfirmed pickup. The temporary claim is cleared while the
- * permanent identity and its audit trail are retained (spec 5.3).
+ * Cancel the driver's live movement. Unconfirmed pickups drop the temporary
+ * claim; in-transit / at-stop trips return the box to the origin yard and
+ * leave the driver with no active trip. The trip row is kept as CANCELLED.
  */
 export async function cancelPickup(
   db: Database,
@@ -356,42 +357,80 @@ export async function cancelPickup(
   input: CancelPickupInput,
 ): Promise<{ trip: Trip }> {
   return db.transaction(async (tx) => {
+    if (await eventExists(tx, auth.companyId, input.eventId)) {
+      const replayed = await loadTripByEvent(tx, auth.companyId, input.eventId)
+      if (replayed) return { trip: replayed.trip }
+    }
+
     const trip = await loadOwnedTrip(tx, auth, input.tripId)
 
-    if (trip.status !== 'PICKUP_IN_PROGRESS') {
-      throw createError({ statusCode: 409, statusMessage: 'Only an unconfirmed pickup can be cancelled.' })
+    if (!(LIVE_TRIP_STATUSES as readonly string[]).includes(trip.status)) {
+      throw createError({ statusCode: 409, statusMessage: 'This movement is already finished.' })
     }
     if (!trip.containerId) {
       throw createError({ statusCode: 422, statusMessage: 'The movement has no container attached.' })
     }
 
+    const now = new Date()
     const previousState = await previousPoolState(tx, auth.companyId, trip.id)
+    const restoreLocationId = trip.originLocationId
 
     await recordEvent(tx, {
       id: input.eventId,
       companyId: auth.companyId,
       containerId: trip.containerId,
-      eventType: 'PICKUP_CANCELLED',
+      eventType: trip.status === 'PICKUP_IN_PROGRESS' ? 'PICKUP_CANCELLED' : 'STATUS_CHANGE',
       actorUserId: auth.userId,
       actorDriverId: auth.driverId,
       tripId: trip.id,
-      payload: { restoredState: previousState },
-      notes: input.reason ?? null,
-    })
+      locationId: restoreLocationId,
+      payload: {
+        restoredState: previousState,
+        cancelledFrom: trip.status,
+      },
+      notes: input.reason ?? 'Driver cancelled the trip.',
+    }, trip.status === 'PICKUP_IN_PROGRESS'
+      ? undefined
+      : {
+          activePoolState: previousState === 'INACTIVE' ? 'AT_LOCATION' : previousState,
+          currentDriverId: null,
+          currentLocationId: restoreLocationId,
+          activeMovementId: null,
+          currentChassisId: null,
+        })
 
-    await releasePickupClaim(tx, auth.companyId, trip.containerId, previousState)
+    if (trip.status === 'PICKUP_IN_PROGRESS') {
+      await releasePickupClaim(tx, auth.companyId, trip.containerId, previousState)
+    }
+
+    if (trip.chassisId) {
+      await tx
+        .update(chassisTable)
+        .set({
+          currentContainerId: null,
+          currentLocationId: restoreLocationId,
+          status: 'AVAILABLE',
+          updatedAt: now,
+        })
+        .where(and(eq(chassisTable.id, trip.chassisId), eq(chassisTable.companyId, auth.companyId)))
+    }
 
     const [cancelled] = await tx
       .update(trips)
       .set({
         status: 'CANCELLED',
-        cancelledAt: new Date(),
+        cancelledAt: now,
         driverNotes: input.reason ?? trip.driverNotes,
-        updatedAt: new Date(),
+        updatedAt: now,
         version: sql`${trips.version} + 1`,
       })
       .where(eq(trips.id, trip.id))
       .returning()
+
+    await tx
+      .update(drivers)
+      .set({ status: 'AVAILABLE', updatedAt: now })
+      .where(eq(drivers.id, auth.driverId))
 
     return { trip: cancelled! }
   })
