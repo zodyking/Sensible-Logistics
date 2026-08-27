@@ -352,7 +352,7 @@ async function main() {
     'containerType' | 'equipmentType' | 'isLoaded' | 'activePoolState' | 'currentLocationId'
   > & Partial<Pick<
     schema.NewContainer,
-    'sealNumber' | 'steamshipLine' | 'commodity' | 'lastFreeDay' | 'customerReference' | 'isReefer' | 'isUrgent' | 'currentDriverId'
+    'sealNumber' | 'steamshipLine' | 'commodity' | 'lastFreeDay' | 'customerReference' | 'isReefer' | 'isUrgent'
   >> & { number: string }
 
   const containerSeed: ContainerSeed[] = [
@@ -415,7 +415,7 @@ async function main() {
       containerType: 'TROPICAL' as const,
       equipmentType: 'DRY_40' as const,
       isLoaded: false,
-      activePoolState: 'DRIVER_CUSTODY' as const,
+      activePoolState: 'AT_LOCATION' as const,
       currentLocationId: yardId,
       steamshipLine: 'Tropical Shipping',
     },
@@ -497,46 +497,18 @@ async function main() {
     if (row) containerIds[normalized] = row.id
   }
 
-  const overnightNumber = normalizeContainerNumber(containerNumber('TCLU', '118204'))
-  const overnightId = containerIds[overnightNumber]
-  if (overnightId) {
-    await db
-      .update(containers)
-      .set({
-        activePoolState: 'DRIVER_CUSTODY',
-        currentDriverId: driver.id,
-        currentLocationId: yardId,
-        isLoaded: false,
-        lastActivityAt: daysAgo(1, 22, 15),
-        updatedAt: new Date(),
-      })
-      .where(eq(containers.id, overnightId))
-
-    const existingConnect = await db
-      .select({ id: containerEvents.id })
-      .from(containerEvents)
-      .where(and(
-        eq(containerEvents.containerId, overnightId),
-        eq(containerEvents.eventType, 'CONNECTED'),
-      ))
-      .limit(1)
-
-    if (!existingConnect[0]) {
-      await db.insert(containerEvents).values({
-        id: randomUUID(),
-        companyId: company.id,
-        containerId: overnightId,
-        eventType: 'CONNECTED',
-        occurredAt: daysAgo(1, 22, 15),
-        actorUserId: driverUser.id,
-        actorDriverId: driver.id,
-        source: 'MANUAL',
-        locationId: yardId,
-        payload: { driverName: 'Marcus Vega', overnight: true },
-        notes: 'Connected to Marcus Vega',
-      })
-    }
-  }
+  /* Typical morning is idle at the yard — never pre-hooked to a driver. */
+  await db
+    .update(containers)
+    .set({
+      activePoolState: 'AT_LOCATION',
+      currentDriverId: null,
+      updatedAt: new Date(),
+    })
+    .where(and(
+      eq(containers.companyId, company.id),
+      eq(containers.currentDriverId, driver.id),
+    ))
 
   /* ---- One completed trip with its event timeline ---------------- */
   const tripContainerId = containerIds[normalizeContainerNumber(containerSeed[0]!.number)]!
