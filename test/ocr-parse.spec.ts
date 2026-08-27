@@ -13,6 +13,12 @@ describe('extractIsoWindows', () => {
   it('ignores short fragments', () => {
     expect(extractIsoWindows('MSCU452')).toEqual([])
   })
+
+  it('ignores tesseract TSV headers so they cannot become a fake number', () => {
+    const header = 'level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext'
+    expect(extractIsoWindows(header)).toEqual([])
+    expect(parseEquipmentReadings([header], 'container').map(c => c.value)).toEqual([])
+  })
 })
 
 describe('extractChassisTokens', () => {

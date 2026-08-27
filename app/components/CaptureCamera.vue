@@ -75,7 +75,7 @@ onBeforeUnmount(() => {
 })
 
 function frameToDataUrl(source: CanvasImageSource, width: number, height: number): string {
-  const maxEdge = 1600
+  const maxEdge = 1280
   const scale = Math.min(1, maxEdge / Math.max(width, height))
   const canvas = document.createElement('canvas')
   canvas.width = Math.max(1, Math.round(width * scale))
@@ -83,7 +83,7 @@ function frameToDataUrl(source: CanvasImageSource, width: number, height: number
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('Could not capture the photo.')
   ctx.drawImage(source, 0, 0, canvas.width, canvas.height)
-  return canvas.toDataURL('image/jpeg', 0.9)
+  return canvas.toDataURL('image/jpeg', 0.82)
 }
 
 function captureShutter(): string {
@@ -94,18 +94,66 @@ function captureShutter(): string {
   return frameToDataUrl(video, video.videoWidth, video.videoHeight)
 }
 
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => resolve(img)
+    img.onerror = () => reject(new Error('Could not read the photo.'))
+    img.src = src
+  })
+}
+
+/** 90° clockwise turns so stacked container numbers become a horizontal line. */
+async function rotateDataUrl(dataUrl: string, quarterTurns: number): Promise<string> {
+  const turns = ((quarterTurns % 4) + 4) % 4
+  const img = await loadImage(dataUrl)
+  if (turns === 0) return dataUrl
+  const swap = turns % 2 === 1
+  const canvas = document.createElement('canvas')
+  canvas.width = swap ? img.naturalHeight : img.naturalWidth
+  canvas.height = swap ? img.naturalWidth : img.naturalHeight
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('Could not rotate the photo.')
+  ctx.translate(canvas.width / 2, canvas.height / 2)
+  ctx.rotate(turns * Math.PI / 2)
+  ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2)
+  return frameToDataUrl(canvas, canvas.width, canvas.height)
+}
+
+async function framesForOcr(image: string): Promise<string[]> {
+  if (props.profile !== 'container') return [image]
+  const rotated90 = await rotateDataUrl(image, 3) // 270° = 90° CCW (door numbers read down)
+  const rotated270 = await rotateDataUrl(image, 1)
+  return [rotated90, image, rotated270]
+}
+
+async function normalizeToJpeg(dataUrl: string): Promise<string> {
+  const img = await loadImage(dataUrl)
+  return frameToDataUrl(img, img.naturalWidth, img.naturalHeight)
+}
+
+const rawText = ref('')
+const engineLabel = ref('')
+
 async function recognizeImage(image: string) {
   recognizing.value = true
   phase.value = 'reading'
   ocrError.value = ''
   candidates.value = []
   selected.value = ''
+  rawText.value = ''
+  engineLabel.value = ''
   previewUrl.value = image
 
   try {
+    const jpeg = await normalizeToJpeg(image)
+    previewUrl.value = jpeg
+    const frames = await framesForOcr(jpeg)
     const result = await $fetch('/api/scan/recognize', {
       method: 'POST',
-      body: { profile: props.profile, image },
+      timeout: 120_000,
+      headers: { 'Cache-Control': 'no-store' },
+      body: { profile: props.profile, image: frames[0], images: frames },
     })
 
     candidates.value = result.candidates.map(c => ({
@@ -115,6 +163,8 @@ async function recognizeImage(image: string) {
       checkDigitValid: c.checkDigitValid,
     }))
     selected.value = candidates.value[0]?.value ?? ''
+    rawText.value = result.rawText || ''
+    engineLabel.value = [result.engine, result.engineVersion].filter(Boolean).join(' ')
 
     if (result.available === false) {
       ocrError.value = result.message || 'The number could not be read.'
@@ -168,6 +218,8 @@ async function retake() {
   candidates.value = []
   selected.value = ''
   ocrError.value = ''
+  rawText.value = ''
+  engineLabel.value = ''
   phase.value = 'camera'
   await startCamera()
 }
@@ -238,6 +290,14 @@ const extras = computed(() => candidates.value.filter(c => c.value !== selected.
           <small>
             Confirm this reading, or pick another candidate.
           </small>
+          <small
+            v-if="rawText"
+            class="capture-raw"
+          >OCR: {{ rawText }}</small>
+          <small
+            v-if="engineLabel"
+            class="capture-raw"
+          >Engine: {{ engineLabel }}</small>
           <div
             v-if="extras.length"
             class="capture-alts"
@@ -253,10 +313,18 @@ const extras = computed(() => candidates.value.filter(c => c.value !== selected.
           </div>
         </div>
         <div
-          v-else-if="phase === 'review' && ocrError"
+          v-else-if="phase === 'review'"
           class="capture-readout"
         >
-          <small>{{ ocrError }}</small>
+          <small>{{ ocrError || 'No number found.' }}</small>
+          <small
+            v-if="rawText"
+            class="capture-raw"
+          >OCR: {{ rawText }}</small>
+          <small
+            v-if="engineLabel"
+            class="capture-raw"
+          >Engine: {{ engineLabel }}</small>
         </div>
       </div>
 

@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { parseEquipmentReadings } from '#shared/utils/ocr-parse'
@@ -15,7 +15,7 @@ import {
  *
  * Inference never runs in the browser. Scene-text reading uses Tesseract with
  * SAFEContain's trained `eng.traineddata` (ISO 6346 container codes). The
- * model is cached under `.data/safecontain/tessdata` on first scan.
+ * model is cached under a writable temp dir on first scan.
  * `NUXT_OCR_SERVICE_URL` remains an optional override for a future sidecar.
  */
 
@@ -45,6 +45,7 @@ export interface SceneTextResult {
   regions: OcrRegion[]
   /** Ranked best-first. A scan returns candidates, never one magic string. */
   candidates: OcrCandidate[]
+  rawText: string
   latencyMs: number
   message?: string
 }
@@ -164,17 +165,23 @@ async function ocrFile(
   imagePath: string,
   psm: number,
   tessdataDir: string | null,
+  outDir: string,
 ): Promise<{ text: string, regions: OcrRegion[] }> {
   const binary = await tesseractBinary()
   if (!binary) throw new Error('tesseract is not installed')
 
+  // Write to files in the temp dir. `stdout` as outputbase is unreliable:
+  // some Tesseract builds emit nothing (or a leftover stdout.tsv) so every
+  // photo appears to say the same empty/garbage string.
+  const outBase = join(outDir, `p${psm}`)
   const args = [
-    imagePath, 'stdout',
+    imagePath, outBase,
     '--psm', String(psm),
     '-l', 'eng',
     '-c', `tessedit_char_whitelist=${WHITELIST}`,
     '-c', 'load_system_dawg=0',
     '-c', 'load_freq_dawg=0',
+    'txt',
     'tsv',
   ]
   if (tessdataDir) {
@@ -182,12 +189,14 @@ async function ocrFile(
   }
 
   const result = await runCommand(binary, args)
-  if (result.code !== 0) {
+  const txt = await readFile(`${outBase}.txt`, 'utf8').catch(() => '')
+  const tsv = await readFile(`${outBase}.tsv`, 'utf8').catch(() => '')
+  if (result.code !== 0 && !txt.trim() && !tsv.trim()) {
     throw new Error(result.stderr.trim() || `tesseract exited ${result.code}`)
   }
 
-  const regions = parseTsv(result.stdout)
-  const text = regions.map(r => r.text).join(' ') || result.stdout
+  const regions = parseTsv(tsv)
+  const text = txt.trim() || regions.map(r => r.text).join(' ')
   return { text, regions }
 }
 
@@ -206,6 +215,7 @@ class SafecontainOcrService implements OcrService {
         preprocessingProfile: profile,
         regions: [],
         candidates: [],
+        rawText: '',
         latencyMs: Date.now() - started,
         message: 'No photo was captured. Take a picture of the number, or pick one from the library.',
       }
@@ -220,6 +230,7 @@ class SafecontainOcrService implements OcrService {
         preprocessingProfile: profile,
         regions: [],
         candidates: [],
+        rawText: '',
         latencyMs: Date.now() - started,
         message: 'Tesseract is not installed, so SAFEContain cannot read the number. Enter it manually.',
       }
@@ -231,14 +242,14 @@ class SafecontainOcrService implements OcrService {
 
     try {
       await writeFile(imagePath, image)
-      // Full-frame photos: sparse text (11), block (6), then a single line (7).
-      const passes = profile === 'container' ? [11, 6, 7] : [7, 6, 11]
+      // PSM 5 is a vertical block — container door numbers are stacked.
+      const passes = profile === 'container' ? [5, 11, 6, 7] : [7, 6, 11]
       const texts: string[] = []
       let regions: OcrRegion[] = []
 
       for (const psm of passes) {
         try {
-          const pass = await ocrFile(imagePath, psm, tessdataDir)
+          const pass = await ocrFile(imagePath, psm, tessdataDir, dir)
           if (pass.text.trim()) texts.push(pass.text)
           if (pass.regions.length > regions.length) regions = pass.regions
         }
@@ -246,6 +257,12 @@ class SafecontainOcrService implements OcrService {
           console.warn(`[ocr] SAFEContain psm ${psm} failed:`, error instanceof Error ? error.message : error)
         }
       }
+
+      const rawText = texts
+        .map(text => text.replace(/\s+/g, ' ').trim())
+        .filter(Boolean)
+        .filter((text, index, all) => all.indexOf(text) === index)
+        .join(' | ')
 
       const meanConf = regions.length
         ? regions.reduce((sum, r) => sum + r.confidence, 0) / regions.length
@@ -261,10 +278,13 @@ class SafecontainOcrService implements OcrService {
         preprocessingProfile: profile,
         regions,
         candidates,
+        rawText,
         latencyMs: Date.now() - started,
         message: candidates.length
           ? undefined
-          : 'No equipment number could be read. Take another photo, or enter it manually.',
+          : rawText
+            ? `Read “${rawText.slice(0, 80)}” but that is not a container number. Try another photo, or type it.`
+            : 'No equipment number could be read. Take another photo, or enter it manually.',
       }
     }
     finally {

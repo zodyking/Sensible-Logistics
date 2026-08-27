@@ -151,7 +151,7 @@ are no metered or paid dependencies anywhere in the stack — see [Self-hosting]
 | `NUXT_S3_ACCESS_KEY_ID` | no | — | Key you invent for your SeaweedFS container (Phase 2) |
 | `NUXT_S3_SECRET_ACCESS_KEY` | no | — | Secret you invent for your SeaweedFS container (Phase 2) |
 | `NUXT_OCR_SERVICE_URL` | no | — | Unused. Container/chassis OCR runs SAFEContain (Tesseract + trained tessdata) inside the app image |
-| `NUXT_OCR_TESSDATA_DIR` | no | `.data/safecontain/tessdata` | Directory containing SAFEContain `eng.traineddata`. Downloaded on first scan if missing |
+| `NUXT_OCR_TESSDATA_DIR` | no | OS temp `safecontain/tessdata` | Directory containing SAFEContain `eng.traineddata`. Downloaded on first scan if missing |
 | `NUXT_PUBLIC_MAP_TILES_URL` | no | — | Self-hosted tile server (Phase 2) |
 | `NUXT_PUBLIC_GEOCODER_URL` | no | — | Self-hosted Nominatim (Phase 2) |
 | `SKIP_MIGRATIONS` | no | `false` | `true` boots the container without migrating |

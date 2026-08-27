@@ -1323,6 +1323,14 @@
     font-size: 12px;
   }
 
+  .capture-raw {
+    font-family: var(--font-mono);
+    letter-spacing: 0.04em;
+    word-break: break-word;
+    color: rgb(255 255 255 / 0.5) !important;
+    font-size: 11px !important;
+  }
+
   .capture-alts {
     display: flex;
     flex-wrap: wrap;

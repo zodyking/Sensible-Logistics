@@ -1,4 +1,5 @@
 import { mkdir, rename, stat, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 /**
@@ -15,7 +16,8 @@ const MIN_TESSDATA_BYTES = 1_000_000
 export function defaultTessdataDir(): string {
   return process.env.NUXT_OCR_TESSDATA
     || process.env.NUXT_OCR_TESSDATA_DIR
-    || join(process.cwd(), '.data', 'safecontain', 'tessdata')
+    // Production image runs as a non-root user that cannot write /app/.data.
+    || join(tmpdir(), 'safecontain', 'tessdata')
 }
 
 export function tessdataFile(dir = defaultTessdataDir()): string {
@@ -52,7 +54,10 @@ export async function ensureSafecontainTessdata(): Promise<string | null> {
 async function downloadTessdata(dir: string): Promise<string | null> {
   try {
     await mkdir(dir, { recursive: true })
-    const response = await fetch(SAFECONTAIN_TESSDATA_URL, { redirect: 'follow' })
+    const response = await fetch(SAFECONTAIN_TESSDATA_URL, {
+      redirect: 'follow',
+      signal: AbortSignal.timeout(45_000),
+    })
     if (!response.ok) {
       throw new Error(`SAFEContain tessdata HTTP ${response.status}`)
     }

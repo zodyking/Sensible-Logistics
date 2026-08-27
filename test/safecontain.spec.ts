@@ -8,7 +8,7 @@ describe('SAFEContain tessdata', () => {
     expect(SAFECONTAIN_TESSDATA_URL).toContain('tessdata/eng.traineddata')
   })
 
-  it('caches the model under .data by default', () => {
+  it('caches the model in a writable temp dir by default', () => {
     expect(defaultTessdataDir()).toContain('safecontain')
     expect(defaultTessdataDir()).toContain('tessdata')
   })
