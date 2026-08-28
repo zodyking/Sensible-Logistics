@@ -111,7 +111,7 @@ async function confirmCancelTrip() {
         :destination-name="active.destination?.name"
         :status="active.trip.status"
         can-change-dropoff
-        @change-dropoff="navigateTo(`/trips/${active.trip.id}/dropoff`)"
+        @change-dropoff="navigateTo(`/trips/${active.trip.id}/destination`)"
       />
 
       <div

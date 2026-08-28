@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { BoundingBox } from '#shared/utils/geo'
-import { headingDelta, isValidBbox, normalizeHeading } from '#shared/utils/geo'
+import type { GeoJsonPolygon } from '#shared/utils/geo'
+import { bboxFromPolygon, headingDelta, normalizeHeading } from '#shared/utils/geo'
 import { isPlacedPin } from '#shared/utils/yard-slots'
 import { loadLeaflet, observeMapSize, waitForMapSize } from '~/utils/leaflet-map'
 import { OSM_ATTRIBUTION, osmTileUrl } from '~/utils/map-tiles'
@@ -8,14 +8,14 @@ import { OSM_ATTRIBUTION, osmTileUrl } from '~/utils/map-tiles'
 const props = withDefaults(defineProps<{
   latitude: number | null
   longitude: number | null
-  bbox: BoundingBox | null
+  boundary: GeoJsonPolygon | null
   heading?: number
 }>(), {
   heading: 0,
 })
 
 const emit = defineEmits<{
-  'update:bbox': [BoundingBox]
+  'update:boundary': [GeoJsonPolygon]
   'update:heading': [value: number]
 }>()
 
@@ -26,36 +26,14 @@ const errorMessage = ref('')
 type LeafletModule = typeof import('leaflet')
 let L: LeafletModule | null = null
 let map: import('leaflet').Map | null = null
-let rectangle: import('leaflet').Rectangle | null = null
+let fenceLayer: import('leaflet').Polygon | null = null
 let pinMarker: import('leaflet').Marker | null = null
-const corners: import('leaflet').Marker[] = []
 let cancelled = false
 let stopSizeWatch: (() => void) | null = null
 let applyingHeading = false
 
-function hasStart() {
-  return Boolean(props.bbox) || isPlacedPin(props.latitude, props.longitude)
-}
-
-function startBox(): BoundingBox | null {
-  if (props.bbox && isValidBbox(props.bbox)) return props.bbox
-  if (isPlacedPin(props.latitude, props.longitude)) {
-    return {
-      west: props.longitude! - 0.0008,
-      east: props.longitude! + 0.0008,
-      south: props.latitude! - 0.0008,
-      north: props.latitude! + 0.0008,
-    }
-  }
-  return null
-}
-
-function asLatLngBounds(box: BoundingBox) {
-  return L!.latLngBounds(
-    L!.latLng(box.south, box.west),
-    L!.latLng(box.north, box.east),
-  )
-}
+/** Fraction of the viewport left as margin around the captured fence. */
+const FRAME_INSET = 0.12
 
 function paintPin() {
   if (!map || !L) return
@@ -74,63 +52,19 @@ function paintPin() {
   }).addTo(map)
 }
 
-function paintCorners(box: BoundingBox) {
+function paintFence() {
   if (!map || !L) return
-  const points: Array<[number, number]> = [
-    [box.south, box.west],
-    [box.south, box.east],
-    [box.north, box.east],
-    [box.north, box.west],
-  ]
-  const icon = L.divIcon({
-    className: 'bbox-handle',
-    iconSize: [28, 28],
-    iconAnchor: [14, 14],
-  })
-  while (corners.length < 4) {
-    const marker = L.marker(points[corners.length]!, { draggable: true, icon, zIndexOffset: 600 })
-    marker.on('drag', () => {
-      if (!rectangle || corners.length < 4) return
-      const lats = corners.map(m => m.getLatLng().lat)
-      const lngs = corners.map(m => m.getLatLng().lng)
-      const next = {
-        west: Math.min(...lngs),
-        east: Math.max(...lngs),
-        south: Math.min(...lats),
-        north: Math.max(...lats),
-      }
-      if (!isValidBbox(next)) return
-      rectangle.setBounds(asLatLngBounds(next))
-      emit('update:bbox', next)
-    })
-    marker.addTo(map)
-    corners.push(marker)
-  }
-  corners.forEach((marker, i) => marker.setLatLng(points[i]!))
-}
-
-function applyBox(box: BoundingBox, fit: boolean) {
-  if (!map || !L || !isValidBbox(box)) return
-  const bounds = asLatLngBounds(box)
-  if (!rectangle) {
-    rectangle = L.rectangle(bounds, {
-      color: '#F0A422',
-      weight: 2,
-      fillColor: '#F0A422',
-      fillOpacity: 0.18,
-    }).addTo(map)
-  }
-  else {
-    rectangle.setBounds(bounds)
-  }
-  paintCorners(box)
-  paintPin()
-  if (fit) {
-    map.fitBounds(
-      [[box.south, box.west], [box.north, box.east]],
-      { animate: false, padding: [28, 28], maxZoom: 19 },
-    )
-  }
+  fenceLayer?.remove()
+  fenceLayer = null
+  const ring = props.boundary?.coordinates?.[0]
+  if (!ring?.length) return
+  fenceLayer = L.polygon(ring.map(([lng, lat]) => [lat, lng] as [number, number]), {
+    color: '#F0A422',
+    weight: 2,
+    fillColor: '#F0A422',
+    fillOpacity: 0.14,
+    interactive: false,
+  }).addTo(map)
 }
 
 function applyHeading(value: number) {
@@ -147,14 +81,56 @@ function onRotate() {
   emit('update:heading', next)
 }
 
+function setInitialView() {
+  if (!map) return
+  const box = bboxFromPolygon(props.boundary)
+  if (box) {
+    map.fitBounds(
+      [[box.south, box.west], [box.north, box.east]],
+      { animate: false, padding: [40, 40], maxZoom: 19 },
+    )
+    return
+  }
+  if (isPlacedPin(props.latitude, props.longitude)) {
+    map.setView([props.latitude!, props.longitude!], 18, { animate: false })
+    return
+  }
+  map.setView([39.8283, -98.5795], 4, { animate: false })
+}
+
+/**
+ * The fence is whatever sits inside the on-screen frame. With the map rotated
+ * to the street this yields a quad that hugs the roadway, not a north-up box.
+ */
+function captureFence(): GeoJsonPolygon | null {
+  if (!map || !L) return null
+  const size = map.getSize()
+  if (!size.x || !size.y) return null
+  const ix = size.x * FRAME_INSET
+  const iy = size.y * FRAME_INSET
+  const corners: Array<[number, number]> = [
+    [ix, iy],
+    [size.x - ix, iy],
+    [size.x - ix, size.y - iy],
+    [ix, size.y - iy],
+  ]
+  const ring = corners.map(([x, y]) => {
+    const latlng = map!.containerPointToLatLng(L!.point(x, y))
+    return [latlng.lng, latlng.lat] as [number, number]
+  })
+  ring.push(ring[0]!)
+  const polygon: GeoJsonPolygon = { type: 'Polygon', coordinates: [ring] }
+  emit('update:boundary', polygon)
+  return polygon
+}
+
 async function boot() {
-  if (!import.meta.client || !mapEl.value || !hasStart()) return
+  if (!import.meta.client || !mapEl.value) return
   try {
     const sized = await waitForMapSize(mapEl.value, () => cancelled)
-    if (cancelled || !mapEl.value || !sized) {
-      if (!cancelled && mapEl.value) {
-        errorMessage.value = 'Map did not get a size. Go back one step and open it again.'
-      }
+    if (cancelled || !mapEl.value) return
+    if (!sized) {
+      errorMessage.value = 'Map did not get a size. Go back one step and open it again.'
       return
     }
     L = await loadLeaflet()
@@ -173,17 +149,12 @@ async function boot() {
       attribution: OSM_ATTRIBUTION,
     }).addTo(map)
     map.on('rotate', onRotate)
-
-    const start = startBox()
-    if (start) {
-      map.setView([(start.north + start.south) / 2, (start.west + start.east) / 2], 17)
-      applyBox(start, false)
-      if (!props.bbox) emit('update:bbox', start)
-    }
+    setInitialView()
+    paintFence()
+    paintPin()
     ready.value = true
     map.invalidateSize()
     applyHeading(props.heading)
-    if (start) applyBox(start, true)
     stopSizeWatch = observeMapSize(mapEl.value, () => {
       if (cancelled || !map) return
       map.invalidateSize()
@@ -196,33 +167,15 @@ async function boot() {
   }
 }
 
-function useVisibleMap() {
-  if (!map) return
-  const bounds = map.getBounds()
-  const box = {
-    west: bounds.getWest(),
-    south: bounds.getSouth(),
-    east: bounds.getEast(),
-    north: bounds.getNorth(),
-  }
-  if (!isValidBbox(box)) return
-  applyBox(box, false)
-  emit('update:bbox', box)
-}
-
-watch(
-  () => [props.latitude, props.longitude, props.bbox] as const,
-  async () => {
-    if (!hasStart()) return
-    if (!ready.value) {
-      await boot()
-      return
-    }
-    const box = startBox()
-    if (box) applyBox(box, true)
-  },
-)
-
+watch(() => props.boundary, () => {
+  if (!ready.value) return
+  paintFence()
+})
+watch(() => [props.latitude, props.longitude] as const, () => {
+  if (!ready.value) return
+  paintPin()
+  setInitialView()
+})
 watch(() => props.heading, (value) => {
   if (!ready.value || !map) return
   if (headingDelta(map.getBearing(), value) < 0.4) return
@@ -239,45 +192,39 @@ onBeforeUnmount(() => {
   stopSizeWatch = null
   try {
     map?.off()
-    for (const marker of corners) marker.remove()
     pinMarker?.remove()
-    rectangle?.remove()
+    fenceLayer?.remove()
     map?.remove()
   }
   catch {
     // Leaflet throws if the pane was already detached during a route change.
   }
   map = null
-  rectangle = null
+  fenceLayer = null
   pinMarker = null
-  corners.length = 0
   L = null
 })
 
 defineExpose({
-  recenter() {
-    const box = startBox()
-    if (box) applyBox(box, true)
-  },
+  captureFence,
+  recenter: setInitialView,
 })
 </script>
 
 <template>
   <div>
-    <div
-      v-if="!hasStart()"
-      class="location-map flex items-center justify-center p-6 text-center text-sm text-[var(--color-ink-500)]"
-      role="status"
-    >
-      Pick a United States address first. The map opens on that pin, not a default city.
+    <div class="map-frame-wrap">
+      <div
+        ref="mapEl"
+        class="location-map place"
+        role="application"
+        aria-label="OpenStreetMap. Rotate and pan until the yard fills the frame, then set the fence."
+      />
+      <div
+        class="fence-frame"
+        aria-hidden="true"
+      />
     </div>
-    <div
-      v-else
-      ref="mapEl"
-      class="location-map"
-      role="application"
-      aria-label="OpenStreetMap. Drag the gold corners to set the yard boundary."
-    />
     <p
       v-if="errorMessage"
       class="banner err mt-2 mb-0"
@@ -285,19 +232,17 @@ defineExpose({
       <span aria-hidden="true">✕</span>
       <span>{{ errorMessage }}</span>
     </p>
-    <div class="mt-2 flex flex-wrap gap-2">
-      <button
-        type="button"
-        class="btn-ghost"
-        :disabled="!ready"
-        @click="useVisibleMap"
-      >
-        Use this map view as the boundary
-      </button>
-    </div>
+    <button
+      type="button"
+      class="btn-dark mt-3 w-full"
+      :disabled="!ready"
+      @click="captureFence"
+    >
+      {{ boundary ? 'Update fence to this view' : 'Set fence to this view' }}
+    </button>
     <p class="field-hint mt-2">
-      Drag the gold handles to draw the operational fence. Rotate the map so the road
-      runs straight, then pan until the fence matches the real yard.
+      Align to the road, then pan and zoom until the yard fills the gold frame.
+      The fence follows the rotated view, so it stays square to the street.
     </p>
   </div>
 </template>

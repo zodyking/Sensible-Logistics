@@ -61,7 +61,7 @@ const durationLabel = computed(() => formatDurationBetween(pickupStamp.value, dr
         :destination-name="data.destination?.name"
         :status="data.trip.status"
         :can-change-dropoff="isLive"
-        @change-dropoff="navigateTo(`/trips/${tripId}/dropoff`)"
+        @change-dropoff="navigateTo(`/trips/${tripId}/destination`)"
       >
         <template
           v-if="data.container"
