@@ -8,6 +8,7 @@ import {
   validateContainerNumber,
 } from '#shared/utils/iso6346'
 import { driverOcrMessage } from '#shared/utils/ocr-parse'
+import { rememberTripPhoto } from '~/utils/trip-share-files'
 
 useHead({ title: 'Add container' })
 
@@ -188,6 +189,7 @@ async function attach() {
         sealNumber: isLoaded.value ? (sealNumber.value.trim() || null) : null,
       },
     })
+    if (tripId.value && capturedPhoto.value) await rememberTripPhoto(tripId.value, capturedPhoto.value)
     await navigateTo('/')
   }
   catch (error) {
@@ -205,6 +207,10 @@ watch(step, (current) => {
   cameraAutoOpened.value = true
   cameraOpen.value = true
 }, { immediate: true })
+
+watch([tripId, capturedPhoto], ([id, photo]) => {
+  if (id && photo) void rememberTripPhoto(id, photo)
+})
 
 async function onPhoto(dataUrl: string) {
   capturedPhoto.value = dataUrl
