@@ -13,7 +13,7 @@ declare module '#auth-utils' {
 
   interface UserSession {
     loggedInAt: string
-    /** Cheat-code unlocks for this browser session only. */
+    /** Cheat-code unlocks for this user until they enter the same code again. */
     unlockedFeatures?: string[]
   }
 

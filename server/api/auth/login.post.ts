@@ -1,5 +1,6 @@
 import { and, eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
+import { parseUnlockedFeatures } from '#shared/utils/feature-codes'
 import { companies, companyMemberships, drivers, users } from '../../database/schema'
 
 const schema = z.object({
@@ -86,6 +87,7 @@ export default defineEventHandler(async (event) => {
     },
     secure: { membershipId: membership.id },
     loggedInAt: new Date().toISOString(),
+    unlockedFeatures: parseUnlockedFeatures(user.unlockedFeatures),
   })
 
   await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, user.id))

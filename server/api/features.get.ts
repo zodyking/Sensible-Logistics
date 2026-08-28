@@ -1,7 +1,6 @@
-import { readUnlockedFeatures } from '../utils/session'
+import { loadUnlockedFeatures } from '../services/features'
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
-  const session = await getUserSession(event)
-  return { unlocked: readUnlockedFeatures(session) }
+  const auth = await requireAuth(event)
+  return { unlocked: await loadUnlockedFeatures(useDb(), auth.userId) }
 })

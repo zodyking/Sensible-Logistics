@@ -30,6 +30,7 @@ const codeBusy = ref(false)
 const codeFlash = ref('')
 
 const showConnections = computed(() => unlocked.value.includes('CONNECTIONS'))
+const showReset = computed(() => unlocked.value.includes('RESET'))
 
 async function submitCode() {
   if (codeBusy.value) return
@@ -190,6 +191,28 @@ async function signOut() {
         <div class="row-main">
           <b>API connections</b>
           <small>App-wide credentials and settings</small>
+        </div>
+        <div
+          class="row-end"
+          aria-hidden="true"
+        >
+          ›
+        </div>
+      </NuxtLink>
+      <NuxtLink
+        v-if="showReset"
+        to="/reset"
+        class="row"
+      >
+        <div
+          class="row-ico"
+          aria-hidden="true"
+        >
+          ⌫
+        </div>
+        <div class="row-main">
+          <b>Clear records</b>
+          <small>Delete company data by type</small>
         </div>
         <div
           class="row-end"
