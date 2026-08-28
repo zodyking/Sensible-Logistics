@@ -5,6 +5,7 @@ import { requireDriver } from '../../../utils/session'
 const schema = z.object({
   eventId: z.string().uuid('An idempotency key is required.'),
   chassisId: z.string().uuid().nullish(),
+  destinationLocationId: z.string().uuid('Choose a drop-off location.').nullish(),
   isLoaded: z.boolean(),
   sealNumber: z.string().trim().max(60).nullish(),
   notes: z.string().trim().max(2000).nullish(),

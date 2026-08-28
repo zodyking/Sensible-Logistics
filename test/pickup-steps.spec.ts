@@ -1,0 +1,67 @@
+import { describe, expect, it } from 'vitest'
+import { pickupSteps } from '../shared/utils/pickup-steps'
+
+describe('pickupSteps', () => {
+  it('keeps destination last before confirm on every path', () => {
+    const selected = pickupSteps({
+      kind: 'CONTAINER',
+      fromYard: true,
+      manualEntry: false,
+      needsClassification: false,
+      isLoaded: true,
+    })
+    const typed = pickupSteps({
+      kind: 'CONTAINER',
+      fromYard: false,
+      manualEntry: true,
+      needsClassification: true,
+      isLoaded: true,
+    })
+    const chassis = pickupSteps({
+      kind: 'BARE_CHASSIS',
+      fromYard: true,
+      manualEntry: false,
+      needsClassification: false,
+      isLoaded: false,
+    })
+
+    expect(selected.slice(-2)).toEqual(['destination', 'confirm'])
+    expect(typed.slice(-2)).toEqual(['destination', 'confirm'])
+    expect(chassis.slice(-2)).toEqual(['destination', 'confirm'])
+  })
+
+  it('lists yard equipment after location, then skips typing when a yard record is chosen', () => {
+    const steps = pickupSteps({
+      kind: 'CONTAINER',
+      fromYard: true,
+      manualEntry: false,
+      needsClassification: true,
+      isLoaded: true,
+    })
+    expect(steps).toEqual(['kind', 'location', 'inventory', 'notes', 'destination', 'confirm'])
+  })
+
+  it('asks for type, size, load, and seal only when the number is typed', () => {
+    const steps = pickupSteps({
+      kind: 'CONTAINER',
+      fromYard: false,
+      manualEntry: true,
+      needsClassification: true,
+      isLoaded: true,
+    })
+    expect(steps).toContain('equipment')
+    expect(steps).toContain('containerType')
+    expect(steps).toContain('seal')
+  })
+
+  it('does not show the typewriter path until the driver chooses enter-unlisted', () => {
+    const steps = pickupSteps({
+      kind: 'BARE_CHASSIS',
+      fromYard: false,
+      manualEntry: false,
+      needsClassification: false,
+      isLoaded: false,
+    })
+    expect(steps).toEqual(['kind', 'location', 'inventory', 'notes', 'destination', 'confirm'])
+  })
+})
