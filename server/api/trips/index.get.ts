@@ -1,4 +1,4 @@
-import { aliasedTable, and, desc, eq, inArray } from 'drizzle-orm'
+import { aliasedTable, and, desc, eq, inArray, ne } from 'drizzle-orm'
 import { z } from 'zod'
 import { chassis, containers, locations, trips } from '../../database/schema'
 import { requireAuth } from '../../utils/session'
@@ -28,6 +28,9 @@ export default defineEventHandler(async (event) => {
   if (query.status) {
     filters.push(inArray(trips.status, [query.status]))
   }
+  else {
+    filters.push(ne(trips.status, 'CANCELLED'))
+  }
 
   const items = await db
     .select({
@@ -43,6 +46,7 @@ export default defineEventHandler(async (event) => {
       containerType: containers.containerType,
       chassisNumber: chassis.number,
       kind: trips.kind,
+      swapPairTripId: trips.swapPairTripId,
       originName: origin.name,
       destinationName: destination.name,
     })

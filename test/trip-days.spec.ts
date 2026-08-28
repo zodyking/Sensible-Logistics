@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  countDayWork,
+  formatDayWorkSummary,
   toLocalIsoDate,
   tripActivityDays,
   tripOccursOnDay,
@@ -53,5 +55,32 @@ describe('tripActivityDays', () => {
 
     expect(tripPickupDay(trip)).toBe('2026-08-27')
     expect(tripActivityDays(trip)).toEqual(['2026-08-27'])
+  })
+})
+
+describe('countDayWork', () => {
+  it('counts pickups and drop-offs on their local days', () => {
+    const trips = [
+      { id: 'a', pickedUpAt: new Date(2026, 7, 27, 8, 0), droppedOffAt: new Date(2026, 7, 27, 10, 0) },
+      { id: 'b', pickedUpAt: new Date(2026, 7, 27, 11, 0), droppedOffAt: new Date(2026, 7, 28, 1, 0) },
+    ]
+    expect(countDayWork(trips, '2026-08-27')).toEqual({ swaps: 0, pickups: 2, dropoffs: 1 })
+    expect(countDayWork(trips, '2026-08-28')).toEqual({ swaps: 0, pickups: 0, dropoffs: 1 })
+  })
+
+  it('counts a swap pair once even when both legs fall on the same day', () => {
+    const trips = [
+      { id: 'empty', pickedUpAt: new Date(2026, 7, 27, 9, 0), droppedOffAt: new Date(2026, 7, 27, 10, 0), swapPairTripId: 'load' },
+      { id: 'load', pickedUpAt: new Date(2026, 7, 27, 10, 5), droppedOffAt: new Date(2026, 7, 27, 11, 0), swapPairTripId: 'empty' },
+    ]
+    expect(countDayWork(trips, '2026-08-27')).toEqual({ swaps: 1, pickups: 2, dropoffs: 2 })
+  })
+})
+
+describe('formatDayWorkSummary', () => {
+  it('omits zero counts and pluralizes', () => {
+    expect(formatDayWorkSummary({ swaps: 0, pickups: 0, dropoffs: 0 })).toBe('')
+    expect(formatDayWorkSummary({ swaps: 1, pickups: 2, dropoffs: 1 })).toBe('1 swap · 2 pickups · 1 drop-off')
+    expect(formatDayWorkSummary({ swaps: 2, pickups: 0, dropoffs: 3 })).toBe('2 swaps · 3 drop-offs')
   })
 })

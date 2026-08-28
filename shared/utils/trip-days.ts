@@ -45,3 +45,44 @@ export function tripActivityDays(trip: TripDayStamps): string[] {
 export function tripOccursOnDay(trip: TripDayStamps, iso: string): boolean {
   return tripActivityDays(trip).includes(iso)
 }
+
+export interface DayWorkTrip {
+  id: string
+  pickedUpAt?: DateInput
+  droppedOffAt?: DateInput
+  swapPairTripId?: string | null
+}
+
+export interface DayWorkCounts {
+  swaps: number
+  pickups: number
+  dropoffs: number
+}
+
+/** Pickups, drop-offs, and unique swap pairs that happened on a local day. */
+export function countDayWork(trips: DayWorkTrip[], iso: string): DayWorkCounts {
+  let pickups = 0
+  let dropoffs = 0
+  const swapKeys = new Set<string>()
+
+  for (const trip of trips) {
+    const pickupDay = toLocalIsoDate(trip.pickedUpAt)
+    const dropoffDay = toLocalIsoDate(trip.droppedOffAt)
+    if (pickupDay === iso) pickups += 1
+    if (dropoffDay === iso) dropoffs += 1
+    if (!trip.swapPairTripId) continue
+    if (pickupDay !== iso && dropoffDay !== iso) continue
+    const key = [trip.id, trip.swapPairTripId].sort().join(':')
+    swapKeys.add(key)
+  }
+
+  return { swaps: swapKeys.size, pickups, dropoffs }
+}
+
+export function formatDayWorkSummary(counts: DayWorkCounts): string {
+  const parts: string[] = []
+  if (counts.swaps) parts.push(counts.swaps === 1 ? '1 swap' : `${counts.swaps} swaps`)
+  if (counts.pickups) parts.push(counts.pickups === 1 ? '1 pickup' : `${counts.pickups} pickups`)
+  if (counts.dropoffs) parts.push(counts.dropoffs === 1 ? '1 drop-off' : `${counts.dropoffs} drop-offs`)
+  return parts.join(' · ')
+}

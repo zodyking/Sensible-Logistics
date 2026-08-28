@@ -169,7 +169,7 @@ export default defineEventHandler(async (event) => {
     .leftJoin(containers, eq(containers.id, trips.containerId))
     .where(and(
       eq(trips.driverId, auth.driverId),
-      inArray(trips.status, ['COMPLETED', 'DROPPED_OFF', 'CANCELLED', 'EXCEPTION']),
+      inArray(trips.status, ['COMPLETED', 'DROPPED_OFF', 'EXCEPTION']),
     ))
     .orderBy(desc(trips.createdAt))
     .limit(5)

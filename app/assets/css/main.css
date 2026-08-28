@@ -2717,6 +2717,16 @@
     font-family: var(--font-display);
   }
 
+  .day-summary {
+    display: block;
+    margin-top: 2px;
+    font-family: var(--font-body);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--color-ink-500);
+  }
+
   .trip-move {
     display: grid;
     grid-template-columns: 4px minmax(0, 1fr);

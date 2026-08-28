@@ -552,7 +552,8 @@ export interface CancelPickupInput {
 /**
  * Cancel the driver's live movement. Unconfirmed pickups drop the temporary
  * claim; in-transit / at-stop trips return the box to the origin yard and
- * leave the driver with no active trip. The trip row is kept as CANCELLED.
+ * leave the driver with no active trip. The trip row is deleted — cancelled
+ * movements are not kept on Trips.
  */
 export async function cancelPickup(
   db: Database,
@@ -562,7 +563,11 @@ export async function cancelPickup(
   return db.transaction(async (tx) => {
     if (await eventExists(tx, auth.companyId, input.eventId)) {
       const replayed = await loadTripByEvent(tx, auth.companyId, input.eventId)
-      if (replayed) return { trip: replayed.trip }
+      if (replayed?.trip.status === 'CANCELLED') {
+        await discardTrip(tx, auth.companyId, replayed.trip.id)
+      }
+      if (replayed) return { trip: { ...replayed.trip, status: 'CANCELLED' } }
+      return { trip: { id: input.tripId, companyId: auth.companyId, status: 'CANCELLED' } as Trip }
     }
 
     const trip = await loadOwnedTrip(tx, auth, input.tripId)
@@ -601,24 +606,21 @@ export async function cancelPickup(
           .where(and(eq(chassisTable.id, trip.chassisId), eq(chassisTable.companyId, auth.companyId)))
       }
 
-      const [cancelledBare] = await tx
-        .update(trips)
-        .set({
-          status: 'CANCELLED',
-          cancelledAt: now,
-          driverNotes: input.reason ?? trip.driverNotes,
-          updatedAt: now,
-          version: sql`${trips.version} + 1`,
-        })
-        .where(eq(trips.id, trip.id))
-        .returning()
+      const snapshot: Trip = {
+        ...trip,
+        status: 'CANCELLED',
+        cancelledAt: now,
+        driverNotes: input.reason ?? trip.driverNotes,
+        updatedAt: now,
+      }
+      await discardTrip(tx, auth.companyId, trip.id)
 
       await tx
         .update(drivers)
         .set({ status: 'AVAILABLE', updatedAt: now })
         .where(eq(drivers.id, auth.driverId))
 
-      return { trip: cancelledBare! }
+      return { trip: snapshot }
     }
 
     const previous = await previousPickupState(tx, auth.companyId, trip.id)
@@ -689,25 +691,15 @@ export async function cancelPickup(
       }
     }
 
-    const [cancelled] = await tx
-      .update(trips)
-      .set({
-        status: 'CANCELLED',
-        cancelledAt: now,
-        driverNotes: input.reason ?? trip.driverNotes,
-        updatedAt: now,
-        version: sql`${trips.version} + 1`,
-        swapPairTripId: null,
-      })
-      .where(eq(trips.id, trip.id))
-      .returning()
-
-    if (pairLive && pair) {
-      await tx
-        .update(trips)
-        .set({ swapPairTripId: null, updatedAt: now })
-        .where(eq(trips.id, pair.id))
+    const snapshot: Trip = {
+      ...trip,
+      status: 'CANCELLED',
+      cancelledAt: now,
+      driverNotes: input.reason ?? trip.driverNotes,
+      swapPairTripId: null,
+      updatedAt: now,
     }
+    await discardTrip(tx, auth.companyId, trip.id)
 
     const [otherLive] = await tx
       .select({ id: trips.id })
@@ -716,7 +708,6 @@ export async function cancelPickup(
         eq(trips.companyId, auth.companyId),
         eq(trips.driverId, auth.driverId),
         inArray(trips.status, [...LIVE_TRIP_STATUSES]),
-        ne(trips.id, trip.id),
       ))
       .limit(1)
 
@@ -727,7 +718,7 @@ export async function cancelPickup(
         .where(eq(drivers.id, auth.driverId))
     }
 
-    return { trip: cancelled! }
+    return { trip: snapshot }
   })
 }
 
@@ -1246,6 +1237,20 @@ async function loadLocation(
     throw createError({ statusCode: 404, statusMessage: 'Drop-off location not found.' })
   }
   return location
+}
+
+/** Drop a trip row. Child stops cascade; dispatch tasks lose the trip link. */
+async function discardTrip(tx: DbExecutor, companyId: string, tripId: string) {
+  const now = new Date()
+  await tx
+    .update(containers)
+    .set({ activeMovementId: null, updatedAt: now })
+    .where(and(eq(containers.companyId, companyId), eq(containers.activeMovementId, tripId)))
+  await tx
+    .update(trips)
+    .set({ swapPairTripId: null, updatedAt: now })
+    .where(eq(trips.swapPairTripId, tripId))
+  await tx.delete(trips).where(and(eq(trips.id, tripId), eq(trips.companyId, companyId)))
 }
 
 /** Resolves the trip/container pair touched by an already-stored event id. */
