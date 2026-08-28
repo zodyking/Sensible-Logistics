@@ -147,9 +147,10 @@ const canAdvance = computed(() => {
     case 'containerType':
     case 'equipmentType':
     case 'load':
-    case 'seal':
     case 'confirm':
       return true
+    case 'seal':
+      return Boolean(sealNumber.value.trim())
   }
   return false
 })
@@ -167,6 +168,11 @@ function back() {
 
 async function attach() {
   if (!tripId.value || submitting.value) return
+  if (isLoaded.value && !sealNumber.value.trim()) {
+    errorMessage.value = 'Enter a seal number for a loaded container.'
+    step.value = 'seal'
+    return
+  }
   submitting.value = true
   errorMessage.value = ''
   try {
@@ -178,7 +184,7 @@ async function attach() {
         containerType: containerType.value,
         equipmentType: equipmentType.value,
         isLoaded: isLoaded.value,
-        sealNumber: isLoaded.value ? (sealNumber.value || null) : null,
+        sealNumber: isLoaded.value ? (sealNumber.value.trim() || null) : null,
       },
     })
     await navigateTo('/')
@@ -435,8 +441,9 @@ function retakePhoto() {
               placeholder="004512"
               autocapitalize="characters"
               autocomplete="off"
+              required
             >
-            <small class="field-hint">Leave blank if the container is unsealed.</small>
+            <small class="field-hint">Required for a loaded container.</small>
           </label>
         </div>
       </template>

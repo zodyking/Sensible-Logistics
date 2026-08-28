@@ -50,25 +50,17 @@ const typeLabel = computed(() => {
 
 const originDisplay = computed(() => props.originName?.trim() || 'Not set')
 const destinationDisplay = computed(() => props.destinationName?.trim() || 'Choose at drop-off')
+const loadLabel = computed(() => !isBareChassis.value && props.isLoaded ? 'Loaded' : 'Empty')
 </script>
 
 <template>
   <article class="trip-card">
     <div class="trip-card-head">
-      <div class="trip-card-meta">
-        <div class="trip-card-flags">
-          <span class="trip-flag line">
-            {{ typeLabel }}
-          </span>
-          <span
-            class="trip-flag"
-            :class="!isBareChassis && isLoaded ? 'loaded' : 'empty'"
-          >
-            {{ !isBareChassis && isLoaded ? 'Loaded' : 'Empty' }}
-          </span>
-        </div>
+      <div
+        v-if="status"
+        class="trip-card-meta"
+      >
         <StatusChip
-          v-if="status"
           :variant="TRIP_STATUS_CHIP[status]"
           :label="TRIP_STATUS_LABELS[status]"
         />
@@ -92,6 +84,17 @@ const destinationDisplay = computed(() => props.destinationName?.trim() || 'Choo
         <div class="trip-fact">
           <small>Seal</small>
           <b>{{ !isBareChassis && sealNumber ? sealNumber : '—' }}</b>
+        </div>
+      </div>
+
+      <div class="trip-facts trip-facts-split">
+        <div class="trip-fact">
+          <small>Type</small>
+          <b>{{ typeLabel }}</b>
+        </div>
+        <div class="trip-fact trip-fact-end">
+          <small>Load</small>
+          <b>{{ loadLabel }}</b>
         </div>
       </div>
     </div>

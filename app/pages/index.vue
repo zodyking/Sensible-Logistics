@@ -119,12 +119,6 @@ async function confirmCancelTrip() {
         class="trip-card"
       >
         <div class="trip-card-head trip-card-head-idle">
-          <div class="trip-card-meta">
-            <div class="trip-card-flags">
-              <span class="trip-flag line">None</span>
-              <span class="trip-flag empty">Bob tail</span>
-            </div>
-          </div>
           <div class="trip-cno text-center">
             No active trip
           </div>
