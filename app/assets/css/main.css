@@ -356,6 +356,7 @@
     font-weight: 600;
     color: var(--color-ink-900);
     text-align: left;
+    text-decoration: none;
     cursor: pointer;
   }
 

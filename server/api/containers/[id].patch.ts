@@ -4,6 +4,7 @@ import { chassis, containers, trips } from '../../database/schema'
 import { recordEvent } from '../../services/events'
 import { LIVE_TRIP_STATUSES } from '../../services/movements'
 import { assertTenant, requireAuth } from '../../utils/session'
+import { CONTAINER_TYPES, EQUIPMENT_TYPES } from '#shared/utils/domain'
 import {
   formatContainerNumber,
   isCompleteChassisNumber,
@@ -15,6 +16,8 @@ import {
 const schema = z.object({
   eventId: z.string().uuid().optional(),
   number: z.string().trim().min(1).max(40).optional(),
+  containerType: z.enum(CONTAINER_TYPES).optional(),
+  equipmentType: z.enum(EQUIPMENT_TYPES).optional(),
   chassisNumber: z.string().trim().max(40).nullish(),
   isLoaded: z.boolean().optional(),
   sealNumber: z.string().trim().max(60).nullish(),
@@ -22,7 +25,7 @@ const schema = z.object({
   message: 'Nothing to update.',
 })
 
-/** Edit a parked container: number, chassis, loaded/empty, and seal. */
+/** Edit a parked container: number, type, size, chassis, loaded/empty, and seal. */
 export default defineEventHandler(async (event) => {
   const auth = await requireAuth(event)
   const id = getRouterParam(event, 'id')
@@ -154,6 +157,8 @@ export default defineEventHandler(async (event) => {
         chassisId: nextChassisId,
         payload: {
           number,
+          containerType: body.containerType ?? container!.containerType,
+          equipmentType: body.equipmentType ?? container!.equipmentType,
           isLoaded,
           sealNumber,
           chassisId: nextChassisId,
@@ -173,6 +178,8 @@ export default defineEventHandler(async (event) => {
         number,
         numberNormalized,
         checkDigitValid,
+        containerType: body.containerType ?? container!.containerType,
+        equipmentType: body.equipmentType ?? container!.equipmentType,
         updatedAt: now,
       })
       .where(eq(containers.id, id))

@@ -8,6 +8,8 @@ import {
 import { formatChassisNumber, formatContainerNumber } from '#shared/utils/iso6346'
 
 const route = useRoute()
+const { user } = useUserSession()
+setPageLayout(user.value?.role === 'ADMIN' ? 'admin' : 'default')
 const { data, status, error } = await useFetch(() => `/api/containers/${route.params.id}`)
 
 useHead({ title: () => data.value?.container.number ?? 'Container' })
@@ -16,15 +18,15 @@ const menuOpen = ref(false)
 const confirmOpen = ref(false)
 const deleting = ref(false)
 const actionError = ref('')
+const editTo = computed(() => `/containers/${route.params.id}/edit`)
 
 const backTo = computed(() => {
   const locationId = data.value?.currentLocation?.id
   return locationId ? `/locations/${locationId}` : '/containers'
 })
 
-function openEdit() {
+function closeMenu() {
   menuOpen.value = false
-  navigateTo(`/containers/${route.params.id}/edit`)
 }
 
 function requestDelete() {
@@ -167,6 +169,12 @@ const serviceCaption = computed(() => {
           >
             Chassis {{ formatChassisNumber(data.currentChassis.number) || data.currentChassis.number }} →
           </NuxtLink>
+          <NuxtLink
+            :to="editTo"
+            class="btn-ghost mt-3 w-full"
+          >
+            Edit information
+          </NuxtLink>
         </div>
 
         <div
@@ -213,13 +221,14 @@ const serviceCaption = computed(() => {
         title="Container"
         @close="menuOpen = false"
       >
-        <button
-          type="button"
+        <NuxtLink
+          :to="editTo"
           class="menu-row"
-          @click="openEdit"
+          role="menuitem"
+          @click="closeMenu"
         >
           Edit
-        </button>
+        </NuxtLink>
         <button
           type="button"
           class="menu-row danger"
