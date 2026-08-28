@@ -35,14 +35,21 @@ defineProps<{ name: TabIconName }>()
     </template>
 
     <template v-else-if="name === 'containers'">
-      <rect
-        x="3.4"
-        y="5.8"
-        width="17.2"
-        height="12.4"
-        rx="1.4"
-      />
-      <path d="M8.2 5.8v12.4M12 5.8v12.4M15.8 5.8v12.4" />
+      <g stroke-width="1.8">
+        <rect
+          x="3.4"
+          y="4"
+          width="17.2"
+          height="16"
+          rx="1.3"
+        />
+        <path d="M3.4 6.6h17.2" />
+        <path d="M12 6.6v13.4" />
+        <path d="M7.7 8.4v9.6" />
+        <path d="M16.3 8.4v9.6" />
+        <path d="M6.6 13.2h2.2" />
+        <path d="M15.2 13.2h2.2" />
+      </g>
     </template>
 
     <template v-else>
