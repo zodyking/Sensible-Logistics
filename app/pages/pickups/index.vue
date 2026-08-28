@@ -252,10 +252,10 @@ function calendarDayLabel(cell: { iso: string, hasTrip: boolean, selected: boole
               <div class="day-label">
                 {{ day.label }}
               </div>
-              <TripHistoryCard
+              <TripListCard
                 v-for="trip in day.items"
+                :id="trip.id"
                 :key="trip.id"
-                :to="`/trips/${trip.id}`"
                 :status="trip.status"
                 :kind="trip.kind"
                 :container-number="trip.containerNumber"
@@ -339,20 +339,20 @@ function calendarDayLabel(cell: { iso: string, hasTrip: boolean, selected: boole
             <span v-if="selectedDayTrips.length">{{ selectedDayTrips.length }}</span>
           </div>
 
-          <TripHistoryCard
+          <TripListCard
             v-for="trip in selectedDayTrips"
+            :id="trip.id"
             :key="trip.id"
-            :to="`/trips/${trip.id}`"
             :status="trip.status"
             :kind="trip.kind"
+            :container-number="trip.containerNumber"
+            :container-type="trip.containerType"
+            :chassis-number="trip.chassisNumber"
             :reference="trip.reference"
             :origin-name="trip.originName"
             :destination-name="trip.destinationName"
             :picked-up-at="trip.pickedUpAt"
             :dropped-off-at="trip.droppedOffAt"
-            :container-number="trip.containerNumber"
-            :container-type="trip.containerType"
-            :chassis-number="trip.chassisNumber"
             :is-loaded="trip.isLoaded"
             :created-at="trip.createdAt"
           />
