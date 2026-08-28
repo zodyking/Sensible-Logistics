@@ -14,6 +14,7 @@ const pinging = ref(false)
 const rotating = ref(false)
 const confirmRotate = ref(false)
 const flash = ref('')
+const testResult = ref('')
 const actionError = ref('')
 const copyState = reactive<Record<CopyKey, 'idle' | 'copied' | 'failed'>>({
   url: 'idle',
@@ -77,9 +78,20 @@ async function checkNow() {
   actionError.value = ''
   try {
     await refresh()
-    if (setup.value?.tested) flash.value = 'Setup test received. SMS forwarding is working.'
-    else if (setup.value?.connected) flash.value = 'A message arrived, but not the setup test phrase yet.'
-    else flash.value = 'Nothing received yet. Send the test phrase from Messages, then check again.'
+    if (setup.value?.tested) {
+      flash.value = 'Setup test received. SMS forwarding is working.'
+      testResult.value = 'Forwarding confirmed — the test phrase arrived on this webhook.'
+    }
+    else if (setup.value?.connected) {
+      flash.value = 'A message arrived, but not the setup test phrase yet.'
+      testResult.value = 'A message arrived, but it was not the setup test phrase.'
+    }
+    else {
+      flash.value = 'Nothing received yet. Send the test phrase from Messages, then check again.'
+      testResult.value = 'Nothing received yet. Send the test phrase from Messages, then check again.'
+    }
+    await nextTick()
+    document.querySelector('.task-test-result')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   }
   catch (err) {
     actionError.value = apiErrorMessage(err, 'Could not check setup.')
@@ -101,6 +113,7 @@ async function pingWebhook() {
     })
     await refresh()
     flash.value = 'The webhook link is live. That does not prove Shortcuts yet — send the test phrase from Messages for the real check.'
+    testResult.value = 'Link is reachable. Send the test phrase from Messages to prove forwarding.'
   }
   catch (err) {
     actionError.value = apiErrorMessage(err, 'Could not reach the webhook.')
@@ -370,6 +383,14 @@ const setupStateLabel = computed(() => {
               {{ pinging ? 'Pinging…' : 'Check the link only' }}
             </button>
           </div>
+          <p
+            v-if="testResult"
+            class="task-test-result"
+            :class="{ ok: setup?.tested }"
+            role="status"
+          >
+            {{ testResult }}
+          </p>
           <p class="field-hint">
             “Check the link only” POSTs the test phrase from this app. That proves the URL is
             reachable, not that Messages are forwarding. Use Check now after a real SMS for the

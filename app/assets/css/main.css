@@ -3915,6 +3915,17 @@
   min-width: 140px;
 }
 
+.task-test-result {
+  margin: var(--s3) 0 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-ink-700);
+}
+
+.task-test-result.ok {
+  color: var(--color-ok-600);
+}
+
 .task-rotate {
   width: 100%;
   margin-top: var(--s3);
