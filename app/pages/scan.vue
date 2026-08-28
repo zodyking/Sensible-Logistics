@@ -54,6 +54,7 @@ async function onPhoto(dataUrl: string) {
   captured.value = true
   capturedPhoto.value = dataUrl
   reading.value = true
+  cameraOpen.value = false
   errorMessage.value = ''
   const startedAt = Date.now()
   try {
@@ -78,7 +79,6 @@ async function onPhoto(dataUrl: string) {
   finally {
     await waitAtLeast(startedAt, 1000)
     reading.value = false
-    cameraOpen.value = false
   }
 }
 
@@ -106,6 +106,11 @@ async function continuePickup() {
       title="Container and chassis"
       back-to="/"
       back-label="Home"
+    />
+
+    <ScanReadingLoader
+      v-if="reading"
+      label="Reading the photo…"
     />
 
     <ScanPhotoPeek
@@ -174,7 +179,10 @@ async function continuePickup() {
       Point the camera at the container number and the chassis plate, then take one photo.
     </p>
 
-    <div class="mt-6 flex gap-3">
+    <div
+      v-if="!reading"
+      class="mt-6 flex gap-3"
+    >
       <button
         type="button"
         class="btn-ghost flex-1"
