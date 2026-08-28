@@ -1,5 +1,5 @@
 import { and, eq, isNull, sql } from 'drizzle-orm'
-import { containerPlacements, containers, locations } from '../../database/schema'
+import { containerPlacements, containers, chassis, locations } from '../../database/schema'
 import { displayContainers, mapContainerFromRow } from '../../services/placements'
 import { assertTenant, requireAuth } from '../../utils/session'
 import { countContainersByType, emptyTypeCounts } from '#shared/utils/domain'
@@ -31,6 +31,9 @@ export default defineEventHandler(async (event) => {
       containerType: containers.containerType,
       isLoaded: containers.isLoaded,
       containerStatus: containers.containerStatus,
+      sealNumber: containers.sealNumber,
+      currentChassisId: containers.currentChassisId,
+      chassisNumber: chassis.number,
       x: containerPlacements.x,
       y: containerPlacements.y,
       rotation: containerPlacements.rotation,
@@ -46,6 +49,7 @@ export default defineEventHandler(async (event) => {
         isNull(containerPlacements.supersededAt),
       ),
     )
+    .leftJoin(chassis, eq(chassis.id, containers.currentChassisId))
     .where(and(
       eq(containers.companyId, auth.companyId),
       eq(containers.currentLocationId, id),

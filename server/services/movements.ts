@@ -384,13 +384,15 @@ export async function confirmPickup(
       return confirmBareChassisPickup(tx, auth, trip, input)
     }
 
+    const [parked] = await tx.select().from(containers).where(eq(containers.id, trip.containerId)).limit(1)
+    const chassisId = input.chassisId || trip.chassisId || parked?.currentChassisId || null
     const isLoaded = Boolean(trip.swapPairTripId) || input.isLoaded
 
-    if (input.chassisId) {
+    if (chassisId) {
       const mateContainerId = trip.swapPairTripId
         ? (await tx.select({ containerId: trips.containerId }).from(trips).where(eq(trips.id, trip.swapPairTripId)).limit(1))[0]?.containerId
         : null
-      await assertChassisAvailable(tx, auth.companyId, input.chassisId, trip.containerId, mateContainerId)
+      await assertChassisAvailable(tx, auth.companyId, chassisId, trip.containerId, mateContainerId)
     }
 
     const destinationLocationId = await resolvePickupDestination(
@@ -415,7 +417,7 @@ export async function confirmPickup(
         actorDriverId: auth.driverId,
         tripId: trip.id,
         locationId: trip.originLocationId,
-        chassisId: input.chassisId ?? null,
+        chassisId: chassisId ?? null,
         gps: input.gps,
         payload: { isLoaded, sealNumber },
         notes: input.notes ?? null,
@@ -425,7 +427,7 @@ export async function confirmPickup(
         currentDriverId: auth.driverId,
         // In transit: the container is with the driver, not at a location.
         currentLocationId: null,
-        currentChassisId: input.chassisId ?? null,
+        currentChassisId: chassisId ?? null,
         activeMovementId: trip.id,
         isLoaded,
         sealNumber,
@@ -433,11 +435,11 @@ export async function confirmPickup(
       },
     )
 
-    if (input.chassisId) {
+    if (chassisId) {
       await tx
         .update(chassisTable)
         .set({ currentContainerId: trip.containerId, status: 'IN_USE', updatedAt: now })
-        .where(and(eq(chassisTable.id, input.chassisId), eq(chassisTable.companyId, auth.companyId)))
+        .where(and(eq(chassisTable.id, chassisId), eq(chassisTable.companyId, auth.companyId)))
     }
 
     // The pickup vacates the origin slot, so any live placement is closed out.
@@ -454,7 +456,7 @@ export async function confirmPickup(
       .update(trips)
       .set({
         status: 'IN_TRANSIT',
-        chassisId: input.chassisId ?? null,
+        chassisId: chassisId ?? null,
         destinationLocationId: destinationLocationId ?? trip.destinationLocationId,
         isLoaded,
         sealNumber,

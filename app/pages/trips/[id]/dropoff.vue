@@ -10,7 +10,7 @@ const { data, error, status } = await useFetch(() => `/api/trips/${tripId.value}
 useHead({ title: 'Arrive' })
 
 const destinationLocationId = ref<string | null>(null)
-const retainChassis = ref(false)
+const retainChassis = ref(true)
 const notes = ref('')
 const locationSearch = ref('')
 const pickingLocation = ref(false)

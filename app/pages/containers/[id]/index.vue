@@ -22,6 +22,11 @@ const backTo = computed(() => {
   return locationId ? `/locations/${locationId}` : '/containers'
 })
 
+function openEdit() {
+  menuOpen.value = false
+  navigateTo(`/containers/${route.params.id}/edit`)
+}
+
 function requestDelete() {
   menuOpen.value = false
   actionError.value = ''
@@ -130,6 +135,12 @@ const serviceCaption = computed(() => {
               :label="data.container.isLoaded ? 'Loaded' : 'Empty'"
             />
             <StatusChip
+              v-if="data.container.isLoaded && data.container.sealNumber"
+              plain
+              variant="idle"
+              :label="`Seal ${data.container.sealNumber}`"
+            />
+            <StatusChip
               :variant="CONTAINER_STATUS_CHIP[data.container.containerStatus]"
               :label="CONTAINER_STATUS_LABELS[data.container.containerStatus]"
             />
@@ -202,6 +213,13 @@ const serviceCaption = computed(() => {
         title="Container"
         @close="menuOpen = false"
       >
+        <button
+          type="button"
+          class="menu-row"
+          @click="openEdit"
+        >
+          Edit
+        </button>
         <button
           type="button"
           class="menu-row danger"
