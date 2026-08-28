@@ -1322,8 +1322,6 @@
     right: 0;
     z-index: 200;
     width: 100%;
-    max-width: 520px;
-    margin: 0 auto;
     height: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
     padding-bottom: env(safe-area-inset-bottom);
     background: #fff;
