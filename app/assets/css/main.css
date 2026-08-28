@@ -569,6 +569,11 @@
     padding: 0 var(--s4);
   }
 
+  .btn-danger:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
   /* --- Container / trip cards --- */
   .trip-card {
     background: #fff;

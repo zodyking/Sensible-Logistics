@@ -139,8 +139,9 @@ async function confirmClear() {
         <span>{{ actionError }}</span>
       </p>
       <p class="text-sm text-[var(--color-ink-700)]">
-        This permanently deletes {{ pendingCount }}
-        {{ pendingTarget?.label.toLowerCase() }}. This cannot be undone.
+        This permanently deletes
+        {{ pendingCount === 1 ? '1 record' : `${pendingCount} records` }}
+        in {{ pendingTarget?.label.toLowerCase() }}. This cannot be undone.
       </p>
       <p
         v-if="pending === 'users'"
