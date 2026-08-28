@@ -7,6 +7,7 @@ useHead({ title: 'Scan' })
 const cameraOpen = ref(true)
 const reading = ref(false)
 const captured = ref(false)
+const capturedPhoto = ref('')
 const errorMessage = ref('')
 const containerNumber = ref('')
 const chassisNumber = ref('')
@@ -14,7 +15,10 @@ const chassisNumber = ref('')
 const containerValidation = computed(() => validateContainerNumber(containerNumber.value))
 const chassisOk = computed(() => !chassisNumber.value || isCompleteChassisNumber(chassisNumber.value))
 const canContinue = computed(() =>
-  containerValidation.value.structureValid && chassisOk.value && !reading.value,
+  containerValidation.value.structureValid
+  && chassisOk.value
+  && !reading.value
+  && !cameraOpen.value,
 )
 
 type FieldState = 'ok' | 'error' | 'idle'
@@ -47,8 +51,8 @@ const chassisDetail = computed(() =>
 )
 
 async function onPhoto(dataUrl: string) {
-  cameraOpen.value = false
   captured.value = true
+  capturedPhoto.value = dataUrl
   reading.value = true
   errorMessage.value = ''
   try {
@@ -72,6 +76,7 @@ async function onPhoto(dataUrl: string) {
   }
   finally {
     reading.value = false
+    cameraOpen.value = false
   }
 }
 
@@ -101,8 +106,13 @@ async function continuePickup() {
       back-label="Home"
     />
 
+    <ScanPhotoPeek
+      v-if="capturedPhoto && !reading && !cameraOpen"
+      :src="capturedPhoto"
+    />
+
     <div
-      v-if="captured"
+      v-if="captured && !reading && !cameraOpen"
       class="card p-4"
     >
       <label
@@ -148,13 +158,7 @@ async function continuePickup() {
 
     <div aria-live="polite">
       <p
-        v-if="reading"
-        class="note"
-      >
-        <span>Reading the photo…</span>
-      </p>
-      <p
-        v-else-if="errorMessage"
+        v-if="errorMessage && !reading"
         class="note warn"
       >
         <span>{{ errorMessage }}</span>
@@ -190,6 +194,7 @@ async function continuePickup() {
     <CaptureCamera
       v-if="cameraOpen"
       title="Container and chassis"
+      reading-label="Reading container and chassis numbers…"
       @close="cameraOpen = false"
       @photo="onPhoto"
     />

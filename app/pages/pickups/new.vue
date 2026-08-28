@@ -237,7 +237,7 @@ const canAdvance = computed(() => {
       return Boolean(originLocationId.value)
     case 'equipment':
       if (pickupKind.value === 'BARE_CHASSIS') {
-        return chassisOk.value && !readingPhoto.value
+        return chassisOk.value && !readingPhoto.value && !cameraOpen.value
       }
       return validation.value.structureValid
         && chassisOk.value
@@ -245,6 +245,7 @@ const canAdvance = computed(() => {
         && !resolving.value
         && Boolean(resolution.value)
         && !readingPhoto.value
+        && !cameraOpen.value
     case 'containerType':
     case 'equipmentType':
     case 'load':
@@ -402,7 +403,6 @@ watch(step, (current) => {
 })
 
 async function onPhoto(dataUrl: string) {
-  cameraOpen.value = false
   capturedPhoto.value = dataUrl
   readingPhoto.value = true
   ocrMessage.value = ''
@@ -435,6 +435,7 @@ async function onPhoto(dataUrl: string) {
   }
   finally {
     readingPhoto.value = false
+    cameraOpen.value = false
   }
 }
 
@@ -589,6 +590,10 @@ async function skipNotes() {
 
     <!-- ── Container + chassis (one photo) ──────────────────────── -->
     <template v-else-if="step === 'equipment'">
+      <ScanPhotoPeek
+        v-if="capturedPhoto && !cameraOpen"
+        :src="capturedPhoto"
+      />
       <div class="card p-4">
         <label
           v-if="pickupKind === 'CONTAINER'"
@@ -636,13 +641,7 @@ async function skipNotes() {
 
       <div aria-live="polite">
         <p
-          v-if="readingPhoto"
-          class="note"
-        >
-          <span>Reading the photo…</span>
-        </p>
-        <p
-          v-else-if="ocrMessage"
+          v-if="ocrMessage && !readingPhoto"
           class="note warn"
         >
           <span>{{ ocrMessage }}</span>
@@ -865,6 +864,7 @@ async function skipNotes() {
     <CaptureCamera
       v-if="cameraOpen"
       :title="pickupKind === 'BARE_CHASSIS' ? 'Chassis' : 'Container and chassis'"
+      :reading-label="pickupKind === 'BARE_CHASSIS' ? 'Reading the chassis number…' : 'Reading container and chassis numbers…'"
       @close="cameraOpen = false"
       @photo="onPhoto"
     />

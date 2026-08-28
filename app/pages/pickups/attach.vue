@@ -144,6 +144,7 @@ const canAdvance = computed(() => {
         && !resolving.value
         && Boolean(resolution.value)
         && !readingPhoto.value
+        && !cameraOpen.value
     case 'containerType':
     case 'equipmentType':
     case 'load':
@@ -200,7 +201,6 @@ watch(step, (current) => {
 }, { immediate: true })
 
 async function onPhoto(dataUrl: string) {
-  cameraOpen.value = false
   capturedPhoto.value = dataUrl
   readingPhoto.value = true
   ocrMessage.value = ''
@@ -225,6 +225,7 @@ async function onPhoto(dataUrl: string) {
   }
   finally {
     readingPhoto.value = false
+    cameraOpen.value = false
   }
 }
 
@@ -288,6 +289,10 @@ function retakePhoto() {
       </p>
 
       <template v-if="step === 'equipment'">
+        <ScanPhotoPeek
+          v-if="capturedPhoto && !cameraOpen"
+          :src="capturedPhoto"
+        />
         <div class="card p-4">
           <p class="mb-4 text-sm text-[var(--color-ink-500)]">
             Chassis {{ chassisNumber || 'on this trip' }} is live. Scan or type the container you are hanging on it.
@@ -315,13 +320,7 @@ function retakePhoto() {
 
         <div aria-live="polite">
           <p
-            v-if="readingPhoto"
-            class="note"
-          >
-            <span>Reading the photo…</span>
-          </p>
-          <p
-            v-else-if="ocrMessage"
+            v-if="ocrMessage && !readingPhoto"
             class="note warn"
           >
             <span>{{ ocrMessage }}</span>
@@ -492,6 +491,7 @@ function retakePhoto() {
     <CaptureCamera
       v-if="cameraOpen"
       title="Container"
+      reading-label="Reading the container number…"
       @close="cameraOpen = false"
       @photo="onPhoto"
     />
