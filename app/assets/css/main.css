@@ -1739,6 +1739,20 @@
     box-shadow: 0 1px 4px rgb(0 0 0 / 0.45);
   }
 
+  .map-frame-wrap {
+    position: relative;
+  }
+
+  .fence-frame {
+    position: absolute;
+    inset: 12%;
+    border: 2px dashed var(--color-amber-500);
+    border-radius: 6px;
+    pointer-events: none;
+    z-index: 500;
+    box-shadow: 0 0 0 9999px rgb(12 30 48 / 0.08);
+  }
+
   .map-rotate-bar {
     display: flex;
     flex-wrap: wrap;
@@ -1837,17 +1851,18 @@
 
   .type-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
     gap: var(--s2);
   }
 
   .type-grid button {
-    min-height: 64px;
+    min-height: 56px;
     border-radius: var(--radius-md);
     border: 1px solid var(--color-line-300);
     background: #fff;
-    padding: 10px 12px;
+    padding: 10px 16px;
     text-align: left;
+    font-size: var(--text-base);
   }
 
   .type-grid button[aria-pressed='true'] {
@@ -1857,11 +1872,44 @@
   }
 
   .suggest-list {
-    margin-top: 6px;
+    margin: 10px 0 0;
+    padding: 0;
+    list-style: none;
     border: 1px solid var(--color-line-300);
     border-radius: var(--radius-md);
     background: #fff;
     overflow: hidden;
+  }
+
+  .suggest-list li + li {
+    border-top: 1px solid var(--color-line-300);
+  }
+
+  .suggest-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    width: 100%;
+    min-height: 56px;
+    padding: 10px 14px;
+    text-align: left;
+    background: #fff;
+  }
+
+  .suggest-item:hover,
+  .suggest-item:focus-visible {
+    background: var(--color-paper-100);
+  }
+
+  .suggest-item b {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--color-ink-900);
+  }
+
+  .suggest-item small {
+    font-size: var(--text-xs);
+    color: var(--color-ink-500);
   }
 
   /* --- Stepper (multi-step flows) --- */

@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { LOCATION_GLYPH, LOCATION_TYPE_LABELS, LOCATION_TYPES } from '#shared/utils/domain'
+import { LOCATION_TYPE_LABELS, LOCATION_TYPES } from '#shared/utils/domain'
 import type { LocationType } from '#shared/utils/domain'
-import { bboxAround, normalizeHeading, polygonFromBbox, type BoundingBox } from '#shared/utils/geo'
+import { bboxAround, normalizeHeading, type BoundingBox, type GeoJsonPolygon } from '#shared/utils/geo'
 import { isPlacedPin } from '#shared/utils/yard-slots'
 import { fetchMapBearing } from '~/utils/leaflet-map'
 import { formatPhoneInput, isValidPhone } from '#shared/utils/phone'
@@ -24,7 +24,7 @@ const STEP_TITLES: Record<Step, string> = {
   name: 'What do you call it?',
   phones: 'How do we reach them?',
   address: 'Where is it?',
-  map: 'Draw the fence',
+  map: 'Frame the yard',
 }
 
 type PlaceHit = {
@@ -57,9 +57,10 @@ const form = reactive({
 const latitude = ref<number | null>(null)
 const longitude = ref<number | null>(null)
 const bbox = ref<BoundingBox | null>(null)
+const fence = ref<GeoJsonPolygon | null>(null)
 const heading = ref(0)
 const aligningMap = ref(false)
-const mapRef = ref<{ recenter: () => void } | null>(null)
+const mapRef = ref<{ recenter: () => void, captureFence: () => GeoJsonPolygon | null } | null>(null)
 
 const suggestions = ref<PlaceHit[]>([])
 const searching = ref(false)
@@ -109,6 +110,7 @@ async function applySuggestion(hit: PlaceHit, advance = true) {
   latitude.value = hit.latitude
   longitude.value = hit.longitude
   bbox.value = hit.bbox ?? bboxAround(hit.latitude, hit.longitude, 80)
+  fence.value = null
   suggestions.value = []
   try {
     heading.value = await fetchMapBearing(hit.latitude, hit.longitude, bbox.value)
@@ -125,7 +127,7 @@ const canAdvance = computed(() => {
     case 'name': return form.name.trim().length >= 2
     case 'phones': return isValidPhone(form.mainPhone) && isValidPhone(form.contactPhone)
     case 'address': return form.addressQuery.trim().length >= 3 || Boolean(isPlacedPin(latitude.value, longitude.value) && form.addressLine1)
-    case 'map': return Boolean(bbox.value)
+    case 'map': return isPlacedPin(latitude.value, longitude.value)
   }
   return false
 })
@@ -184,7 +186,13 @@ const DUPLICATE_REASONS: Record<DuplicateSuggestion['reason'], string> = {
 }
 
 async function submit() {
-  if (!canAdvance.value || submitting.value || !bbox.value) return
+  if (!canAdvance.value || submitting.value) return
+  // If the user framed the yard but never tapped Set fence, capture the view for them.
+  const boundary = fence.value ?? mapRef.value?.captureFence() ?? null
+  if (!boundary) {
+    errorMessage.value = 'Frame the yard on the map, then save.'
+    return
+  }
   submitting.value = true
   errorMessage.value = ''
 
@@ -202,7 +210,7 @@ async function submit() {
         latitude: latitude.value,
         longitude: longitude.value,
         mapHeading: heading.value,
-        boundary: polygonFromBbox(bbox.value),
+        boundary,
         mainPhone: form.mainPhone,
         contactName: form.contactName.trim() || null,
         contactPhone: form.contactPhone,
@@ -305,7 +313,7 @@ function createAnyway() {
           :aria-pressed="form.type === type"
           @click="form.type = type"
         >
-          <b>{{ LOCATION_GLYPH[type] }} {{ LOCATION_TYPE_LABELS[type] }}</b>
+          <b>{{ LOCATION_TYPE_LABELS[type] }}</b>
         </button>
       </div>
     </template>
@@ -379,7 +387,7 @@ function createAnyway() {
             autocapitalize="words"
           >
           <small class="field-hint">
-            United States addresses only. Pick a result to drop the pin, then draw the yard fence.
+            United States addresses only. Pick a result to drop the pin.
           </small>
         </label>
 
@@ -397,54 +405,49 @@ function createAnyway() {
           <span>{{ suggestError }}</span>
         </p>
 
-        <div
+        <ul
           v-if="suggestions.length"
           class="suggest-list"
           role="listbox"
         >
-          <button
+          <li
             v-for="hit in suggestions"
             :key="`${hit.latitude},${hit.longitude},${hit.displayName}`"
-            type="button"
-            class="row"
-            @click="applySuggestion(hit)"
           >
-            <span class="row-main">
+            <button
+              type="button"
+              class="suggest-item"
+              role="option"
+              @click="applySuggestion(hit)"
+            >
               <b>{{ hit.displayName }}</b>
-              <small>{{ [hit.city, hit.state].filter(Boolean).join(', ') || 'OpenStreetMap' }}</small>
-            </span>
-            <span
-              class="row-end"
-              aria-hidden="true"
-            >›</span>
-          </button>
-        </div>
+              <small>{{ [hit.city, hit.state, hit.postalCode].filter(Boolean).join(', ') || 'OpenStreetMap' }}</small>
+            </button>
+          </li>
+        </ul>
       </div>
     </template>
 
     <template v-else>
-      <p class="mb-3 text-sm text-[var(--color-ink-500)]">
-        Rotate the map so the street is straight, then drag the gold corners so the fence matches the real yard.
-      </p>
-      <ClientOnly>
-        <LocationMapEditor
-          ref="mapRef"
-          :latitude="latitude"
-          :longitude="longitude"
-          :bbox="bbox"
-          :heading="heading"
-          @update:bbox="bbox = $event"
-          @update:heading="heading = $event"
-        />
-      </ClientOnly>
       <MapRotateBar
-        class="mt-3"
+        class="mb-3"
         :heading="heading"
         :aligning="aligningMap"
         @rotate="heading = normalizeHeading(heading + $event)"
         @align="alignNewMap"
         @recenter="mapRef?.recenter()"
       />
+      <ClientOnly>
+        <LocationMapEditor
+          ref="mapRef"
+          :latitude="latitude"
+          :longitude="longitude"
+          :boundary="fence"
+          :heading="heading"
+          @update:boundary="fence = $event"
+          @update:heading="heading = $event"
+        />
+      </ClientOnly>
     </template>
 
     <div class="mt-6 flex gap-3">

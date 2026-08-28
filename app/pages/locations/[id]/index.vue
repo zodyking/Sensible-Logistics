@@ -2,9 +2,9 @@
 import { CONTAINER_TYPE_LABELS, EQUIPMENT_TYPE_SHORT, LOCATION_TYPE_LABELS } from '#shared/utils/domain'
 import { formatContainerNumber } from '#shared/utils/iso6346'
 import { formatPhoneDisplay, toE164 } from '#shared/utils/phone'
-import { bboxCenter, bboxFromPolygon, normalizeHeading, snapHeadingToStreet } from '#shared/utils/geo'
+import { bboxCenter, bboxFromPolygon, normalizeHeading } from '#shared/utils/geo'
 import type { GeoJsonPolygon } from '#shared/utils/geo'
-import { isPlacedPin } from '#shared/utils/yard-slots'
+import { isPlacedPin, streetHeadingFromMapBearing } from '#shared/utils/yard-slots'
 import type { YardMapBox } from '~/components/LocationYardMap.vue'
 import { fetchMapBearing } from '~/utils/leaflet-map'
 
@@ -21,7 +21,7 @@ useHead({ title: () => data.value?.location.name ?? 'Location' })
 const selectedId = ref<string | null>(null)
 const placing = ref(false)
 const pending = ref<YardMapBox | null>(null)
-const aligning = ref(false)
+const boxCross = ref(false)
 const aligningMap = ref(false)
 const saving = ref(false)
 const errorMessage = ref('')
@@ -93,8 +93,9 @@ function startReposition() {
     ...box,
     latitude: box.latitude ?? center.latitude,
     longitude: box.longitude ?? center.longitude,
-    rotation: box.rotation ?? 0,
+    rotation: box.rotation || streetHeadingFromMapBearing(heading.value),
   }
+  boxCross.value = false
   placing.value = true
   errorMessage.value = ''
 }
@@ -109,38 +110,14 @@ function onPending(next: { latitude: number, longitude: number, rotation: number
   pending.value = { ...pending.value, ...next }
 }
 
-function rotate(delta: number) {
+/* The box follows the street; one tap turns it perpendicular for cross parking. */
+watch([heading, boxCross], () => {
   if (!pending.value) return
-  pending.value = { ...pending.value, rotation: normalizeHeading(pending.value.rotation + delta) }
-}
-
-async function alignToStreet() {
-  if (!pending.value || pending.value.latitude == null || pending.value.longitude == null) return
-  aligning.value = true
-  try {
-    const box = bboxFromPolygon(data.value?.location.boundary as GeoJsonPolygon | null)
-    const result = await $fetch('/api/geocode/heading', {
-      query: {
-        lat: pending.value.latitude,
-        lng: pending.value.longitude,
-        west: box?.west,
-        south: box?.south,
-        east: box?.east,
-        north: box?.north,
-      },
-    })
-    pending.value = {
-      ...pending.value,
-      rotation: snapHeadingToStreet(pending.value.rotation, result.heading),
-    }
+  pending.value = {
+    ...pending.value,
+    rotation: normalizeHeading(streetHeadingFromMapBearing(heading.value) + (boxCross.value ? 90 : 0)),
   }
-  catch (err) {
-    errorMessage.value = apiErrorMessage(err, 'Could not read the nearby street.')
-  }
-  finally {
-    aligning.value = false
-  }
-}
+})
 
 async function savePlacement() {
   if (!pending.value || pending.value.latitude == null || pending.value.longitude == null || saving.value) return
@@ -289,16 +266,17 @@ const subtitle = computed(() => {
         @rotate="rotateMap"
         @align="alignMapToRoad"
         @recenter="mapRef?.recenter()"
-      />
-
-      <ContainerPlaceControls
-        v-if="placing && pending"
-        class="mt-3"
-        :rotation="pending.rotation"
-        :aligning="aligning"
-        @rotate="rotate"
-        @align="alignToStreet"
-      />
+      >
+        <button
+          v-if="placing"
+          type="button"
+          class="btn-ghost"
+          :aria-pressed="boxCross"
+          @click="boxCross = !boxCross"
+        >
+          Turn box 90°
+        </button>
+      </MapRotateBar>
 
       <div
         v-if="placing"

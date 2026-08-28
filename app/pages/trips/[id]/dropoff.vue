@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { LOCATION_TYPE_LABELS } from '#shared/utils/domain'
 import { describeDropoffEffect } from '#shared/utils/service-life'
-import { bboxFromPolygon, normalizeHeading, snapHeadingToStreet } from '#shared/utils/geo'
+import { bboxFromPolygon, normalizeHeading } from '#shared/utils/geo'
 import type { GeoJsonPolygon } from '#shared/utils/geo'
 import { isPlacedPin, locationOrigin, nextOpenSlot, streetHeadingFromMapBearing } from '#shared/utils/yard-slots'
 import type { YardMapBox } from '~/components/LocationYardMap.vue'
@@ -27,7 +27,7 @@ const retainChassis = ref(false)
 const notes = ref('')
 const locationSearch = ref('')
 const pending = ref<YardMapBox | null>(null)
-const aligning = ref(false)
+const boxCross = ref(false)
 const aligningMap = ref(false)
 const submitting = ref(false)
 const errorMessage = ref('')
@@ -147,38 +147,14 @@ const confirmBoxes = computed(() => {
     : existing
 })
 
-function rotate(delta: number) {
+/* The box follows the street; one tap turns it perpendicular for cross parking. */
+watch([heading, boxCross], () => {
   if (!pending.value) return
-  pending.value = { ...pending.value, rotation: normalizeHeading(pending.value.rotation + delta) }
-}
-
-async function alignToStreet() {
-  if (!pending.value || pending.value.latitude == null || pending.value.longitude == null) return
-  aligning.value = true
-  try {
-    const box = bboxFromPolygon(destination.value?.location.boundary as GeoJsonPolygon | null)
-    const result = await $fetch('/api/geocode/heading', {
-      query: {
-        lat: pending.value.latitude,
-        lng: pending.value.longitude,
-        west: box?.west,
-        south: box?.south,
-        east: box?.east,
-        north: box?.north,
-      },
-    })
-    pending.value = {
-      ...pending.value,
-      rotation: snapHeadingToStreet(pending.value.rotation, result.heading),
-    }
+  pending.value = {
+    ...pending.value,
+    rotation: normalizeHeading(streetHeadingFromMapBearing(heading.value) + (boxCross.value ? 90 : 0)),
   }
-  catch (err) {
-    errorMessage.value = apiErrorMessage(err, 'Could not read the nearby street.')
-  }
-  finally {
-    aligning.value = false
-  }
-}
+})
 
 function rotateMap(delta: number) {
   heading.value = normalizeHeading(heading.value + delta)
@@ -361,15 +337,16 @@ async function confirm() {
           @rotate="rotateMap"
           @align="alignMapToRoad"
           @recenter="mapRef?.recenter()"
-        />
-        <ContainerPlaceControls
-          v-if="pending"
-          class="mt-3"
-          :rotation="pending.rotation"
-          :aligning="aligning"
-          @rotate="rotate"
-          @align="alignToStreet"
-        />
+        >
+          <button
+            type="button"
+            class="btn-ghost"
+            :aria-pressed="boxCross"
+            @click="boxCross = !boxCross"
+          >
+            Turn box 90°
+          </button>
+        </MapRotateBar>
       </template>
 
       <template v-else-if="step === 'options'">

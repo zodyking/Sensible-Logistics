@@ -57,6 +57,7 @@ defineEmits<{
     >
       Recenter
     </button>
+    <slot />
   </div>
   <p class="field-hint mt-2">
     Yard heading {{ Math.round(heading) }}°. Rotate so the street runs straight across the map.

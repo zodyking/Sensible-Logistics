@@ -242,7 +242,15 @@ function fit() {
   if (isPlacedPin(props.latitude, props.longitude)) {
     map.setView([props.latitude!, props.longitude!], 18, { animate: false })
     fitted = true
+    return
   }
+  if (props.pending && isPlacedPin(props.pending.latitude, props.pending.longitude)) {
+    map.setView([props.pending.latitude!, props.pending.longitude!], 18, { animate: false })
+    fitted = true
+    return
+  }
+  // Never leave the map without a view — a gray pane looks broken.
+  map.setView([39.8283, -98.5795], 4, { animate: false })
 }
 
 function onMapClick(event: import('leaflet').LeafletMouseEvent) {
