@@ -44,7 +44,7 @@ const earlierTasks = computed(() =>
   allTasks.value.filter(task => task.workDate < todayIso.value && task.status !== 'DISMISSED'),
 )
 
-const draftStepCount = computed(() => stepsFromBlob(draft.value).length)
+const draftSteps = computed(() => stepsFromBlob(draft.value))
 
 const jsonBody = computed(() => JSON.stringify({
   text: '(the SMS text)',
@@ -109,8 +109,10 @@ async function submitDraft() {
 
 function onDraftEnter(event: KeyboardEvent) {
   if (event.shiftKey) return
-  event.preventDefault()
-  void submitDraft()
+  if (event.metaKey || event.ctrlKey) {
+    event.preventDefault()
+    void submitDraft()
+  }
 }
 
 function applyStepsLocally(id: string, steps: TaskStep[]) {
@@ -328,13 +330,32 @@ async function patchTask(id: string, statusValue: 'DONE' | 'DISMISSED') {
           v-model="draft"
           class="task-compose-input"
           rows="4"
-          placeholder="Paste the container work here. Enter turns each line into a checked step."
+          placeholder="Paste the container work here. Enter starts a new step."
           autocomplete="off"
           @keydown.enter="onDraftEnter"
         />
+        <div
+          v-if="draftSteps.length"
+          class="task-compose-preview"
+          aria-label="Step preview"
+        >
+          <div
+            v-for="step in draftSteps"
+            :key="step.id"
+            class="task-check-row"
+          >
+            <span
+              class="task-check-box"
+              aria-hidden="true"
+            >
+              <span />
+            </span>
+            <span class="task-check-text">{{ step.text }}</span>
+          </div>
+        </div>
         <div class="task-compose-bar">
           <p class="field-hint mb-0">
-            {{ draftStepCount ? `${draftStepCount} step${draftStepCount === 1 ? '' : 's'}` : 'Enter formats steps · Shift+Enter new line' }}
+            Enter new step · Ctrl+Enter saves
           </p>
           <button
             class="btn-dark"
@@ -386,7 +407,7 @@ async function patchTask(id: string, statusValue: 'DONE' | 'DISMISSED') {
         glyph="☰"
         title="No steps yet"
         :description="mode === 'edit'
-          ? 'Paste the dispatcher text above, then press Enter to break it into checkboxes.'
+          ? 'Paste the dispatcher text above. Enter starts a new step, then tap Add steps.'
           : 'Switch to Edit to paste today’s container work.'"
       />
 

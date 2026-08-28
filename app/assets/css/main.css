@@ -4161,6 +4161,12 @@
   background: #fff;
 }
 
+.task-compose-preview {
+  margin-top: var(--s3);
+  border-top: 1px dashed var(--color-line-300);
+  padding-top: var(--s2);
+}
+
 .task-compose-bar {
   display: flex;
   align-items: center;
