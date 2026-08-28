@@ -286,7 +286,7 @@ async function confirm() {
           v-else
           glyph="◫"
           title="No locations match"
-          description="Pick an existing location. Add new ones from More → Customers & locations."
+          description="Pick an existing location. Add new ones from More → Location/Customer Manager."
         />
       </template>
 

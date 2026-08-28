@@ -12,7 +12,8 @@ useHead({ title: 'Add location' })
 const route = useRoute()
 const returnTo = computed(() => {
   const raw = String(route.query.returnTo ?? '')
-  return raw.startsWith('/') ? raw : '/locations'
+  if (raw.startsWith('/')) return raw
+  return user.value?.role === 'ADMIN' ? '/admin/locations' : '/more/locations'
 })
 
 type Step = 'type' | 'name' | 'phones' | 'address' | 'map'

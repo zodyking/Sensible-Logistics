@@ -49,7 +49,7 @@ async function signOut() {
         </div>
       </div>
       <NuxtLink
-        to="/locations"
+        to="/more/locations"
         class="row"
       >
         <div
@@ -59,8 +59,8 @@ async function signOut() {
           ◫
         </div>
         <div class="row-main">
-          <b>Customers & locations</b>
-          <small>Company-wide yards, terminals, and customers</small>
+          <b>Location/Customer Manager</b>
+          <small>Add or delete yards, terminals, and customers</small>
         </div>
         <div
           class="row-end"

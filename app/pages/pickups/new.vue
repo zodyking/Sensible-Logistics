@@ -583,7 +583,7 @@ async function skipNotes() {
         v-if="!locationData?.items.length"
         glyph="◫"
         title="No locations match"
-        description="Pick an existing yard, terminal, or customer. Add new ones from More → Customers & locations."
+        description="Pick an existing yard, terminal, or customer. Add new ones from More → Location/Customer Manager."
       />
     </template>
 

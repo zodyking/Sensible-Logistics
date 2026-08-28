@@ -43,13 +43,6 @@ function addressLine(item: { type: keyof typeof LOCATION_TYPE_LABELS, addressLin
       >
     </div>
 
-    <NuxtLink
-      to="/locations/new"
-      class="btn-dark mb-4 w-full"
-    >
-      Add a location
-    </NuxtLink>
-
     <div
       v-if="status === 'pending'"
       class="card p-6 text-center text-sm text-[var(--color-ink-500)]"
@@ -110,14 +103,7 @@ function addressLine(item: { type: keyof typeof LOCATION_TYPE_LABELS, addressLin
       v-else
       glyph="◫"
       title="No locations yet"
-      description="Add a yard, terminal or customer and draw its fence on the map."
-    >
-      <NuxtLink
-        to="/locations/new"
-        class="btn-ghost"
-      >
-        Add a location
-      </NuxtLink>
-    </EmptyState>
+      description="Add yards, terminals, and customers from More → Location/Customer Manager."
+    />
   </section>
 </template>

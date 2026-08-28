@@ -60,7 +60,7 @@ function occupancyPercent(occupancy: number, capacity: number | null): number {
         <h1>Locations & yards</h1>
       </div>
       <NuxtLink
-        to="/locations/new"
+        to="/locations/new?returnTo=/admin/locations"
         class="btn-dark w-auto"
       >
         ＋ New location
@@ -235,7 +235,7 @@ function occupancyPercent(occupancy: number, capacity: number | null): number {
       description="Create the terminals, yards and customer sites your drivers work with."
     >
       <NuxtLink
-        to="/locations/new"
+        to="/locations/new?returnTo=/admin/locations"
         class="btn-ghost"
       >
         Create a location

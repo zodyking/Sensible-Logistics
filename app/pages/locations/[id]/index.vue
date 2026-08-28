@@ -155,8 +155,8 @@ const subtitle = computed(() => {
       <PageHeader
         eyebrow="Location"
         :title="data.location.name"
-        back-to="/locations"
-        back-label="Locations"
+        :back-to="user?.role === 'ADMIN' ? '/admin/locations' : '/more/locations'"
+        :back-label="user?.role === 'ADMIN' ? 'Locations' : 'Manager'"
       />
       <p class="mb-4 text-sm text-[var(--color-ink-500)]">
         {{ subtitle }}

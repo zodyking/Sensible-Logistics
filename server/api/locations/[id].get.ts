@@ -16,7 +16,11 @@ export default defineEventHandler(async (event) => {
 
   const db = useDb()
 
-  const [location] = await db.select().from(locations).where(eq(locations.id, id)).limit(1)
+  const [location] = await db
+    .select()
+    .from(locations)
+    .where(and(eq(locations.id, id), isNull(locations.deletedAt)))
+    .limit(1)
   assertTenant(auth, location, 'Location')
 
   const items = await db
