@@ -406,6 +406,9 @@ onMounted(async () => {
 })
 
 const claimStep = computed<Step>(() => {
+  if (fromYard.value && pickupKind.value === 'CONTAINER') {
+    return swapMode.value ? 'equipment' : 'load'
+  }
   if (fromYard.value) return 'inventory'
   if (pickupKind.value === 'BARE_CHASSIS') return 'equipment'
   return needsClassification.value ? 'equipmentType' : 'equipment'
@@ -426,8 +429,10 @@ function selectYardContainer(item: YardContainer) {
   equipmentType.value = item.equipmentType
   isLoaded.value = swapMode.value ? true : item.isLoaded
   sealNumber.value = item.sealNumber ?? ''
-  chassisId.value = item.currentChassisId
-  chassisNumber.value = item.chassisNumber ? maskChassisInput(item.chassisNumber) : ''
+  if (item.currentChassisId || item.chassisNumber) {
+    chassisId.value = item.currentChassisId ?? chassisId.value
+    chassisNumber.value = item.chassisNumber ? maskChassisInput(item.chassisNumber) : chassisNumber.value
+  }
 }
 
 function selectYardChassis(item: YardChassis) {
@@ -490,7 +495,7 @@ const canAdvance = computed(() => {
         && chassisOk.value
         && !blockedByConflict.value
         && !resolving.value
-        && Boolean(resolution.value)
+        && (fromYard.value || Boolean(resolution.value))
         && !readingPhoto.value
         && !cameraOpen.value
     case 'containerType':
@@ -885,7 +890,7 @@ function retakePhoto() {
               ? `Loaded containers at ${originLocation?.name || originName || 'this customer'}. Pick the outbound load.`
               : pickupKind === 'BARE_CHASSIS'
                 ? `Chassis already at ${originLocation?.name ?? 'this location'}. Pick one to skip typing the number.`
-                : `Containers already at ${originLocation?.name ?? 'this location'}. Pick one to skip typing and classifying it.`
+                : `Containers already at ${originLocation?.name ?? 'this location'}. Pick one, then confirm chassis and loaded or empty.`
           }}
         </span>
       </p>
@@ -930,6 +935,7 @@ function retakePhoto() {
               {{ CONTAINER_TYPE_LABELS[item.containerType] }}
               · {{ EQUIPMENT_TYPE_SHORT[item.equipmentType] }}
               · {{ item.isLoaded ? 'Loaded' : 'Empty' }}
+              <template v-if="item.chassisNumber"> · {{ formatChassisNumber(item.chassisNumber) }}</template>
             </small>
           </span>
           <span class="row-end">
@@ -1026,7 +1032,7 @@ function retakePhoto() {
               <ContainerNumberInput
                 id="container-number"
                 v-model="rawNumber"
-                :disabled="Boolean(tripId)"
+                :disabled="Boolean(tripId) || fromYard"
                 :invalid="containerState === 'error'"
               />
               <FieldStatus

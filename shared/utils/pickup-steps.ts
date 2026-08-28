@@ -17,10 +17,10 @@ export const PICKUP_STEPS = [
 export type PickupStep = (typeof PICKUP_STEPS)[number]
 
 /**
- * New Pickup wizard. Choosing a box or chassis already at the yard skips
- * typing, classification, and cargo questions the record already answers.
- * Loaded containers still collect a seal number. Destination is always last
- * before confirm so it is not left to Home.
+ * New Pickup wizard. A box already at the yard skips typing the container
+ * number and classification. Chassis and loaded/empty still get asked, the
+ * same as the scan path. Loaded containers still collect a seal. Destination
+ * is always last before confirm so it is not left to Home.
  */
 export function pickupSteps(input: {
   kind: TripKind
@@ -31,34 +31,22 @@ export function pickupSteps(input: {
   /** Second pickup of a load while an empty is still inbound to a customer. */
   swap?: boolean
 }): PickupStep[] {
-  if (input.swap) {
-    const steps: PickupStep[] = ['inventory']
-    if (input.manualEntry && !input.fromYard) {
-      steps.push('equipment')
-      if (input.kind === 'CONTAINER' && input.needsClassification) {
-        steps.push('containerType', 'equipmentType')
-      }
-    }
-    if (input.kind === 'CONTAINER' && input.isLoaded && (input.manualEntry || input.fromYard)) {
-      steps.push('seal')
-    }
-    steps.push('notes', 'destination', 'confirm')
-    return steps
-  }
+  const steps: PickupStep[] = input.swap ? ['inventory'] : ['kind', 'location', 'inventory']
+  const typed = input.manualEntry && !input.fromYard
+  const container = input.kind === 'CONTAINER'
 
-  const steps: PickupStep[] = ['kind', 'location', 'inventory']
-
-  if (input.manualEntry && !input.fromYard) {
+  if (typed || (container && (input.fromYard || input.swap))) {
     steps.push('equipment')
-    if (input.kind === 'CONTAINER' && input.needsClassification) {
+    if (typed && container && input.needsClassification) {
       steps.push('containerType', 'equipmentType')
     }
-    if (input.kind === 'CONTAINER') {
-      steps.push('load')
-    }
   }
 
-  if (input.kind === 'CONTAINER' && input.isLoaded && (input.manualEntry || input.fromYard)) {
+  if (container && !input.swap && (typed || input.fromYard)) {
+    steps.push('load')
+  }
+
+  if (container && input.isLoaded && (typed || input.fromYard || input.swap)) {
     steps.push('seal')
   }
 
