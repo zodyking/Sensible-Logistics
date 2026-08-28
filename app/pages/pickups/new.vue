@@ -18,6 +18,25 @@ useHead({ title: 'New pickup' })
 
 type Step = PickupStep
 
+type YardBox = {
+  id: string
+  number: string
+  numberNormalized?: string | null
+  containerType: ContainerType
+  equipmentType: EquipmentType
+  isLoaded: boolean
+  sealNumber?: string | null
+  currentChassisId?: string | null
+  chassisNumber?: string | null
+}
+
+type YardChassis = {
+  id: string
+  number: string
+  provider?: string | null
+  sizeCompatibility?: string | null
+}
+
 const STEP_TITLES: Record<Step, string> = {
   kind: 'What are you picking up?',
   location: 'Where are you picking up?',
@@ -36,6 +55,7 @@ const originLocationId = ref<string | null>(null)
 const destinationLocationId = ref<string | null>(null)
 const originName = ref('')
 const destinationName = ref('')
+const originContainers = ref<YardBox[]>([])
 const pickupKind = ref<TripKind>('CONTAINER')
 const selectedYardId = ref<string | null>(null)
 const manualEntry = ref(false)
@@ -84,30 +104,12 @@ const listSearch = computed(() =>
   step.value === 'destination' ? destinationSearch.value : locationSearch.value,
 )
 const { data: locationData } = await useFetch('/api/locations', {
-  query: computed(() => ({ q: listSearch.value || undefined, limit: 50 })),
+  query: computed(() => ({ q: listSearch.value || undefined, limit: 100 })),
 })
 
 const inventory = ref<{
-  containers: Array<{
-    id: string
-    number: string
-    numberNormalized: string | null
-    containerType: ContainerType
-    equipmentType: EquipmentType
-    isLoaded: boolean
-    sealNumber: string | null
-    currentChassisId: string | null
-    chassisNumber: string | null
-    doNotMove: boolean
-    activePoolState: string
-  }>
-  chassis: Array<{
-    id: string
-    number: string
-    provider: string | null
-    sizeCompatibility: string | null
-    status: string
-  }>
+  containers: YardBox[]
+  chassis: YardChassis[]
 } | null>(null)
 const inventoryPending = ref(false)
 const inventoryQuery = ref('')
@@ -121,15 +123,31 @@ watch(originLocationId, async (id) => {
   }
   if (!id) {
     inventory.value = null
+    originContainers.value = []
     return
   }
   inventoryPending.value = true
+  errorMessage.value = ''
   try {
-    inventory.value = await $fetch(`/api/locations/${id}/inventory`)
+    const detail = await $fetch(`/api/locations/${id}`)
+    if (detail.containers?.length) originContainers.value = detail.containers
   }
   catch (error) {
-    inventory.value = { containers: [], chassis: [] }
-    errorMessage.value = apiErrorMessage(error, 'Could not load equipment at this location.')
+    if (!originContainers.value.length) {
+      errorMessage.value = apiErrorMessage(error, 'Could not load equipment at this location.')
+    }
+  }
+  try {
+    inventory.value = await $fetch(`/api/locations/${id}/inventory`)
+    if (!originContainers.value.length && inventory.value.containers.length) {
+      originContainers.value = inventory.value.containers
+    }
+  }
+  catch (error) {
+    if (!inventory.value) inventory.value = { containers: [], chassis: [] }
+    if (!originContainers.value.length && !errorMessage.value) {
+      errorMessage.value = apiErrorMessage(error, 'Could not load equipment at this location.')
+    }
   }
   finally {
     inventoryPending.value = false
@@ -137,10 +155,21 @@ watch(originLocationId, async (id) => {
 })
 
 const yardContainers = computed(() => {
-  const items = inventory.value?.containers ?? []
+  const extra = new Map((inventory.value?.containers ?? []).map(item => [item.id, item]))
+  const base = originContainers.value.length
+    ? originContainers.value.map((item) => {
+        const more = extra.get(item.id)
+        return {
+          ...item,
+          sealNumber: more?.sealNumber ?? item.sealNumber ?? null,
+          currentChassisId: more?.currentChassisId ?? item.currentChassisId ?? null,
+          chassisNumber: more?.chassisNumber ?? item.chassisNumber ?? null,
+        }
+      })
+    : (inventory.value?.containers ?? [])
   const needle = inventoryQuery.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
-  if (!needle) return items
-  return items.filter(item =>
+  if (!needle) return base
+  return base.filter(item =>
     (item.numberNormalized || item.number).toUpperCase().replace(/[^A-Z0-9]/g, '').includes(needle),
   )
 })
@@ -310,8 +339,7 @@ const chassisOk = computed(() => {
   return !chassisNumber.value || isCompleteChassisNumber(chassisNumber.value)
 })
 
-type YardContainer = NonNullable<typeof inventory.value>['containers'][number]
-type YardChassis = NonNullable<typeof inventory.value>['chassis'][number]
+type YardContainer = YardBox
 
 function selectYardContainer(item: YardContainer) {
   manualEntry.value = false
@@ -346,9 +374,10 @@ function enterUnlisted() {
   void next()
 }
 
-function chooseOrigin(location: { id: string, name: string }) {
+function chooseOrigin(location: { id: string, name: string, containers?: YardBox[] }) {
   originLocationId.value = location.id
   originName.value = location.name
+  originContainers.value = location.containers ?? []
 }
 
 function chooseDestination(location: { id: string, name: string }) {
@@ -782,7 +811,7 @@ async function skipNotes() {
       </div>
 
       <p
-        v-if="inventoryPending"
+        v-if="inventoryPending && !yardContainers.length && !yardChassis.length"
         class="note"
         role="status"
       >
@@ -790,7 +819,7 @@ async function skipNotes() {
       </p>
 
       <div
-        v-else-if="pickupKind === 'CONTAINER' && yardContainers.length"
+        v-if="pickupKind === 'CONTAINER' && yardContainers.length"
         class="card rowlist"
       >
         <button
@@ -862,12 +891,16 @@ async function skipNotes() {
       </div>
 
       <EmptyState
-        v-else
+        v-else-if="!inventoryPending"
         glyph="▦"
         :title="pickupKind === 'BARE_CHASSIS' ? 'No chassis on site' : 'No containers on site'"
-        :description="pickupKind === 'BARE_CHASSIS'
-          ? 'Nothing matching that search is parked here. Enter the chassis number instead.'
-          : 'Nothing matching that search is parked here. Enter the container number instead.'"
+        :description="inventoryQuery.trim()
+          ? (pickupKind === 'BARE_CHASSIS'
+            ? 'Nothing matching that search is parked here.'
+            : 'Nothing matching that search is parked here.')
+          : (pickupKind === 'BARE_CHASSIS'
+            ? 'Add a chassis with the button below if it is not in the yard yet.'
+            : 'Add a container with the button below if it is not in the yard yet.')"
       />
 
       <button
@@ -875,7 +908,7 @@ async function skipNotes() {
         class="btn-ghost mt-4 w-full"
         @click="enterUnlisted"
       >
-        {{ pickupKind === 'BARE_CHASSIS' ? 'Number isn’t listed — enter chassis' : 'Number isn’t listed — enter container' }}
+        {{ pickupKind === 'BARE_CHASSIS' ? 'Add New Chassis' : 'Add New Container' }}
       </button>
     </template>
 

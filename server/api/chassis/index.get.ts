@@ -5,6 +5,7 @@ import { requireAuth } from '../../utils/session'
 
 const querySchema = z.object({
   q: z.string().trim().max(60).optional(),
+  locationId: z.string().uuid().optional(),
   /** Hide chassis that are out of service or already carrying a container. */
   availableOnly: z.enum(['true', 'false']).default('false'),
   limit: z.coerce.number().int().min(1).max(200).default(100),
@@ -16,6 +17,10 @@ export default defineEventHandler(async (event) => {
   const db = useDb()
 
   const filters = [eq(chassis.companyId, auth.companyId), isNull(chassis.deletedAt)]
+
+  if (query.locationId) {
+    filters.push(eq(chassis.currentLocationId, query.locationId))
+  }
 
   if (query.availableOnly === 'true') {
     filters.push(eq(chassis.outOfService, false))
