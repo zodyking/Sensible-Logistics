@@ -38,7 +38,26 @@ describe('pickupSteps', () => {
       needsClassification: true,
       isLoaded: true,
     })
-    expect(steps).toEqual(['kind', 'location', 'inventory', 'notes', 'destination', 'confirm'])
+    expect(steps).toEqual(['kind', 'location', 'inventory', 'seal', 'notes', 'destination', 'confirm'])
+  })
+
+  it('requires a seal for a loaded yard container and skips it when empty', () => {
+    const loaded = pickupSteps({
+      kind: 'CONTAINER',
+      fromYard: true,
+      manualEntry: false,
+      needsClassification: false,
+      isLoaded: true,
+    })
+    const empty = pickupSteps({
+      kind: 'CONTAINER',
+      fromYard: true,
+      manualEntry: false,
+      needsClassification: false,
+      isLoaded: false,
+    })
+    expect(loaded).toContain('seal')
+    expect(empty).not.toContain('seal')
   })
 
   it('asks for type, size, load, and seal only when the number is typed', () => {

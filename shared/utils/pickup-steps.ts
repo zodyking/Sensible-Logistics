@@ -19,7 +19,8 @@ export type PickupStep = (typeof PICKUP_STEPS)[number]
 /**
  * New Pickup wizard. Choosing a box or chassis already at the yard skips
  * typing, classification, and cargo questions the record already answers.
- * Destination is always last before confirm so it is not left to Home.
+ * Loaded containers still collect a seal number. Destination is always last
+ * before confirm so it is not left to Home.
  */
 export function pickupSteps(input: {
   kind: TripKind
@@ -37,8 +38,11 @@ export function pickupSteps(input: {
     }
     if (input.kind === 'CONTAINER') {
       steps.push('load')
-      if (input.isLoaded) steps.push('seal')
     }
+  }
+
+  if (input.kind === 'CONTAINER' && input.isLoaded && (input.manualEntry || input.fromYard)) {
+    steps.push('seal')
   }
 
   steps.push('notes', 'destination', 'confirm')

@@ -586,40 +586,9 @@
   .trip-card-meta {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-end;
     gap: var(--s3);
-  }
-
-  .trip-card-flags {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px;
-    min-width: 0;
-  }
-
-  .trip-flag {
-    font-size: var(--text-xs);
-    font-weight: 700;
-    padding: 4px 10px;
-    border-radius: 999px;
-    white-space: nowrap;
-  }
-
-  .trip-flag.line {
-    background: var(--color-blue-50);
-    color: var(--color-blue-500);
-  }
-
-  .trip-flag.loaded {
-    background: var(--color-ok-100);
-    color: var(--color-ok-600);
-  }
-
-  .trip-flag.empty {
-    background: var(--color-paper-100);
-    color: var(--color-ink-500);
-    border: 1px dashed var(--color-line-300);
+    margin-bottom: 4px;
   }
 
   .trip-cno {
@@ -628,7 +597,7 @@
     font-weight: 700;
     letter-spacing: 0.04em;
     line-height: 1.15;
-    margin: 10px 0 12px;
+    margin: 0 0 12px;
     color: var(--color-ink-900);
   }
 
@@ -674,12 +643,20 @@
     color: var(--color-ink-900);
   }
 
+  .trip-facts-split {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .trip-fact-end {
+    text-align: right;
+  }
+
   .route-strip {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
     align-items: start;
-    gap: 8px 10px;
-    padding: 14px 16px;
+    gap: 4px 10px;
+    padding: 8px 16px;
     background: var(--color-navy-900);
   }
 
@@ -714,7 +691,7 @@
     align-items: center;
     min-width: 52px;
     width: 64px;
-    margin-top: 7px;
+    margin-top: 4px;
   }
 
   .route-dot {
@@ -1940,13 +1917,13 @@
     font-size: var(--text-xs);
     font-weight: 700;
     color: var(--color-amber-500);
-    margin-top: 4px;
+    margin-top: 2px;
     display: inline-flex;
     align-items: center;
     background: none;
     border: 0;
-    padding: 8px 0;
-    min-height: 44px;
+    padding: 6px 0;
+    min-height: 32px;
   }
 
   .route-change:active {

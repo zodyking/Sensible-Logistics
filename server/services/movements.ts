@@ -313,6 +313,14 @@ export interface ConfirmPickupInput {
   gps?: { latitude: number, longitude: number, accuracyMeters?: number } | null
 }
 
+function sealForLoadedContainer(isLoaded: boolean, sealNumber?: string | null): string | null {
+  const seal = sealNumber?.trim() || null
+  if (isLoaded && !seal) {
+    throw createError({ statusCode: 422, statusMessage: 'Enter a seal number for a loaded container.' })
+  }
+  return isLoaded ? seal : null
+}
+
 /**
  * Confirm a pickup: the container moves into driver custody / in transit and
  * the authoritative pickup, chassis-attach and departure events are written.
@@ -350,6 +358,7 @@ export async function confirmPickup(
     )
 
     const now = new Date()
+    const sealNumber = sealForLoadedContainer(input.isLoaded, input.sealNumber)
 
     await recordEvent(
       tx,
@@ -365,7 +374,7 @@ export async function confirmPickup(
         locationId: trip.originLocationId,
         chassisId: input.chassisId ?? null,
         gps: input.gps,
-        payload: { isLoaded: input.isLoaded, sealNumber: input.sealNumber ?? null },
+        payload: { isLoaded: input.isLoaded, sealNumber },
         notes: input.notes ?? null,
       },
       {
@@ -376,7 +385,7 @@ export async function confirmPickup(
         currentChassisId: input.chassisId ?? null,
         activeMovementId: trip.id,
         isLoaded: input.isLoaded,
-        sealNumber: input.sealNumber ?? null,
+        sealNumber,
         containerStatus: 'IN_TRANSIT',
       },
     )
@@ -405,7 +414,7 @@ export async function confirmPickup(
         chassisId: input.chassisId ?? null,
         destinationLocationId: destinationLocationId ?? trip.destinationLocationId,
         isLoaded: input.isLoaded,
-        sealNumber: input.sealNumber ?? null,
+        sealNumber,
         pickedUpAt: now,
         driverNotes: input.notes ?? trip.driverNotes,
         updatedAt: now,
@@ -923,6 +932,8 @@ export async function attachContainerToTrip(
     })
 
     const now = new Date()
+    const isLoaded = input.isLoaded ?? false
+    const sealNumber = sealForLoadedContainer(isLoaded, input.sealNumber)
 
     await recordEvent(
       tx,
@@ -948,8 +959,8 @@ export async function attachContainerToTrip(
         currentLocationId: null,
         currentChassisId: trip.chassisId,
         activeMovementId: trip.id,
-        isLoaded: input.isLoaded ?? false,
-        sealNumber: input.sealNumber ?? null,
+        isLoaded,
+        sealNumber,
         containerStatus: 'IN_TRANSIT',
       },
     )
@@ -964,8 +975,8 @@ export async function attachContainerToTrip(
       .set({
         containerId: claim.container.id,
         kind: 'CONTAINER',
-        isLoaded: input.isLoaded ?? false,
-        sealNumber: input.sealNumber ?? null,
+        isLoaded,
+        sealNumber,
         updatedAt: now,
         version: sql`${trips.version} + 1`,
       })

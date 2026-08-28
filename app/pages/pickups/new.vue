@@ -418,9 +418,10 @@ const canAdvance = computed(() => {
     case 'containerType':
     case 'equipmentType':
     case 'load':
-    case 'seal':
     case 'notes':
       return true
+    case 'seal':
+      return Boolean(sealNumber.value.trim())
     case 'destination':
       return Boolean(destinationLocationId.value) && destinationLocationId.value !== originLocationId.value
     case 'confirm':
@@ -549,6 +550,11 @@ async function startPickup() {
 
 async function confirm() {
   if (!tripId.value || submitting.value) return
+  if (pickupKind.value === 'CONTAINER' && isLoaded.value && !sealNumber.value.trim()) {
+    errorMessage.value = 'Enter a seal number for a loaded container.'
+    step.value = 'seal'
+    return
+  }
   if (!destinationLocationId.value) {
     errorMessage.value = 'Choose a drop-off location.'
     return
@@ -564,11 +570,11 @@ async function confirm() {
         chassisId: chassisId.value,
         destinationLocationId: destinationLocationId.value,
         isLoaded: pickupKind.value === 'CONTAINER' ? isLoaded.value : false,
-        sealNumber: pickupKind.value === 'CONTAINER' ? (sealNumber.value || null) : null,
+        sealNumber: pickupKind.value === 'CONTAINER' && isLoaded.value ? (sealNumber.value.trim() || null) : null,
         notes: notes.value || null,
       },
     })
-    await navigateTo(`/trips/${tripId.value}`)
+    await navigateTo('/')
   }
   catch (error) {
     errorMessage.value = apiErrorMessage(error, 'Could not confirm the pickup.')
@@ -642,11 +648,6 @@ async function onPhoto(dataUrl: string) {
 function retakePhoto() {
   ocrMessage.value = ''
   cameraOpen.value = true
-}
-
-async function skipNotes() {
-  notes.value = ''
-  await next()
 }
 </script>
 
@@ -1096,8 +1097,9 @@ async function skipNotes() {
             placeholder="004512"
             autocapitalize="characters"
             autocomplete="off"
+            required
           >
-          <small class="field-hint">Leave blank if the container is unsealed.</small>
+          <small class="field-hint">Required for a loaded container.</small>
         </label>
       </div>
     </template>
@@ -1114,13 +1116,6 @@ async function skipNotes() {
           />
         </label>
       </div>
-      <button
-        type="button"
-        class="btn-ghost mt-4 w-full"
-        @click="skipNotes"
-      >
-        Skip notes
-      </button>
     </template>
 
     <!-- ── Destination ─────────────────────────────────────────── -->
