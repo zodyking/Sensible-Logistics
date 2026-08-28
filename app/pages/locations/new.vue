@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { LOCATION_GLYPH, LOCATION_TYPE_LABELS, LOCATION_TYPES } from '#shared/utils/domain'
 import type { LocationType } from '#shared/utils/domain'
-import { bboxAround, polygonFromBbox, type BoundingBox } from '#shared/utils/geo'
+import { bboxAround, normalizeHeading, polygonFromBbox, type BoundingBox } from '#shared/utils/geo'
+import { isPlacedPin } from '#shared/utils/yard-slots'
+import { fetchMapBearing } from '~/utils/leaflet-map'
 import { formatPhoneInput, isValidPhone } from '#shared/utils/phone'
 
 const { user } = useUserSession()
@@ -55,6 +57,9 @@ const form = reactive({
 const latitude = ref<number | null>(null)
 const longitude = ref<number | null>(null)
 const bbox = ref<BoundingBox | null>(null)
+const heading = ref(0)
+const aligningMap = ref(false)
+const mapRef = ref<{ recenter: () => void } | null>(null)
 
 const suggestions = ref<PlaceHit[]>([])
 const searching = ref(false)
@@ -95,7 +100,7 @@ async function lookupAddress(q: string) {
   }
 }
 
-function applySuggestion(hit: PlaceHit) {
+async function applySuggestion(hit: PlaceHit, advance = true) {
   form.addressLine1 = hit.addressLine1 || hit.displayName
   form.city = hit.city ?? ''
   form.state = hit.state ?? ''
@@ -105,7 +110,13 @@ function applySuggestion(hit: PlaceHit) {
   longitude.value = hit.longitude
   bbox.value = hit.bbox ?? bboxAround(hit.latitude, hit.longitude, 80)
   suggestions.value = []
-  step.value = 'map'
+  try {
+    heading.value = await fetchMapBearing(hit.latitude, hit.longitude, bbox.value)
+  }
+  catch {
+    heading.value = 0
+  }
+  if (advance) step.value = 'map'
 }
 
 const canAdvance = computed(() => {
@@ -113,15 +124,23 @@ const canAdvance = computed(() => {
     case 'type': return Boolean(form.type)
     case 'name': return form.name.trim().length >= 2
     case 'phones': return isValidPhone(form.mainPhone) && isValidPhone(form.contactPhone)
-    case 'address': return Boolean(latitude.value && longitude.value && form.addressLine1)
+    case 'address': return form.addressQuery.trim().length >= 3 || Boolean(isPlacedPin(latitude.value, longitude.value) && form.addressLine1)
     case 'map': return Boolean(bbox.value)
   }
   return false
 })
 
-function next() {
-  if (step.value === 'address' && !latitude.value) {
-    lookupAddress(form.addressQuery.trim())
+async function next() {
+  if (step.value === 'address' && !isPlacedPin(latitude.value, longitude.value)) {
+    const query = form.addressQuery.trim()
+    if (query.length < 3) return
+    if (!suggestions.value.length) await lookupAddress(query)
+    const first = suggestions.value[0]
+    if (!first) {
+      suggestError.value = suggestError.value || 'No United States address matched. Try a street and city.'
+      return
+    }
+    await applySuggestion(first, true)
     return
   }
   const index = stepIndex.value
@@ -131,6 +150,20 @@ function next() {
 function back() {
   const index = stepIndex.value
   if (index > 0) step.value = STEPS[index - 1]!
+}
+
+async function alignNewMap() {
+  if (!isPlacedPin(latitude.value, longitude.value)) return
+  aligningMap.value = true
+  try {
+    heading.value = await fetchMapBearing(latitude.value, longitude.value, bbox.value)
+  }
+  catch (error) {
+    errorMessage.value = apiErrorMessage(error, 'Could not read the nearby street.')
+  }
+  finally {
+    aligningMap.value = false
+  }
 }
 
 const submitting = ref(false)
@@ -168,6 +201,7 @@ async function submit() {
         country: 'US',
         latitude: latitude.value,
         longitude: longitude.value,
+        mapHeading: heading.value,
         boundary: polygonFromBbox(bbox.value),
         mainPhone: form.mainPhone,
         contactName: form.contactName.trim() || null,
@@ -390,16 +424,27 @@ function createAnyway() {
 
     <template v-else>
       <p class="mb-3 text-sm text-[var(--color-ink-500)]">
-        Drag the gold corners so the fence matches the real yard. Containers can only be placed inside this boundary.
+        Rotate the map so the street is straight, then drag the gold corners so the fence matches the real yard.
       </p>
       <ClientOnly>
         <LocationMapEditor
+          ref="mapRef"
           :latitude="latitude"
           :longitude="longitude"
           :bbox="bbox"
+          :heading="heading"
           @update:bbox="bbox = $event"
+          @update:heading="heading = $event"
         />
       </ClientOnly>
+      <MapRotateBar
+        class="mt-3"
+        :heading="heading"
+        :aligning="aligningMap"
+        @rotate="heading = normalizeHeading(heading + $event)"
+        @align="alignNewMap"
+        @recenter="mapRef?.recenter()"
+      />
     </template>
 
     <div class="mt-6 flex gap-3">

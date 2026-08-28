@@ -303,6 +303,8 @@ export const locations = pgTable('locations', {
   longitude: numeric('longitude', { precision: 10, scale: 7 }),
   /** Operational perimeter drawn on OpenStreetMap. */
   boundary: jsonb('boundary').$type<GeoJsonPolygon>(),
+  /** Clockwise map bearing in degrees so the yard sits square to the street. */
+  mapHeading: real('map_heading').notNull().default(0),
 
   timezone: text('timezone').notNull().default('America/New_York'),
   hours: text('hours'),

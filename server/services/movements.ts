@@ -12,7 +12,7 @@ import {
 import type { Container, Location, Trip } from '../database/schema'
 import { claimContainerForPickup, nextTripReference, releasePickupClaim } from './activePool'
 import { eventExists, recordEvent } from './events'
-import { writePlacement, type GeoPlacementInput } from './placements'
+import { resolvePlacement, writePlacement, type GeoPlacementInput } from './placements'
 import type { AuthContext } from '../utils/session'
 import { normalizeContainerNumber } from '#shared/utils/iso6346'
 import type { ContainerStatus, TripKind } from '#shared/utils/domain'
@@ -724,42 +724,45 @@ export async function completeDropoff(
       })
     }
 
-    if (input.placement && trip.containerId) {
-      if (input.placement.latitude != null && input.placement.longitude != null) {
-        await writePlacement(tx, auth, {
-          containerId: trip.containerId,
-          location: destination,
-          placement: {
+    if (trip.containerId) {
+      const occupied = await tx
+        .select({
+          latitude: containerPlacements.latitude,
+          longitude: containerPlacements.longitude,
+        })
+        .from(containerPlacements)
+        .where(and(
+          eq(containerPlacements.locationId, destination.id),
+          eq(containerPlacements.companyId, auth.companyId),
+          sql`${containerPlacements.supersededAt} is null`,
+        ))
+      const [box] = await tx
+        .select({ equipmentType: containers.equipmentType })
+        .from(containers)
+        .where(eq(containers.id, trip.containerId))
+        .limit(1)
+      const requested = input.placement && input.placement.latitude != null && input.placement.longitude != null
+        ? {
             latitude: input.placement.latitude,
             longitude: input.placement.longitude,
             rotation: input.placement.rotation,
-          },
-          eventId: input.eventId,
-        })
-      }
-      else {
-        await tx
-          .update(containerPlacements)
-          .set({ supersededAt: now })
-          .where(and(
-            eq(containerPlacements.containerId, trip.containerId),
-            eq(containerPlacements.companyId, auth.companyId),
-            sql`${containerPlacements.supersededAt} is null`,
-          ))
-
-        await tx.insert(containerPlacements).values({
-          companyId: auth.companyId,
+          }
+        : null
+      const placement = resolvePlacement(
+        destination,
+        occupied.map(row => ({
+          latitude: row.latitude != null ? Number(row.latitude) : null,
+          longitude: row.longitude != null ? Number(row.longitude) : null,
+        })),
+        box?.equipmentType ?? 'HC_40',
+        requested,
+      )
+      if (placement) {
+        await writePlacement(tx, auth, {
           containerId: trip.containerId,
-          locationId: input.destinationLocationId,
-          zoneId: input.placement.zoneId ?? null,
-          slotCode: input.placement.slotCode ?? null,
-          x: input.placement.x ?? 0,
-          y: input.placement.y ?? 0,
-          rotation: input.placement.rotation,
-          latitude: input.placement.latitude != null ? String(input.placement.latitude) : null,
-          longitude: input.placement.longitude != null ? String(input.placement.longitude) : null,
+          location: destination,
+          placement,
           eventId: input.eventId,
-          placedByUserId: auth.userId,
         })
       }
     }

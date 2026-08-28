@@ -4,7 +4,9 @@ import { formatContainerNumber } from '#shared/utils/iso6346'
 import { formatPhoneDisplay, toE164 } from '#shared/utils/phone'
 import { bboxCenter, bboxFromPolygon, normalizeHeading, snapHeadingToStreet } from '#shared/utils/geo'
 import type { GeoJsonPolygon } from '#shared/utils/geo'
+import { isPlacedPin } from '#shared/utils/yard-slots'
 import type { YardMapBox } from '~/components/LocationYardMap.vue'
+import { fetchMapBearing } from '~/utils/leaflet-map'
 
 const { user } = useUserSession()
 setPageLayout(user.value?.role === 'ADMIN' ? 'admin' : 'default')
@@ -20,8 +22,59 @@ const selectedId = ref<string | null>(null)
 const placing = ref(false)
 const pending = ref<YardMapBox | null>(null)
 const aligning = ref(false)
+const aligningMap = ref(false)
 const saving = ref(false)
 const errorMessage = ref('')
+const heading = ref(0)
+const mapRef = ref<{ recenter: () => void } | null>(null)
+
+watch(() => data.value?.location.mapHeading, (value) => {
+  if (value != null) heading.value = value
+}, { immediate: true })
+
+const suggestedCount = computed(() => data.value?.containers.filter(item => item.suggested).length ?? 0)
+
+let headingTimer: ReturnType<typeof setTimeout> | undefined
+
+function persistHeading(value: number) {
+  heading.value = normalizeHeading(value)
+  clearTimeout(headingTimer)
+  headingTimer = setTimeout(async () => {
+    try {
+      await $fetch(`/api/locations/${locationId.value}`, {
+        method: 'PATCH',
+        body: { mapHeading: heading.value },
+      })
+    }
+    catch (err) {
+      errorMessage.value = apiErrorMessage(err, 'Could not save the map rotation.')
+    }
+  }, 350)
+}
+
+function rotateMap(delta: number) {
+  persistHeading(heading.value + delta)
+}
+
+async function alignMapToRoad() {
+  const loc = data.value?.location
+  if (!loc || !isPlacedPin(loc.latitude, loc.longitude)) return
+  aligningMap.value = true
+  try {
+    heading.value = await fetchMapBearing(
+      loc.latitude,
+      loc.longitude,
+      bboxFromPolygon(loc.boundary as GeoJsonPolygon | null),
+    )
+    persistHeading(heading.value)
+  }
+  catch (err) {
+    errorMessage.value = apiErrorMessage(err, 'Could not read the nearby street.')
+  }
+  finally {
+    aligningMap.value = false
+  }
+}
 
 const selected = computed(() => data.value?.containers.find(item => item.id === selectedId.value) ?? null)
 
@@ -200,19 +253,43 @@ const subtitle = computed(() => {
         <span>{{ errorMessage }}</span>
       </p>
 
+      <p
+        v-if="suggestedCount"
+        class="banner info mb-3"
+        role="status"
+      >
+        <span aria-hidden="true">▸</span>
+        <span>
+          {{ suggestedCount === 1 ? '1 container is' : `${suggestedCount} containers are` }}
+          shown in a suggested slot because they were never pinned. Tap one, then Move on map to keep it.
+        </span>
+      </p>
+
       <ClientOnly>
         <LocationYardMap
+          ref="mapRef"
           :mode="placing ? 'place' : 'view'"
           :boundary="(data.location.boundary as GeoJsonPolygon | null) ?? null"
           :latitude="data.location.latitude"
           :longitude="data.location.longitude"
+          :heading="heading"
           :containers="data.containers"
           :pending="pending"
           :selected-id="selectedId"
           @select="onSelect"
           @update:pending="onPending"
+          @update:heading="persistHeading"
         />
       </ClientOnly>
+
+      <MapRotateBar
+        class="mt-3"
+        :heading="heading"
+        :aligning="aligningMap"
+        @rotate="rotateMap"
+        @align="alignMapToRoad"
+        @recenter="mapRef?.recenter()"
+      />
 
       <ContainerPlaceControls
         v-if="placing && pending"

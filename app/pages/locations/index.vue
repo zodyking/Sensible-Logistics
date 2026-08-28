@@ -91,6 +91,7 @@ function addressLine(item: {
             :boundary="(item.boundary as GeoJsonPolygon | null) ?? null"
             :latitude="item.latitude"
             :longitude="item.longitude"
+            :heading="item.mapHeading ?? 0"
             :containers="item.containers"
           />
           <template #fallback>

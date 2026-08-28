@@ -6,8 +6,12 @@ import {
   bboxFromPolygon,
   containerCorners,
   containerDoorEdge,
+  headingDelta,
+  normalizeHeading,
   pointInPolygon,
 } from '#shared/utils/geo'
+import { isPlacedPin } from '#shared/utils/yard-slots'
+import { loadLeaflet, observeMapSize, waitForMapSize } from '~/utils/leaflet-map'
 import { OSM_ATTRIBUTION, osmTileUrl } from '~/utils/map-tiles'
 
 type LeafletModule = typeof import('leaflet')
@@ -21,6 +25,7 @@ export interface YardMapBox {
   latitude: number | null
   longitude: number | null
   rotation: number
+  suggested?: boolean
 }
 
 const props = withDefaults(defineProps<{
@@ -28,6 +33,7 @@ const props = withDefaults(defineProps<{
   boundary: GeoJsonPolygon | null
   latitude?: number | null
   longitude?: number | null
+  heading?: number
   containers: YardMapBox[]
   pending?: YardMapBox | null
   selectedId?: string | null
@@ -35,6 +41,7 @@ const props = withDefaults(defineProps<{
   mode: 'view',
   latitude: null,
   longitude: null,
+  heading: 0,
   pending: null,
   selectedId: null,
 })
@@ -42,6 +49,7 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   'select': [id: string]
   'update:pending': [value: { latitude: number, longitude: number, rotation: number }]
+  'update:heading': [value: number]
 }>()
 
 const mapEl = ref<HTMLElement | null>(null)
@@ -51,11 +59,14 @@ const errorMessage = ref('')
 let L: LeafletModule | null = null
 let map: import('leaflet').Map | null = null
 let boundaryLayer: import('leaflet').Polygon | null = null
+let pinMarker: import('leaflet').Marker | null = null
 let boxesLayer: import('leaflet').LayerGroup | null = null
 let pendingLayer: import('leaflet').LayerGroup | null = null
 let dragHandle: import('leaflet').Marker | null = null
 let fitted = false
 let cancelled = false
+let stopSizeWatch: (() => void) | null = null
+let applyingHeading = false
 
 function leaflet(): LeafletModule {
   if (!L) throw new Error('Map is not ready.')
@@ -64,25 +75,30 @@ function leaflet(): LeafletModule {
 
 function paintBox(box: YardMapBox, interactive: boolean) {
   if (!L) return null
-  if (box.latitude == null || box.longitude == null) return null
+  if (!isPlacedPin(box.latitude, box.longitude)) return null
   const size = equipmentFootprintMeters(box.equipmentType)
   const paint = CONTAINER_TYPE_PAINT[box.containerType]
-  const corners = containerCorners(box.latitude, box.longitude, size.length, size.width, box.rotation)
+  const corners = containerCorners(box.latitude!, box.longitude!, size.length, size.width, box.rotation)
+  const selected = props.selectedId === box.id
   const polygon = L.polygon(corners, {
-    color: props.selectedId === box.id ? '#F0A422' : paint.stroke,
-    weight: props.selectedId === box.id ? 3 : 1.5,
+    color: selected ? '#F0A422' : paint.stroke,
+    weight: selected ? 3 : 1.5,
+    dashArray: box.suggested ? '6 4' : undefined,
     fillColor: box.isLoaded ? paint.fill : paint.emptyFill,
-    fillOpacity: box.isLoaded ? 0.92 : 0.7,
+    fillOpacity: box.suggested ? 0.45 : (box.isLoaded ? 0.92 : 0.7),
     interactive,
   })
-  const door = containerDoorEdge(box.latitude, box.longitude, size.length, size.width, box.rotation)
+  const door = containerDoorEdge(box.latitude!, box.longitude!, size.length, size.width, box.rotation)
   const doorLine = L.polyline(door, {
     color: '#F0A422',
     weight: 3,
     interactive: false,
   })
   if (props.mode !== 'preview') {
-    polygon.bindTooltip(box.number, { direction: 'top', opacity: 0.95 })
+    polygon.bindTooltip(box.suggested ? `${box.number} · suggested` : box.number, {
+      direction: 'top',
+      opacity: 0.95,
+    })
   }
   if (interactive) {
     polygon.on('click', (event: import('leaflet').LeafletMouseEvent) => {
@@ -112,7 +128,7 @@ function redrawPending() {
   dragHandle?.remove()
   dragHandle = null
   const pending = props.pending
-  if (props.mode !== 'place' || !pending || pending.latitude == null || pending.longitude == null) return
+  if (props.mode !== 'place' || !pending || !isPlacedPin(pending.latitude, pending.longitude)) return
 
   const drawn = paintBox(pending, false)
   if (drawn) {
@@ -125,7 +141,7 @@ function redrawPending() {
     iconSize: [28, 28],
     iconAnchor: [14, 14],
   })
-  dragHandle = L.marker([pending.latitude, pending.longitude], {
+  dragHandle = L.marker([pending.latitude!, pending.longitude!], {
     draggable: true,
     icon,
     zIndexOffset: 800,
@@ -135,10 +151,10 @@ function redrawPending() {
     const next = dragHandle.getLatLng()
     pendingLayer.clearLayers()
     const ghost: YardMapBox = { ...pending, latitude: next.lat, longitude: next.lng }
-    const drawn = paintBox(ghost, false)
-    if (drawn) {
-      drawn.polygon.addTo(pendingLayer)
-      drawn.doorLine.addTo(pendingLayer)
+    const painted = paintBox(ghost, false)
+    if (painted) {
+      painted.polygon.addTo(pendingLayer)
+      painted.doorLine.addTo(pendingLayer)
     }
   })
   dragHandle.on('dragend', () => {
@@ -146,11 +162,11 @@ function redrawPending() {
     const next = dragHandle.getLatLng()
     if (props.boundary && !pointInPolygon(next.lat, next.lng, props.boundary)) {
       dragHandle.setLatLng([pending.latitude!, pending.longitude!])
-      const drawn = paintBox(pending, false)
+      const painted = paintBox(pending, false)
       pendingLayer?.clearLayers()
-      if (drawn && pendingLayer) {
-        drawn.polygon.addTo(pendingLayer)
-        drawn.doorLine.addTo(pendingLayer)
+      if (painted && pendingLayer) {
+        painted.polygon.addTo(pendingLayer)
+        painted.doorLine.addTo(pendingLayer)
       }
       return
     }
@@ -179,6 +195,30 @@ function paintBoundary() {
   }).addTo(map)
 }
 
+function paintPin() {
+  if (!L || !map) return
+  pinMarker?.remove()
+  pinMarker = null
+  if (!isPlacedPin(props.latitude, props.longitude)) return
+  pinMarker = L.marker([props.latitude!, props.longitude!], {
+    icon: L.divIcon({
+      className: 'addr-pin',
+      iconSize: [18, 18],
+      iconAnchor: [9, 9],
+    }),
+    interactive: false,
+    keyboard: false,
+    zIndexOffset: 200,
+  }).addTo(map)
+}
+
+function applyHeading(value: number) {
+  if (!map) return
+  applyingHeading = true
+  map.setBearing(normalizeHeading(value))
+  applyingHeading = false
+}
+
 function fit() {
   if (!map || !L) return
   const size = map.getSize()
@@ -199,8 +239,8 @@ function fit() {
   catch {
     // Fall through to a centre pin when Leaflet cannot fit a tiny container.
   }
-  if (props.latitude != null && props.longitude != null) {
-    map.setView([props.latitude, props.longitude], 18, { animate: false })
+  if (isPlacedPin(props.latitude, props.longitude)) {
+    map.setView([props.latitude!, props.longitude!], 18, { animate: false })
     fitted = true
   }
 }
@@ -215,21 +255,40 @@ function onMapClick(event: import('leaflet').LeafletMouseEvent) {
   })
 }
 
+function onRotate() {
+  if (!map || applyingHeading) return
+  const next = normalizeHeading(map.getBearing())
+  if (headingDelta(next, props.heading) < 0.4) return
+  emit('update:heading', next)
+}
+
 async function boot() {
   if (!import.meta.client || !mapEl.value) return
   try {
-    const mod = await import('leaflet')
+    const sized = await waitForMapSize(mapEl.value, () => cancelled)
+    if (cancelled || !mapEl.value || !sized) {
+      if (!cancelled && mapEl.value) {
+        errorMessage.value = 'Map did not get a size. Go back one step and open it again.'
+      }
+      return
+    }
+    L = await loadLeaflet()
     if (cancelled || !mapEl.value) return
-    L = (mod.default ?? mod) as LeafletModule
     const preview = props.mode === 'preview'
+    const interactive = !preview
     map = leaflet().map(mapEl.value, {
-      zoomControl: !preview,
-      attributionControl: !preview,
-      dragging: !preview,
-      scrollWheelZoom: !preview,
-      doubleClickZoom: !preview,
-      boxZoom: !preview,
-      keyboard: !preview,
+      zoomControl: interactive,
+      attributionControl: interactive,
+      dragging: interactive,
+      scrollWheelZoom: interactive,
+      doubleClickZoom: interactive,
+      boxZoom: interactive,
+      keyboard: interactive,
+      rotate: true,
+      bearing: normalizeHeading(props.heading),
+      touchRotate: interactive,
+      rotateControl: false,
+      shiftKeyRotate: interactive,
     })
     leaflet().tileLayer(osmTileUrl(), {
       maxZoom: 22,
@@ -238,14 +297,19 @@ async function boot() {
     boxesLayer = leaflet().layerGroup().addTo(map)
     pendingLayer = leaflet().layerGroup().addTo(map)
     paintBoundary()
+    paintPin()
     redrawBoxes()
     redrawPending()
     map.on('click', onMapClick)
+    map.on('rotate', onRotate)
     ready.value = true
-    requestAnimationFrame(() => {
+    map.invalidateSize()
+    applyHeading(props.heading)
+    fit()
+    stopSizeWatch = observeMapSize(mapEl.value, () => {
       if (cancelled || !map) return
       map.invalidateSize()
-      fit()
+      if (!fitted) fit()
     })
   }
   catch (error) {
@@ -259,6 +323,16 @@ watch(() => props.boundary, () => {
   if (!ready.value) return
   paintBoundary()
   if (!fitted) fit()
+})
+watch(() => [props.latitude, props.longitude] as const, () => {
+  if (!ready.value) return
+  paintPin()
+  if (!fitted) fit()
+})
+watch(() => props.heading, (value) => {
+  if (!ready.value || !map) return
+  if (headingDelta(map.getBearing(), value) < 0.4) return
+  applyHeading(value)
 })
 watch(() => props.containers, () => {
   if (!ready.value) return
@@ -276,6 +350,8 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   cancelled = true
+  stopSizeWatch?.()
+  stopSizeWatch = null
   try {
     map?.off()
     map?.remove()
@@ -285,6 +361,7 @@ onBeforeUnmount(() => {
   }
   map = null
   boundaryLayer = null
+  pinMarker = null
   boxesLayer = null
   pendingLayer = null
   dragHandle = null
