@@ -7,7 +7,7 @@
  *   npm run db:seed
  */
 
-import { randomUUID } from 'node:crypto'
+import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import process from 'node:process'
 import { Hash } from '@adonisjs/hash'
 import { Scrypt } from '@adonisjs/hash/drivers/scrypt'
@@ -17,6 +17,7 @@ import type { NodePgDatabase } from 'drizzle-orm/node-postgres'
 import { Pool } from 'pg'
 import { computeCheckDigit, normalizeContainerNumber, validateContainerNumber } from '../../shared/utils/iso6346'
 import { bboxAround, localMetersFromLatLng, offsetLatLng, polygonFromBbox } from '../../shared/utils/geo'
+import { addIsoDays, calendarDateInZone, parseDispatchSms, taskFingerprintSource } from '../../shared/utils/sms-task'
 import * as schema from './schema'
 
 const {
@@ -26,9 +27,11 @@ const {
   containerEvents,
   containerPlacements,
   containers,
+  dispatchTasks,
   driverTimecards,
   drivers,
   locations,
+  smsInboundEndpoints,
   timecardComplianceChecks,
   trips,
   trucks,
@@ -789,6 +792,75 @@ async function main() {
         })
         .onConflictDoNothing()
     }
+  }
+
+  /* ---- Dispatch SMS inbox -------------------------------------- */
+  await db
+    .insert(smsInboundEndpoints)
+    .values({
+      companyId: company.id,
+      driverId: driver.id,
+      token: randomBytes(24).toString('base64url'),
+    })
+    .onConflictDoNothing()
+
+  const todayIso = calendarDateInZone(new Date(), company.timezone || 'America/New_York')
+  const [pastTrip] = await db
+    .select({ id: trips.id, pickedUpAt: trips.pickedUpAt, createdAt: trips.createdAt })
+    .from(trips)
+    .where(and(eq(trips.companyId, company.id), eq(trips.reference, 'TRP-1004')))
+    .limit(1)
+  const pastIso = pastTrip
+    ? calendarDateInZone(pastTrip.pickedUpAt ?? pastTrip.createdAt, company.timezone || 'America/New_York')
+    : addIsoDays(todayIso, -2)
+
+  const taskSeed = [
+    {
+      text: 'Work for tommorow pickup TCLU 1234567 at NJ Yard then drop off Coastal Tile',
+      sender: 'Dispatch',
+      anchorIso: todayIso,
+      status: 'OPEN' as const,
+      tripId: null as string | null,
+    },
+    {
+      text: 'Pickup at Port Everglades this morning — live load after 07:00',
+      sender: 'Dispatch',
+      anchorIso: todayIso,
+      status: 'OPEN' as const,
+      tripId: null as string | null,
+    },
+    {
+      text: 'Drop off at FEC Rail Ramp after lunch',
+      sender: 'Boss',
+      anchorIso: pastIso,
+      status: 'DONE' as const,
+      tripId: pastTrip?.id ?? null,
+    },
+  ]
+
+  for (const sample of taskSeed) {
+    const parsed = parseDispatchSms(sample.text, sample.anchorIso)
+    if (!parsed) continue
+    const fingerprint = createHash('sha256')
+      .update(taskFingerprintSource(sample.text, parsed.workDate))
+      .digest('hex')
+    await db
+      .insert(dispatchTasks)
+      .values({
+        companyId: company.id,
+        driverId: driver.id,
+        source: 'SMS',
+        rawText: sample.text,
+        sender: sample.sender,
+        workDate: parsed.workDate,
+        kind: parsed.kind,
+        title: parsed.title,
+        parsed: { containerNumbers: parsed.containerNumbers },
+        status: sample.status,
+        tripId: sample.tripId,
+        fingerprint,
+      })
+      .onConflictDoNothing()
   }
 
   console.log('\nSeed complete.')

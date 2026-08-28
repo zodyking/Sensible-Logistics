@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ACTIVE_POOL_LABELS, CONTAINER_TYPES, CONTAINER_TYPE_LABELS, EQUIPMENT_TYPES, EQUIPMENT_TYPE_LABELS, EQUIPMENT_TYPE_SHORT, LOCATION_GLYPH, TRIP_KIND_LABELS } from '#shared/utils/domain'
+import { ACTIVE_POOL_LABELS, CONTAINER_TYPES, CONTAINER_TYPE_LABELS, EQUIPMENT_TYPE_SHORT, LOCATION_GLYPH, PICKUP_EQUIPMENT_SIZES, PICKUP_EQUIPMENT_SIZE_LABELS, TRIP_KIND_LABELS } from '#shared/utils/domain'
 import type { ContainerType, EquipmentType, TripKind } from '#shared/utils/domain'
 import { PICKUP_STEPS, pickupSteps } from '#shared/utils/pickup-steps'
 import type { PickupStep } from '#shared/utils/pickup-steps'
@@ -13,6 +13,7 @@ import {
   validateContainerNumber,
 } from '#shared/utils/iso6346'
 import { driverOcrMessage } from '#shared/utils/ocr-parse'
+import { rememberTripPhoto } from '~/utils/trip-share-files'
 
 useHead({ title: 'New pickup' })
 
@@ -43,7 +44,7 @@ const STEP_TITLES: Record<Step, string> = {
   inventory: 'Which container?',
   equipment: 'Container and chassis',
   containerType: 'Container type',
-  equipmentType: 'Equipment size',
+  equipmentType: 'Container size',
   load: 'Loaded or empty?',
   seal: 'Seal number',
   notes: 'Notes',
@@ -61,7 +62,7 @@ const selectedYardId = ref<string | null>(null)
 const manualEntry = ref(false)
 const rawNumber = ref('')
 const containerType = ref<ContainerType>('TROPICAL')
-const equipmentType = ref<EquipmentType>('HC_40')
+const equipmentType = ref<EquipmentType>('DRY_40')
 const chassisId = ref<string | null>(null)
 const chassisNumber = ref('')
 const isLoaded = ref(true)
@@ -407,7 +408,7 @@ const canAdvance = computed(() => {
       return fromYard.value || manualEntry.value
     case 'equipment':
       if (pickupKind.value === 'BARE_CHASSIS') {
-        return chassisOk.value && !readingPhoto.value
+        return chassisOk.value && !readingPhoto.value && !cameraOpen.value
       }
       return validation.value.structureValid
         && chassisOk.value
@@ -415,6 +416,7 @@ const canAdvance = computed(() => {
         && !resolving.value
         && Boolean(resolution.value)
         && !readingPhoto.value
+        && !cameraOpen.value
     case 'containerType':
     case 'equipmentType':
     case 'load':
@@ -574,6 +576,7 @@ async function confirm() {
         notes: notes.value || null,
       },
     })
+    if (capturedPhoto.value) await rememberTripPhoto(tripId.value, capturedPhoto.value)
     await navigateTo('/')
   }
   catch (error) {
@@ -608,12 +611,18 @@ watch(step, (current) => {
   cameraOpen.value = true
 })
 
+watch([tripId, capturedPhoto], ([id, photo]) => {
+  if (id && photo) void rememberTripPhoto(id, photo)
+})
+
 async function onPhoto(dataUrl: string) {
-  cameraOpen.value = false
   capturedPhoto.value = dataUrl
   readingPhoto.value = true
+  cameraOpen.value = false
   ocrMessage.value = ''
   errorMessage.value = ''
+  await nextTick()
+  const startedAt = Date.now()
   try {
     const result = await $fetch('/api/scan/recognize', {
       method: 'POST',
@@ -641,6 +650,7 @@ async function onPhoto(dataUrl: string) {
     )
   }
   finally {
+    await waitAtLeast(startedAt, PHOTO_READ_MIN_MS)
     readingPhoto.value = false
   }
 }
@@ -915,122 +925,126 @@ function retakePhoto() {
 
     <!-- ── Container + chassis (one photo) ──────────────────────── -->
     <template v-else-if="step === 'equipment'">
-      <div class="card p-4">
-        <label
-          v-if="pickupKind === 'CONTAINER'"
-          class="field"
-          for="container-number"
-        >
-          <span>Container number</span>
-          <div class="field-row">
-            <ContainerNumberInput
-              id="container-number"
-              v-model="rawNumber"
-              :disabled="Boolean(tripId)"
-              :invalid="containerState === 'error'"
-            />
-            <FieldStatus
-              :state="containerState"
-              :detail="containerDetail"
-              label="container number"
-            />
-          </div>
-          <small class="field-hint">Four letters, six digits, then the boxed check digit.</small>
-        </label>
+      <ScanReadingLoader
+        v-if="readingPhoto"
+        :label="pickupKind === 'BARE_CHASSIS' ? 'Reading the chassis number…' : 'Reading the photo…'"
+      />
+      <template v-else>
+        <ScanPhotoPeek
+          v-if="capturedPhoto && !cameraOpen"
+          :src="capturedPhoto"
+        />
+        <div class="card p-4">
+          <label
+            v-if="pickupKind === 'CONTAINER'"
+            class="field"
+            for="container-number"
+          >
+            <span>Container number</span>
+            <div class="field-row">
+              <ContainerNumberInput
+                id="container-number"
+                v-model="rawNumber"
+                :disabled="Boolean(tripId)"
+                :invalid="containerState === 'error'"
+              />
+              <FieldStatus
+                :state="containerState"
+                :detail="containerDetail"
+                label="container number"
+              />
+            </div>
+            <small class="field-hint">Four letters, six digits, then the boxed check digit.</small>
+          </label>
 
-        <label
-          class="field !mb-0"
-          :class="{ 'mt-5': pickupKind === 'CONTAINER' }"
-          for="chassis-number"
-        >
-          <span>Chassis number</span>
-          <div class="field-row">
-            <ChassisNumberInput
-              id="chassis-number"
-              v-model="chassisNumber"
-              :invalid="chassisState === 'error'"
-            />
-            <FieldStatus
-              :state="chassisState"
-              :detail="chassisDetail"
-              label="chassis number"
-            />
-          </div>
-          <small class="field-hint">{{ pickupKind === 'BARE_CHASSIS' ? 'Four letters and six digits.' : 'Four letters and six digits. Leave blank if there is no chassis.' }}</small>
-        </label>
-      </div>
-
-      <div aria-live="polite">
-        <p
-          v-if="readingPhoto"
-          class="note"
-        >
-          <span>Reading the photo…</span>
-        </p>
-        <p
-          v-else-if="ocrMessage"
-          class="note warn"
-        >
-          <span>{{ ocrMessage }}</span>
-        </p>
-
-        <p
-          v-if="pickupKind === 'CONTAINER' && resolving"
-          class="note"
-        >
-          <span>Checking the active container pool…</span>
-        </p>
-        <p
-          v-else-if="pickupKind === 'CONTAINER' && resolution"
-          class="note"
-          :class="RESOLUTION_COPY[resolution.outcome]?.variant"
-        >
-          <span>
-            <b>{{ RESOLUTION_COPY[resolution.outcome]?.title }}.</b>
-            {{ resolution.message }}
-          </span>
-        </p>
-      </div>
-
-      <div
-        v-if="pickupKind === 'CONTAINER' && resolution?.outcome === 'CONFLICT' && resolution.holder"
-        class="card mt-4 p-4"
-      >
-        <span class="eyebrow">Current holder</span>
-        <div class="trip-facts mt-3 !border-t-0 !pt-0">
-          <div class="trip-fact">
-            <small>Driver</small>
-            <b>{{ resolution.holder.driverName }}</b>
-          </div>
-          <div class="trip-fact">
-            <small>State</small>
-            <b>{{ ACTIVE_POOL_LABELS[resolution.holder.activePoolState as keyof typeof ACTIVE_POOL_LABELS] }}</b>
-          </div>
-          <div class="trip-fact">
-            <small>Believed at</small>
-            <b>{{ resolution.holder.believedLocationName ?? 'In transit' }}</b>
-          </div>
+          <label
+            class="field !mb-0"
+            :class="{ 'mt-5': pickupKind === 'CONTAINER' }"
+            for="chassis-number"
+          >
+            <span>Chassis number</span>
+            <div class="field-row">
+              <ChassisNumberInput
+                id="chassis-number"
+                v-model="chassisNumber"
+                :invalid="chassisState === 'error'"
+              />
+              <FieldStatus
+                :state="chassisState"
+                :detail="chassisDetail"
+                label="chassis number"
+              />
+            </div>
+            <small class="field-hint">{{ pickupKind === 'BARE_CHASSIS' ? 'Four letters and six digits.' : 'Four letters and six digits. Leave blank if there is no chassis.' }}</small>
+          </label>
         </div>
-        <p class="mt-4 text-sm text-[var(--color-ink-500)]">
-          A second pickup cannot be started for this container. Contact dispatch or an administrator to
-          resolve the conflict.
-        </p>
-      </div>
 
-      <button
-        v-if="!tripId"
-        type="button"
-        class="btn-ghost mt-4 w-full"
-        :disabled="readingPhoto"
-        @click="retakePhoto"
-      >
-        {{ capturedPhoto ? 'Retake photo' : 'Open camera' }}
-      </button>
+        <div aria-live="polite">
+          <p
+            v-if="ocrMessage && !readingPhoto"
+            class="note warn"
+          >
+            <span>{{ ocrMessage }}</span>
+          </p>
+
+          <p
+            v-if="pickupKind === 'CONTAINER' && resolving"
+            class="note"
+          >
+            <span>Checking the active container pool…</span>
+          </p>
+          <p
+            v-else-if="pickupKind === 'CONTAINER' && resolution"
+            class="note"
+            :class="RESOLUTION_COPY[resolution.outcome]?.variant"
+          >
+            <span>
+              <b>{{ RESOLUTION_COPY[resolution.outcome]?.title }}.</b>
+              {{ resolution.message }}
+            </span>
+          </p>
+        </div>
+
+        <div
+          v-if="pickupKind === 'CONTAINER' && resolution?.outcome === 'CONFLICT' && resolution.holder"
+          class="card mt-4 p-4"
+        >
+          <span class="eyebrow">Current holder</span>
+          <div class="trip-facts mt-3 !border-t-0 !pt-0">
+            <div class="trip-fact">
+              <small>Driver</small>
+              <b>{{ resolution.holder.driverName }}</b>
+            </div>
+            <div class="trip-fact">
+              <small>State</small>
+              <b>{{ ACTIVE_POOL_LABELS[resolution.holder.activePoolState as keyof typeof ACTIVE_POOL_LABELS] }}</b>
+            </div>
+            <div class="trip-fact">
+              <small>Believed at</small>
+              <b>{{ resolution.holder.believedLocationName ?? 'In transit' }}</b>
+            </div>
+          </div>
+          <p class="mt-4 text-sm text-[var(--color-ink-500)]">
+            A second pickup cannot be started for this container. Contact dispatch or an administrator to
+            resolve the conflict.
+          </p>
+        </div>
+
+        <button
+          v-if="!tripId"
+          type="button"
+          class="btn-ghost mt-4 w-full"
+          :disabled="readingPhoto"
+          @click="retakePhoto"
+        >
+          {{ capturedPhoto ? 'Retake photo' : 'Open camera' }}
+        </button>
+      </template>
     </template>
 
     <!-- ── Container type (new records only) ───────────────────── -->
     <template v-else-if="step === 'containerType'">
-      <div class="choice-grid cols-2">
+      <div class="choice-grid">
         <button
           v-for="type in CONTAINER_TYPES"
           :key="type"
@@ -1047,9 +1061,9 @@ function retakePhoto() {
 
     <!-- ── Equipment type (new records only) ───────────────────── -->
     <template v-else-if="step === 'equipmentType'">
-      <div class="choice-grid cols-2">
+      <div class="choice-grid">
         <button
-          v-for="type in EQUIPMENT_TYPES"
+          v-for="type in PICKUP_EQUIPMENT_SIZES"
           :key="type"
           type="button"
           class="choice-card"
@@ -1057,7 +1071,7 @@ function retakePhoto() {
           :disabled="Boolean(tripId)"
           @click="equipmentType = type"
         >
-          {{ EQUIPMENT_TYPE_LABELS[type] }}
+          {{ PICKUP_EQUIPMENT_SIZE_LABELS[type] }}
         </button>
       </div>
     </template>
@@ -1213,7 +1227,10 @@ function retakePhoto() {
     </template>
 
     <!-- ── Navigation ──────────────────────────────────────────── -->
-    <div class="mt-6 flex gap-3">
+    <div
+      v-if="!(step === 'equipment' && readingPhoto)"
+      class="mt-6 flex gap-3"
+    >
       <button
         v-if="stepIndex > 0"
         type="button"
@@ -1235,6 +1252,7 @@ function retakePhoto() {
     </div>
 
     <button
+      v-if="!(step === 'equipment' && readingPhoto)"
       type="button"
       class="mt-4 w-full py-3 text-sm font-semibold text-[var(--color-err-600)]"
       @click="abandon"
@@ -1245,6 +1263,7 @@ function retakePhoto() {
     <CaptureCamera
       v-if="cameraOpen"
       :title="pickupKind === 'BARE_CHASSIS' ? 'Chassis' : 'Container and chassis'"
+      :reading-label="pickupKind === 'BARE_CHASSIS' ? 'Reading the chassis number…' : 'Reading container and chassis numbers…'"
       @close="cameraOpen = false"
       @photo="onPhoto"
     />

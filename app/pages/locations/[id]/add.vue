@@ -1,16 +1,11 @@
 <script setup lang="ts">
-import { CONTAINER_TYPES, CONTAINER_TYPE_LABELS, EQUIPMENT_TYPES, EQUIPMENT_TYPE_LABELS } from '#shared/utils/domain'
+import { CONTAINER_TYPES, CONTAINER_TYPE_LABELS, PICKUP_EQUIPMENT_SIZES, PICKUP_EQUIPMENT_SIZE_LABELS, pickupEquipmentSizeLabel } from '#shared/utils/domain'
 import type { ContainerType, EquipmentType } from '#shared/utils/domain'
 import {
   formatContainerNumber,
   normalizeContainerNumber,
   validateContainerNumber,
 } from '#shared/utils/iso6346'
-import { bboxFromPolygon, normalizeHeading } from '#shared/utils/geo'
-import type { GeoJsonPolygon } from '#shared/utils/geo'
-import { isPlacedPin, locationOrigin, nextOpenSlot, streetHeadingFromMapBearing } from '#shared/utils/yard-slots'
-import type { YardMapBox } from '~/components/LocationYardMap.vue'
-import { fetchMapBearing } from '~/utils/leaflet-map'
 
 const { user } = useUserSession()
 setPageLayout(user.value?.role === 'ADMIN' ? 'admin' : 'default')
@@ -22,31 +17,21 @@ const { data: locationData } = await useFetch(() => `/api/locations/${locationId
 
 useHead({ title: 'Add container' })
 
-type Step = 'number' | 'containerType' | 'equipmentType' | 'load' | 'place' | 'confirm'
+type Step = 'number' | 'containerType' | 'equipmentType' | 'load' | 'confirm'
 const STEP_TITLES: Record<Step, string> = {
   number: 'Container number',
   containerType: 'Container type',
-  equipmentType: 'Equipment size',
+  equipmentType: 'Container size',
   load: 'Loaded or empty?',
-  place: 'Place on the map',
-  confirm: 'Confirm placement',
+  confirm: 'Confirm container',
 }
 
 const rawNumber = ref('')
 const containerType = ref<ContainerType>('TROPICAL')
-const equipmentType = ref<EquipmentType>('HC_40')
+const equipmentType = ref<EquipmentType>('DRY_40')
 const isLoaded = ref(true)
-const pending = ref<YardMapBox | null>(null)
-const boxCross = ref(false)
-const aligningMap = ref(false)
 const submitting = ref(false)
 const errorMessage = ref('')
-const heading = ref(0)
-const mapRef = ref<{ recenter: () => void } | null>(null)
-
-watch(() => locationData.value?.location.mapHeading, (value) => {
-  if (value != null) heading.value = value
-}, { immediate: true })
 
 const normalized = computed(() => normalizeContainerNumber(rawNumber.value))
 const validation = computed(() => validateContainerNumber(rawNumber.value))
@@ -64,7 +49,7 @@ const needsClassification = computed(() => resolution.value?.outcome === 'CREATE
 const STEPS = computed<Step[]>(() => {
   const steps: Step[] = ['number']
   if (needsClassification.value) steps.push('containerType', 'equipmentType')
-  steps.push('load', 'place', 'confirm')
+  steps.push('load', 'confirm')
   return steps
 })
 
@@ -107,43 +92,14 @@ const canAdvance = computed(() => {
     case 'containerType':
     case 'equipmentType':
     case 'load':
-      return true
-    case 'place':
-      return Boolean(pending.value && isPlacedPin(pending.value.latitude, pending.value.longitude))
     case 'confirm':
       return true
   }
   return false
 })
 
-function seedPending() {
-  const loc = locationData.value?.location
-  const origin = locationOrigin({
-    latitude: loc?.latitude,
-    longitude: loc?.longitude,
-    mapHeading: heading.value,
-    boundary: loc?.boundary as GeoJsonPolygon | null,
-  })
-  const occupied = (locationData.value?.containers ?? []).map(item => ({
-    latitude: item.latitude,
-    longitude: item.longitude,
-  }))
-  const slot = origin ? nextOpenSlot(origin, occupied, equipmentType.value) : null
-  pending.value = {
-    id: 'pending',
-    number: formatContainerNumber(normalized.value) || normalized.value,
-    containerType: containerType.value,
-    equipmentType: equipmentType.value,
-    isLoaded: isLoaded.value,
-    latitude: slot?.latitude ?? loc?.latitude ?? null,
-    longitude: slot?.longitude ?? loc?.longitude ?? null,
-    rotation: slot?.rotation ?? streetHeadingFromMapBearing(heading.value),
-  }
-}
-
-async function next() {
+function next() {
   errorMessage.value = ''
-  if (step.value === 'load') seedPending()
   const index = stepIndex.value
   if (index < STEPS.value.length - 1) step.value = STEPS.value[index + 1]!
 }
@@ -153,63 +109,8 @@ function back() {
   if (index > 0) step.value = STEPS.value[index - 1]!
 }
 
-function onPending(nextPos: { latitude: number, longitude: number, rotation: number }) {
-  if (!pending.value) return
-  pending.value = { ...pending.value, ...nextPos }
-}
-
-/* The box follows the street; one tap turns it perpendicular for cross parking. */
-watch([heading, boxCross], () => {
-  if (!pending.value) return
-  pending.value = {
-    ...pending.value,
-    rotation: normalizeHeading(streetHeadingFromMapBearing(heading.value) + (boxCross.value ? 90 : 0)),
-  }
-})
-
-const confirmBoxes = computed(() => {
-  const existing = locationData.value?.containers ?? []
-  return pending.value
-    ? [...existing.filter(item => item.id !== pending.value!.id), pending.value]
-    : existing
-})
-
-watch([containerType, equipmentType, isLoaded, normalized], () => {
-  if (!pending.value) return
-  pending.value = {
-    ...pending.value,
-    number: formatContainerNumber(normalized.value) || normalized.value,
-    containerType: containerType.value,
-    equipmentType: equipmentType.value,
-    isLoaded: isLoaded.value,
-  }
-})
-
-function rotateMap(delta: number) {
-  heading.value = normalizeHeading(heading.value + delta)
-}
-
-async function alignMapToRoad() {
-  const loc = locationData.value?.location
-  if (!loc || !isPlacedPin(loc.latitude, loc.longitude)) return
-  aligningMap.value = true
-  try {
-    heading.value = await fetchMapBearing(
-      loc.latitude,
-      loc.longitude,
-      bboxFromPolygon(loc.boundary as GeoJsonPolygon | null),
-    )
-  }
-  catch (error) {
-    errorMessage.value = apiErrorMessage(error, 'Could not read the nearby street.')
-  }
-  finally {
-    aligningMap.value = false
-  }
-}
-
 async function confirm() {
-  if (!pending.value || !isPlacedPin(pending.value.latitude, pending.value.longitude) || submitting.value) return
+  if (submitting.value) return
   submitting.value = true
   errorMessage.value = ''
   try {
@@ -221,11 +122,6 @@ async function confirm() {
         containerType: containerType.value,
         equipmentType: equipmentType.value,
         isLoaded: isLoaded.value,
-        placement: {
-          latitude: pending.value.latitude,
-          longitude: pending.value.longitude,
-          rotation: pending.value.rotation,
-        },
       },
     })
     await navigateTo(`/locations/${locationId.value}`)
@@ -329,7 +225,7 @@ async function confirm() {
     </template>
 
     <template v-else-if="step === 'containerType'">
-      <div class="choice-grid cols-2">
+      <div class="choice-grid">
         <button
           v-for="type in CONTAINER_TYPES"
           :key="type"
@@ -344,16 +240,16 @@ async function confirm() {
     </template>
 
     <template v-else-if="step === 'equipmentType'">
-      <div class="choice-grid cols-2">
+      <div class="choice-grid">
         <button
-          v-for="type in EQUIPMENT_TYPES"
+          v-for="type in PICKUP_EQUIPMENT_SIZES"
           :key="type"
           type="button"
           class="choice-card"
           :aria-pressed="equipmentType === type"
           @click="equipmentType = type"
         >
-          {{ EQUIPMENT_TYPE_LABELS[type] }}
+          {{ PICKUP_EQUIPMENT_SIZE_LABELS[type] }}
         </button>
       </div>
     </template>
@@ -381,58 +277,13 @@ async function confirm() {
       </div>
     </template>
 
-    <template v-else-if="step === 'place'">
-      <ClientOnly>
-        <LocationYardMap
-          ref="mapRef"
-          mode="place"
-          :boundary="(locationData?.location.boundary as GeoJsonPolygon | null) ?? null"
-          :latitude="locationData?.location.latitude"
-          :longitude="locationData?.location.longitude"
-          :heading="heading"
-          :containers="locationData?.containers ?? []"
-          :pending="pending"
-          @update:pending="onPending"
-          @update:heading="heading = $event"
-        />
-      </ClientOnly>
-      <MapRotateBar
-        class="mt-3"
-        :heading="heading"
-        :aligning="aligningMap"
-        @rotate="rotateMap"
-        @align="alignMapToRoad"
-        @recenter="mapRef?.recenter()"
-      >
-        <button
-          type="button"
-          class="btn-ghost"
-          :aria-pressed="boxCross"
-          @click="boxCross = !boxCross"
-        >
-          Turn box 90°
-        </button>
-      </MapRotateBar>
-    </template>
-
     <template v-else>
-      <ClientOnly>
-        <LocationYardMap
-          mode="view"
-          :boundary="(locationData?.location.boundary as GeoJsonPolygon | null) ?? null"
-          :latitude="locationData?.location.latitude"
-          :longitude="locationData?.location.longitude"
-          :heading="heading"
-          :containers="confirmBoxes"
-          :selected-id="'pending'"
-        />
-      </ClientOnly>
-      <div class="card mt-3 p-4">
-        <span class="eyebrow">On the map</span>
+      <div class="card p-4">
+        <span class="eyebrow">On site</span>
         <b class="mt-2 block font-mono text-lg">{{ formatContainerNumber(normalized) }}</b>
         <p class="mt-2 text-sm text-[var(--color-ink-500)]">
           {{ CONTAINER_TYPE_LABELS[containerType] }}
-          · {{ EQUIPMENT_TYPE_LABELS[equipmentType] }}
+          · {{ pickupEquipmentSizeLabel(equipmentType) }}
           · {{ isLoaded ? 'Loaded' : 'Empty' }}
         </p>
         <p class="mt-2 text-sm">

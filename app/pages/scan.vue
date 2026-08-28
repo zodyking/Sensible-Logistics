@@ -7,6 +7,7 @@ useHead({ title: 'Scan' })
 const cameraOpen = ref(true)
 const reading = ref(false)
 const captured = ref(false)
+const capturedPhoto = ref('')
 const errorMessage = ref('')
 const containerNumber = ref('')
 const chassisNumber = ref('')
@@ -14,7 +15,10 @@ const chassisNumber = ref('')
 const containerValidation = computed(() => validateContainerNumber(containerNumber.value))
 const chassisOk = computed(() => !chassisNumber.value || isCompleteChassisNumber(chassisNumber.value))
 const canContinue = computed(() =>
-  containerValidation.value.structureValid && chassisOk.value && !reading.value,
+  containerValidation.value.structureValid
+  && chassisOk.value
+  && !reading.value
+  && !cameraOpen.value,
 )
 
 type FieldState = 'ok' | 'error' | 'idle'
@@ -47,10 +51,13 @@ const chassisDetail = computed(() =>
 )
 
 async function onPhoto(dataUrl: string) {
-  cameraOpen.value = false
   captured.value = true
+  capturedPhoto.value = dataUrl
   reading.value = true
+  cameraOpen.value = false
   errorMessage.value = ''
+  await nextTick()
+  const startedAt = Date.now()
   try {
     const result = await $fetch('/api/scan/recognize', {
       method: 'POST',
@@ -71,6 +78,7 @@ async function onPhoto(dataUrl: string) {
     )
   }
   finally {
+    await waitAtLeast(startedAt, PHOTO_READ_MIN_MS)
     reading.value = false
   }
 }
@@ -101,8 +109,18 @@ async function continuePickup() {
       back-label="Home"
     />
 
+    <ScanReadingLoader
+      v-if="reading"
+      label="Reading the photo…"
+    />
+
+    <ScanPhotoPeek
+      v-if="capturedPhoto && !reading && !cameraOpen"
+      :src="capturedPhoto"
+    />
+
     <div
-      v-if="captured"
+      v-if="captured && !reading && !cameraOpen"
       class="card p-4"
     >
       <label
@@ -148,13 +166,7 @@ async function continuePickup() {
 
     <div aria-live="polite">
       <p
-        v-if="reading"
-        class="note"
-      >
-        <span>Reading the photo…</span>
-      </p>
-      <p
-        v-else-if="errorMessage"
+        v-if="errorMessage && !reading"
         class="note warn"
       >
         <span>{{ errorMessage }}</span>
@@ -168,7 +180,10 @@ async function continuePickup() {
       Point the camera at the container number and the chassis plate, then take one photo.
     </p>
 
-    <div class="mt-6 flex gap-3">
+    <div
+      v-if="!reading"
+      class="mt-6 flex gap-3"
+    >
       <button
         type="button"
         class="btn-ghost flex-1"
@@ -190,6 +205,7 @@ async function continuePickup() {
     <CaptureCamera
       v-if="cameraOpen"
       title="Container and chassis"
+      reading-label="Reading container and chassis numbers…"
       @close="cameraOpen = false"
       @photo="onPhoto"
     />

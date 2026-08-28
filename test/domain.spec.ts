@@ -13,10 +13,18 @@ import {
   CYCLE_TYPES,
   DOCUMENT_CATEGORIES,
   DOCUMENT_CATEGORY_LABELS,
+  DISPATCH_TASK_KIND_LABELS,
+  DISPATCH_TASK_KINDS,
+  DISPATCH_TASK_STATUS_CHIP,
+  DISPATCH_TASK_STATUS_LABELS,
+  DISPATCH_TASK_STATUSES,
   EQUIPMENT_LENGTH_FT,
   EQUIPMENT_TYPE_LABELS,
   EQUIPMENT_TYPE_SHORT,
   EQUIPMENT_TYPES,
+  PICKUP_EQUIPMENT_SIZE_LABELS,
+  PICKUP_EQUIPMENT_SIZES,
+  pickupEquipmentSizeLabel,
   EVENT_GLYPH,
   EVENT_TYPE_LABELS,
   EVENT_TYPES,
@@ -66,6 +74,18 @@ describe('domain vocabulary integrity', () => {
     expectUnionKeysMatch(EQUIPMENT_TYPES, EQUIPMENT_TYPE_LABELS, EQUIPMENT_LENGTH_FT, EQUIPMENT_TYPE_SHORT)
   })
 
+  it('limits new-container size picks to 20ft and 40ft', () => {
+    expect(PICKUP_EQUIPMENT_SIZES).toEqual(['DRY_20', 'DRY_40'])
+    expectUnionKeysMatch(PICKUP_EQUIPMENT_SIZES, PICKUP_EQUIPMENT_SIZE_LABELS)
+    for (const size of PICKUP_EQUIPMENT_SIZES) {
+      expect(EQUIPMENT_TYPES).toContain(size)
+    }
+    expect(pickupEquipmentSizeLabel('DRY_20')).toBe('20ft')
+    expect(pickupEquipmentSizeLabel('DRY_40')).toBe('40ft')
+    expect(pickupEquipmentSizeLabel('HC_40')).toBe('40ft')
+    expect(pickupEquipmentSizeLabel('TANK')).toBe('20ft')
+  })
+
   it('keeps TRIP_KINDS in lockstep with labels', () => {
     expectUnionKeysMatch(TRIP_KINDS, TRIP_KIND_LABELS)
   })
@@ -88,6 +108,14 @@ describe('domain vocabulary integrity', () => {
 
   it('keeps DOCUMENT_CATEGORIES in lockstep with labels', () => {
     expectUnionKeysMatch(DOCUMENT_CATEGORIES, DOCUMENT_CATEGORY_LABELS)
+  })
+
+  it('keeps DISPATCH_TASK_KINDS in lockstep with labels', () => {
+    expectUnionKeysMatch(DISPATCH_TASK_KINDS, DISPATCH_TASK_KIND_LABELS)
+  })
+
+  it('keeps DISPATCH_TASK_STATUSES in lockstep with labels and chips', () => {
+    expectUnionKeysMatch(DISPATCH_TASK_STATUSES, DISPATCH_TASK_STATUS_LABELS, DISPATCH_TASK_STATUS_CHIP)
   })
 
   it('keeps CYCLE_TYPES in lockstep with CYCLE_LIMITS', () => {

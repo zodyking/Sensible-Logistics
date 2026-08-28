@@ -1,5 +1,5 @@
 <script setup lang="ts">
-export type TabIconName = 'home' | 'trips' | 'containers' | 'more'
+export type TabIconName = 'home' | 'trips' | 'containers' | 'more' | 'tasks'
 
 defineProps<{ name: TabIconName }>()
 </script>
@@ -50,6 +50,15 @@ defineProps<{ name: TabIconName }>()
         <path d="M6.6 13.2h2.2" />
         <path d="M15.2 13.2h2.2" />
       </g>
+    </template>
+
+    <template v-else-if="name === 'tasks'">
+      <path d="M9.2 6.2h10.4" />
+      <path d="M9.2 12h10.4" />
+      <path d="M9.2 17.8h10.4" />
+      <path d="M4.2 6.2l1.4 1.4 2.4-2.8" />
+      <path d="M4.2 12l1.4 1.4 2.4-2.8" />
+      <path d="M4.2 17.8l1.4 1.4 2.4-2.8" />
     </template>
 
     <template v-else>

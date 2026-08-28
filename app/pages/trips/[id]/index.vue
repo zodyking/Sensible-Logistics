@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { formatContainerNumber } from '#shared/utils/iso6346'
+import { tripSmsAction } from '#shared/utils/trip-sms'
 
 const route = useRoute()
 const tripId = computed(() => String(route.params.id))
@@ -14,6 +15,8 @@ const isLive = computed(() =>
 const pickupStamp = computed(() => data.value?.trip.pickedUpAt ?? null)
 const dropoffStamp = computed(() => data.value?.trip.droppedOffAt ?? data.value?.trip.completedAt ?? null)
 const durationLabel = computed(() => formatDurationBetween(pickupStamp.value, dropoffStamp.value))
+const smsOpen = ref(false)
+const canSendSms = computed(() => Boolean(tripSmsAction(data.value?.trip.status)))
 </script>
 
 <template>
@@ -84,7 +87,11 @@ const durationLabel = computed(() => formatDurationBetween(pickupStamp.value, dr
           >▤</span>
           Documents
         </NuxtLink>
-        <button type="button">
+        <button
+          type="button"
+          :disabled="!canSendSms"
+          @click="smsOpen = true"
+        >
           <span
             class="act-ico"
             aria-hidden="true"
@@ -127,6 +134,30 @@ const durationLabel = computed(() => formatDurationBetween(pickupStamp.value, dr
       </NuxtLink>
 
       <div class="section-label">
+        <span>Dispatch</span>
+      </div>
+      <DispatchTaskCard
+        v-for="task in data.tasks"
+        :id="task.id"
+        :key="task.id"
+        :title="task.title"
+        :raw-text="task.rawText"
+        :sender="task.sender"
+        :received-at="task.receivedAt"
+        :work-date="task.workDate"
+        :kind="task.kind"
+        :status="task.status"
+        :trip-id="task.tripId"
+        compact
+      />
+      <EmptyState
+        v-if="!data.tasks?.length"
+        glyph="☰"
+        title="No dispatch for this trip"
+        description="Dispatcher texts for this work date will attach here."
+      />
+
+      <div class="section-label">
         <span>Movement timeline</span>
       </div>
 
@@ -141,6 +172,21 @@ const durationLabel = computed(() => formatDurationBetween(pickupStamp.value, dr
         v-else
         glyph="⇄"
         title="No events yet"
+      />
+
+      <TripSmsSheet
+        :open="smsOpen"
+        :trip-id="data.trip.id"
+        :status="data.trip.status"
+        :is-loaded="data.trip.isLoaded"
+        :container-number="data.container?.number"
+        :seal-number="data.trip.sealNumber"
+        :chassis-number="data.chassis?.number"
+        :container-type="data.container?.containerType"
+        :origin-name="data.origin?.name"
+        :destination-name="data.destination?.name"
+        :customer="data.trip.customer"
+        @close="smsOpen = false"
       />
     </template>
   </section>

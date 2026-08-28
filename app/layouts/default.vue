@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * Driver operational shell — fixed brand bar, 520px column, five-tab bar
- * matching Agent-Files/design-template.html: Home, Trips, Time (FAB), Containers, More.
+ * matching Agent-Files/design-template.html: Home, Trips, Tasks (FAB), Containers, More.
  */
 const route = useRoute()
 const { user } = useUserSession()
@@ -14,11 +14,11 @@ const tabs: Array<{
   label: string
   match: (p: string) => boolean
   fab?: boolean
-  icon?: 'home' | 'trips' | 'containers' | 'more'
+  icon?: 'home' | 'trips' | 'containers' | 'more' | 'tasks'
 }> = [
   { to: '/', label: 'Home', icon: 'home', match: p => p === '/' },
   { to: '/pickups', label: 'Trips', icon: 'trips', match: p => p.startsWith('/pickups') || p.startsWith('/trips') },
-  { to: '/timecard', label: 'Time', fab: true, match: p => p.startsWith('/timecard') },
+  { to: '/tasks', label: 'Tasks', fab: true, match: p => p.startsWith('/tasks') || p.startsWith('/timecard') },
   { to: '/containers', label: 'Containers', icon: 'containers', match: p => p.startsWith('/containers') || (/^\/locations\/[^/]+/.test(p) && !p.startsWith('/locations/new')) },
   { to: '/more', label: 'More', icon: 'more', match: p => p.startsWith('/more') || p.startsWith('/scan') || p === '/locations' || p.startsWith('/locations/new') || p === '/settings' || p.startsWith('/documents') || p.startsWith('/connections') },
 ]
@@ -79,13 +79,14 @@ const tabs: Array<{
             stroke="currentColor"
             stroke-width="2.2"
             stroke-linecap="round"
+            stroke-linejoin="round"
           >
-            <circle
-              cx="12"
-              cy="12"
-              r="8.5"
-            />
-            <path d="M12 7.8v4.4l3 1.8" />
+            <path d="M9.4 6.4h10.2" />
+            <path d="M9.4 12h10.2" />
+            <path d="M9.4 17.6h10.2" />
+            <path d="M4.4 6.4l1.35 1.35 2.3-2.7" />
+            <path d="M4.4 12l1.35 1.35 2.3-2.7" />
+            <path d="M4.4 17.6l1.35 1.35 2.3-2.7" />
           </svg>
         </span>
         <span

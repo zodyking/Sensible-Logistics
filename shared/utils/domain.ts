@@ -106,6 +106,18 @@ export const EQUIPMENT_TYPES = [
 ] as const
 export type EquipmentType = (typeof EQUIPMENT_TYPES)[number]
 
+/**
+ * Lengths a driver can pick when classifying a new container.
+ * Stored as DRY_20 / DRY_40; older records may still use HC_40, reefer, etc.
+ */
+export const PICKUP_EQUIPMENT_SIZES = ['DRY_20', 'DRY_40'] as const
+export type PickupEquipmentSize = (typeof PICKUP_EQUIPMENT_SIZES)[number]
+
+export const PICKUP_EQUIPMENT_SIZE_LABELS: Record<PickupEquipmentSize, string> = {
+  DRY_20: '20ft',
+  DRY_40: '40ft',
+}
+
 export const EQUIPMENT_TYPE_LABELS: Record<EquipmentType, string> = {
   DRY_20: `20' Dry`,
   DRY_40: `40' Dry`,
@@ -146,6 +158,11 @@ export const EQUIPMENT_LENGTH_FT: Record<EquipmentType, number> = {
 
 const FT_TO_M = 0.3048
 const CONTAINER_WIDTH_FT = 8
+
+export function pickupEquipmentSizeLabel(type: EquipmentType): string {
+  if (type === 'DRY_20' || type === 'DRY_40') return PICKUP_EQUIPMENT_SIZE_LABELS[type]
+  return EQUIPMENT_LENGTH_FT[type] <= 20 ? '20ft' : '40ft'
+}
 
 /** ISO footprint in metres for drawing a box on OpenStreetMap. */
 export function equipmentFootprintMeters(type: EquipmentType): { length: number, width: number } {
@@ -373,6 +390,35 @@ export const EXCEPTION_TYPES = [
   'CUSTOMS_HOLD',
 ] as const
 export type ExceptionType = (typeof EXCEPTION_TYPES)[number]
+
+export const DISPATCH_TASK_KINDS = ['PICKUP', 'DROPOFF', 'LOAD', 'EMPTY', 'WORK', 'NOTE'] as const
+export type DispatchTaskKind = (typeof DISPATCH_TASK_KINDS)[number]
+
+export const DISPATCH_TASK_KIND_LABELS: Record<DispatchTaskKind, string> = {
+  PICKUP: 'Pickup',
+  DROPOFF: 'Drop-off',
+  LOAD: 'Live load',
+  EMPTY: 'Empty',
+  WORK: 'Work',
+  NOTE: 'Dispatch',
+}
+
+export const DISPATCH_TASK_STATUSES = ['OPEN', 'IN_PROGRESS', 'DONE', 'DISMISSED'] as const
+export type DispatchTaskStatus = (typeof DISPATCH_TASK_STATUSES)[number]
+
+export const DISPATCH_TASK_STATUS_LABELS: Record<DispatchTaskStatus, string> = {
+  OPEN: 'Open',
+  IN_PROGRESS: 'In progress',
+  DONE: 'Done',
+  DISMISSED: 'Dismissed',
+}
+
+export const DISPATCH_TASK_STATUS_CHIP: Record<DispatchTaskStatus, 'ok' | 'warn' | 'err' | 'transit' | 'idle'> = {
+  OPEN: 'warn',
+  IN_PROGRESS: 'transit',
+  DONE: 'ok',
+  DISMISSED: 'idle',
+}
 
 /** 150 air miles expressed in statute miles (spec 14.3). */
 export const SHORT_HAUL_RADIUS_MILES = 172.6

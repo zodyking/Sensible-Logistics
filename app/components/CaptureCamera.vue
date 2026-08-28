@@ -1,8 +1,10 @@
 <script setup lang="ts">
 withDefaults(defineProps<{
   title?: string
+  readingLabel?: string
 }>(), {
   title: 'Container and chassis',
+  readingLabel: 'Reading the photo…',
 })
 
 const emit = defineEmits<{
@@ -17,6 +19,7 @@ const libraryInput = ref<HTMLInputElement | null>(null)
 const cameraState = ref<CameraState>('starting')
 const cameraMessage = ref('')
 const capturing = ref(false)
+const previewUrl = ref('')
 
 let stream: MediaStream | null = null
 
@@ -105,6 +108,7 @@ async function takePhoto() {
   capturing.value = true
   try {
     const image = captureShutter()
+    previewUrl.value = image
     stopCamera()
     emit('photo', image)
   }
@@ -129,8 +133,10 @@ async function onLibrary(event: Event) {
       reader.onerror = () => reject(new Error('Could not open that photo.'))
       reader.readAsDataURL(file)
     })
+    const jpeg = await normalizeToJpeg(dataUrl)
+    previewUrl.value = jpeg
     stopCamera()
-    emit('photo', await normalizeToJpeg(dataUrl))
+    emit('photo', jpeg)
   }
   catch (error) {
     cameraMessage.value = error instanceof Error ? error.message : 'Could not open that photo.'
@@ -148,10 +154,12 @@ async function onLibrary(event: Event) {
       class="capture-overlay"
       role="dialog"
       aria-modal="true"
-      :aria-label="title"
+      :aria-busy="Boolean(previewUrl)"
+      :aria-label="previewUrl ? 'Reading photo' : title"
     >
       <div class="capture-bar">
         <button
+          v-if="!previewUrl"
           type="button"
           class="capture-iconbtn"
           aria-label="Close camera"
@@ -159,28 +167,48 @@ async function onLibrary(event: Event) {
         >
           ✕
         </button>
-        <b>{{ title }}</b>
+        <span
+          v-else
+          aria-hidden="true"
+        />
+        <b>{{ previewUrl ? 'Reading photo' : title }}</b>
         <span aria-hidden="true" />
       </div>
 
       <div class="capture-stage">
         <div class="capture-viewport">
+          <img
+            v-if="previewUrl"
+            :src="previewUrl"
+            alt=""
+          >
           <video
+            v-else
             ref="videoEl"
             playsinline
             muted
             autoplay
           />
           <div
-            v-if="cameraState !== 'live'"
+            v-if="previewUrl || cameraState !== 'live'"
             class="capture-stage-msg"
+            :class="{ reading: Boolean(previewUrl) }"
+            :role="previewUrl ? 'status' : undefined"
           >
-            <p>{{ cameraMessage || 'Starting camera…' }}</p>
+            <span
+              v-if="previewUrl"
+              class="scan-spinner"
+              aria-hidden="true"
+            />
+            <p>{{ previewUrl ? readingLabel : (cameraMessage || 'Starting camera…') }}</p>
           </div>
         </div>
       </div>
 
-      <div class="capture-toolbar">
+      <div
+        v-if="!previewUrl"
+        class="capture-toolbar"
+      >
         <button
           type="button"
           class="capture-tool"
