@@ -1300,8 +1300,15 @@
   }
 
   .tab .t-ico {
-    font-size: 1.25rem;
-    line-height: 1;
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    line-height: 0;
+  }
+
+  .tab .t-ico svg {
+    display: block;
   }
 
   .tab.on {
