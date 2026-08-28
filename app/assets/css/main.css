@@ -509,6 +509,11 @@
     opacity: 0.5;
     box-shadow: none;
     cursor: not-allowed;
+    pointer-events: none;
+  }
+
+  .btn-primary-action:disabled:active {
+    transform: none;
   }
 
   .btn-dark {
@@ -627,7 +632,7 @@
     font-size: var(--text-2xl);
     font-weight: 700;
     letter-spacing: 0.04em;
-    text-align: left;
+    text-align: center;
     line-height: 1.15;
     margin: 10px 0 12px;
     color: var(--color-ink-900);

@@ -35,6 +35,12 @@ const primaryAction = computed(() => {
   return active.value.primaryAction
 })
 
+const hasDestination = computed(() => Boolean(active.value?.destination?.id))
+
+const arriveBlocked = computed(() =>
+  Boolean(active.value && primaryAction.value.label === 'Arrive' && !hasDestination.value),
+)
+
 async function confirmCancelTrip() {
   if (!active.value || cancelling.value) return
   cancelling.value = true
@@ -128,7 +134,7 @@ async function confirmCancelTrip() {
           <div class="trip-cno">
             No active trip
           </div>
-          <p class="mb-0 text-sm text-[var(--color-ink-500)]">
+          <p class="mb-0 text-center text-sm text-[var(--color-ink-500)]">
             Start a pickup to put a container on this card.
           </p>
         </div>
@@ -212,12 +218,29 @@ async function confirmCancelTrip() {
       </div>
 
       <div class="home-ctas">
+        <button
+          v-if="arriveBlocked"
+          type="button"
+          class="btn-primary-action home-cta"
+          disabled
+          aria-describedby="arrive-needs-dest"
+        >
+          Arrive
+        </button>
         <NuxtLink
+          v-else
           :to="primaryAction.to"
           class="btn-primary-action home-cta"
         >
           {{ primaryAction.label }}
         </NuxtLink>
+        <p
+          v-if="arriveBlocked"
+          id="arrive-needs-dest"
+          class="field-hint mt-2 text-center"
+        >
+          Choose a drop-off before you arrive.
+        </p>
         <NuxtLink
           v-if="canAttachContainer"
           to="/pickups/attach"

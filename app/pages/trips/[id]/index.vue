@@ -14,6 +14,9 @@ const isLive = computed(() =>
 const pickupStamp = computed(() => data.value?.trip.pickedUpAt ?? null)
 const dropoffStamp = computed(() => data.value?.trip.droppedOffAt ?? data.value?.trip.completedAt ?? null)
 const durationLabel = computed(() => formatDurationBetween(pickupStamp.value, dropoffStamp.value))
+
+const hasDestination = computed(() => Boolean(data.value?.destination?.id))
+const arriveBlocked = computed(() => isLive.value && !hasDestination.value)
 </script>
 
 <template>
@@ -118,13 +121,29 @@ const durationLabel = computed(() => formatDurationBetween(pickupStamp.value, dr
         Add container to chassis
       </NuxtLink>
 
+      <button
+        v-if="isLive && arriveBlocked"
+        type="button"
+        class="btn-primary-action home-cta mb-4"
+        disabled
+        aria-describedby="arrive-needs-dest"
+      >
+        Arrive
+      </button>
       <NuxtLink
-        v-if="isLive"
+        v-else-if="isLive"
         :to="`/trips/${tripId}/dropoff`"
         class="btn-primary-action home-cta mb-4"
       >
         Arrive
       </NuxtLink>
+      <p
+        v-if="arriveBlocked"
+        id="arrive-needs-dest"
+        class="field-hint mb-4 text-center"
+      >
+        Choose a drop-off before you arrive.
+      </p>
 
       <div class="section-label">
         <span>Movement timeline</span>
