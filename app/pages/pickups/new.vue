@@ -79,15 +79,20 @@ const resolution = ref<Resolution | null>(null)
 const needsClassification = computed(() => resolution.value?.outcome === 'CREATE')
 const fromYard = computed(() => Boolean(selectedYardId.value) && !manualEntry.value)
 
+const route = useRoute()
+const swapOfTripId = ref<string | null>(String(route.query.swap || '') || null)
+const swapMode = computed(() => Boolean(swapOfTripId.value))
+
 const STEPS = computed<Step[]>(() => pickupSteps({
   kind: pickupKind.value,
   fromYard: fromYard.value,
   manualEntry: manualEntry.value,
   needsClassification: needsClassification.value,
   isLoaded: isLoaded.value,
+  swap: swapMode.value,
 }))
 
-const step = ref<Step>('kind')
+const step = ref<Step>(swapMode.value ? 'inventory' : 'kind')
 const stepIndex = computed(() => Math.max(0, STEPS.value.indexOf(step.value)))
 
 watch(STEPS, (steps) => {
@@ -169,10 +174,13 @@ const yardContainers = computed(() => {
       })
     : (inventory.value?.containers ?? [])
   const needle = inventoryQuery.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
-  if (!needle) return base
-  return base.filter(item =>
-    (item.numberNormalized || item.number).toUpperCase().replace(/[^A-Z0-9]/g, '').includes(needle),
-  )
+  const searched = needle
+    ? base.filter(item =>
+        (item.numberNormalized || item.number).toUpperCase().replace(/[^A-Z0-9]/g, '').includes(needle),
+      )
+    : base
+  if (!swapMode.value) return searched
+  return searched.filter(item => item.isLoaded)
 })
 
 const yardChassis = computed(() => {
@@ -186,16 +194,27 @@ const yardChassis = computed(() => {
 })
 
 watch(pickupKind, (kind) => {
-  STEP_TITLES.equipment = kind === 'BARE_CHASSIS' ? 'Chassis' : 'Container and chassis'
-  STEP_TITLES.inventory = kind === 'BARE_CHASSIS' ? 'Which chassis?' : 'Which container?'
+  if (swapMode.value) {
+    STEP_TITLES.equipment = 'Load and chassis'
+    STEP_TITLES.inventory = 'Which load?'
+  }
+  else {
+    STEP_TITLES.equipment = kind === 'BARE_CHASSIS' ? 'Chassis' : 'Container and chassis'
+    STEP_TITLES.inventory = kind === 'BARE_CHASSIS' ? 'Which chassis?' : 'Which container?'
+  }
   selectedYardId.value = null
   manualEntry.value = false
   inventoryQuery.value = ''
 })
 
-const route = useRoute()
 rawNumber.value = maskContainerInput(String(route.query.number ?? ''))
 if (route.query.chassis) chassisNumber.value = maskChassisInput(String(route.query.chassis))
+if (swapMode.value) {
+  pickupKind.value = 'CONTAINER'
+  isLoaded.value = true
+  STEP_TITLES.inventory = 'Which load?'
+  STEP_TITLES.equipment = 'Load and chassis'
+}
 
 const submitting = ref(false)
 const errorMessage = ref('')
@@ -300,7 +319,14 @@ async function hydrateFromTrip(id: string) {
     if (data.container?.equipmentType) equipmentType.value = data.container.equipmentType
     chassisId.value = data.trip.chassisId
     chassisNumber.value = maskChassisInput(data.chassis?.number ?? '')
-    isLoaded.value = Boolean(data.trip.isLoaded)
+    isLoaded.value = Boolean(data.trip.swapPairTripId) || Boolean(data.trip.isLoaded)
+    if (data.trip.swapPairTripId) {
+      swapOfTripId.value = data.trip.swapPairTripId
+      pickupKind.value = 'CONTAINER'
+      isLoaded.value = true
+      STEP_TITLES.inventory = 'Which load?'
+      STEP_TITLES.equipment = 'Load and chassis'
+    }
     sealNumber.value = data.trip.sealNumber ?? ''
     notes.value = data.trip.driverNotes ?? ''
     manualEntry.value = true
@@ -314,15 +340,65 @@ async function hydrateFromTrip(id: string) {
   }
 }
 
+async function loadSwapSource(id: string) {
+  hydrating.value = true
+  errorMessage.value = ''
+  try {
+    const data = await $fetch(`/api/trips/${id}`)
+    if (data.trip.isLoaded || data.trip.kind === 'BARE_CHASSIS') {
+      errorMessage.value = 'Swap is only available on an empty inbound to a customer.'
+      return
+    }
+    if (!data.destination?.id) {
+      errorMessage.value = 'Set a customer destination before swapping.'
+      return
+    }
+    if (data.destination.type && data.destination.type !== 'CUSTOMER') {
+      errorMessage.value = 'Swap is only available when heading to a customer location.'
+      return
+    }
+    swapOfTripId.value = data.trip.id
+    pickupKind.value = 'CONTAINER'
+    isLoaded.value = true
+    originLocationId.value = data.destination.id
+    originName.value = data.destination.name ?? ''
+    step.value = 'inventory'
+  }
+  catch (error) {
+    errorMessage.value = apiErrorMessage(error, 'Could not start the swap.')
+  }
+  finally {
+    hydrating.value = false
+  }
+}
+
 onMounted(async () => {
   const fromQuery = String(route.query.trip ?? '')
   if (fromQuery) {
     await hydrateFromTrip(fromQuery)
     return
   }
+  const swapQuery = String(route.query.swap ?? '')
+  if (swapQuery) {
+    await loadSwapSource(swapQuery)
+  }
   try {
     const live = await $fetch('/api/trips', { query: { scope: 'mine', status: 'PICKUP_IN_PROGRESS', limit: 1 } })
-    if (live.items[0]) existingTripId.value = live.items[0].id
+    const liveId = live.items[0]?.id as string | undefined
+    if (!liveId || liveId === tripId.value) return
+    if (swapOfTripId.value) {
+      try {
+        const open = await $fetch(`/api/trips/${liveId}`)
+        if (open.trip.swapPairTripId === swapOfTripId.value) {
+          await hydrateFromTrip(liveId)
+          return
+        }
+      }
+      catch {
+        // Fall through to the resume banner.
+      }
+    }
+    existingTripId.value = liveId
   }
   catch {
     // Listing live trips is a convenience, not a blocker.
@@ -348,7 +424,7 @@ function selectYardContainer(item: YardContainer) {
   rawNumber.value = maskContainerInput(item.numberNormalized || item.number)
   containerType.value = item.containerType
   equipmentType.value = item.equipmentType
-  isLoaded.value = item.isLoaded
+  isLoaded.value = swapMode.value ? true : item.isLoaded
   sealNumber.value = item.sealNumber ?? ''
   chassisId.value = item.currentChassisId
   chassisNumber.value = item.chassisNumber ? maskChassisInput(item.chassisNumber) : ''
@@ -508,6 +584,7 @@ async function startPickup() {
       kind: pickupKind.value,
       originLocationId: originLocationId.value,
     }
+    if (swapOfTripId.value) body.swapOfTripId = swapOfTripId.value
     if (pickupKind.value === 'BARE_CHASSIS') {
       body.chassisId = chassisId.value
     }
@@ -552,7 +629,7 @@ async function startPickup() {
 
 async function confirm() {
   if (!tripId.value || submitting.value) return
-  if (pickupKind.value === 'CONTAINER' && isLoaded.value && !sealNumber.value.trim()) {
+  if (pickupKind.value === 'CONTAINER' && (swapMode.value || isLoaded.value) && !sealNumber.value.trim()) {
     errorMessage.value = 'Enter a seal number for a loaded container.'
     step.value = 'seal'
     return
@@ -571,8 +648,8 @@ async function confirm() {
         eventId: crypto.randomUUID(),
         chassisId: chassisId.value,
         destinationLocationId: destinationLocationId.value,
-        isLoaded: pickupKind.value === 'CONTAINER' ? isLoaded.value : false,
-        sealNumber: pickupKind.value === 'CONTAINER' && isLoaded.value ? (sealNumber.value.trim() || null) : null,
+        isLoaded: pickupKind.value === 'CONTAINER' ? (swapMode.value || isLoaded.value) : false,
+        sealNumber: pickupKind.value === 'CONTAINER' && (swapMode.value || isLoaded.value) ? (sealNumber.value.trim() || null) : null,
         notes: notes.value || null,
       },
     })
@@ -596,7 +673,7 @@ async function abandon() {
   try {
     await $fetch(`/api/trips/${tripId.value}/cancel`, {
       method: 'POST',
-      body: { eventId: crypto.randomUUID(), reason: 'Driver cancelled before confirming.' },
+      body: { eventId: crypto.randomUUID(), reason: swapMode.value ? 'Driver cancelled the swap pickup.' : 'Driver cancelled before confirming.' },
     })
   }
   finally {
@@ -664,7 +741,7 @@ function retakePhoto() {
 <template>
   <section class="d-page">
     <PageHeader
-      eyebrow="New pickup"
+      :eyebrow="swapMode ? 'Swap 🔁' : 'New pickup'"
       :title="STEP_TITLES[step]"
       back-to="/"
       back-label="Home"
@@ -704,7 +781,7 @@ function retakePhoto() {
     </p>
 
     <p
-      v-if="existingTripId && !tripId"
+      v-if="existingTripId && !tripId && !swapMode"
       class="note"
       role="status"
     >
@@ -804,9 +881,11 @@ function retakePhoto() {
       <p class="note">
         <span>
           {{
-            pickupKind === 'BARE_CHASSIS'
-              ? `Chassis already at ${originLocation?.name ?? 'this location'}. Pick one to skip typing the number.`
-              : `Containers already at ${originLocation?.name ?? 'this location'}. Pick one to skip typing and classifying it.`
+            swapMode
+              ? `Loaded containers at ${originLocation?.name || originName || 'this customer'}. Pick the outbound load.`
+              : pickupKind === 'BARE_CHASSIS'
+                ? `Chassis already at ${originLocation?.name ?? 'this location'}. Pick one to skip typing the number.`
+                : `Containers already at ${originLocation?.name ?? 'this location'}. Pick one to skip typing and classifying it.`
           }}
         </span>
       </p>
@@ -904,14 +983,16 @@ function retakePhoto() {
       <EmptyState
         v-else-if="!inventoryPending"
         glyph="▦"
-        :title="pickupKind === 'BARE_CHASSIS' ? 'No chassis on site' : 'No containers on site'"
+        :title="pickupKind === 'BARE_CHASSIS' ? 'No chassis on site' : (swapMode ? 'No loaded containers on site' : 'No containers on site')"
         :description="inventoryQuery.trim()
           ? (pickupKind === 'BARE_CHASSIS'
             ? 'Nothing matching that search is parked here.'
             : 'Nothing matching that search is parked here.')
           : (pickupKind === 'BARE_CHASSIS'
             ? 'Add a chassis with the button below if it is not in the yard yet.'
-            : 'Add a container with the button below if it is not in the yard yet.')"
+            : (swapMode
+              ? 'Add the outbound load with the button below if it is not listed yet.'
+              : 'Add a container with the button below if it is not in the yard yet.'))"
       />
 
       <button
@@ -1210,9 +1291,11 @@ function retakePhoto() {
       <p class="note">
         <span>
           {{
-            pickupKind === 'BARE_CHASSIS'
-              ? 'Confirming records the chassis pickup and departure. You can hang a container on it from Home.'
-              : 'Confirming records the pickup and puts the container in transit on this service life.'
+            swapMode
+              ? 'Confirming records the load pickup. The empty stays on Home until you Arrive at this customer.'
+              : pickupKind === 'BARE_CHASSIS'
+                ? 'Confirming records the chassis pickup and departure. You can hang a container on it from Home.'
+                : 'Confirming records the pickup and puts the container in transit on this service life.'
           }}
         </span>
       </p>
@@ -1257,7 +1340,7 @@ function retakePhoto() {
       class="mt-4 w-full py-3 text-sm font-semibold text-[var(--color-err-600)]"
       @click="abandon"
     >
-      {{ tripId ? 'Cancel this pickup' : 'Discard and go home' }}
+      {{ tripId ? (swapMode ? 'Cancel swap pickup' : 'Cancel this pickup') : 'Discard and go home' }}
     </button>
 
     <CaptureCamera

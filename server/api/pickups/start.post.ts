@@ -12,6 +12,7 @@ const schema = z.object({
   equipmentType: z.enum(EQUIPMENT_TYPES).optional(),
   chassisId: z.string().uuid().optional(),
   originLocationId: z.string().uuid('Select a pickup location.'),
+  swapOfTripId: z.string().uuid().optional(),
   gps: z.object({
     latitude: z.number(),
     longitude: z.number(),

@@ -1,8 +1,14 @@
 <script setup lang="ts">
 import type { ContainerType, TripStatus } from '#shared/utils/domain'
-import { formatTripSmsMessage, tripSmsAction } from '#shared/utils/trip-sms'
+import { formatSwapSmsMessage, formatTripSmsMessage, tripSmsAction } from '#shared/utils/trip-sms'
+import type { TripSmsFields } from '#shared/utils/trip-sms'
 import { shareTripSms } from '~/utils/share-trip-sms'
 import { rememberTripShareBlobs, tripShareFilesAsFiles } from '~/utils/trip-share-files'
+
+type TripSmsSheetFields = TripSmsFields & {
+  tripId?: string | null
+  status?: TripStatus | null
+}
 
 const props = defineProps<{
   open: boolean
@@ -16,6 +22,9 @@ const props = defineProps<{
   originName?: string | null
   destinationName?: string | null
   customer?: string | null
+  /** Outbound load + empty left at the customer while both trips are live. */
+  swapPicked?: TripSmsSheetFields | null
+  swapDropped?: TripSmsSheetFields | null
 }>()
 
 const emit = defineEmits<{ close: [] }>()
@@ -25,25 +34,55 @@ const shareError = ref('')
 const copied = ref(false)
 const attachmentFiles = ref<File[]>([])
 
-const action = computed(() => tripSmsAction(props.status))
+const isSwap = computed(() => Boolean(
+  props.swapPicked
+  && props.swapDropped
+  && tripSmsAction(props.swapPicked.status)
+  && tripSmsAction(props.swapDropped.status),
+))
+
+const action = computed(() => {
+  if (isSwap.value) return 'pickup' as const
+  return tripSmsAction(props.status)
+})
+
+function toFields(input: TripSmsSheetFields | typeof props): TripSmsFields {
+  return {
+    isLoaded: Boolean(input.isLoaded),
+    containerNumber: input.containerNumber,
+    sealNumber: input.sealNumber,
+    chassisNumber: input.chassisNumber,
+    containerType: input.containerType,
+    originName: input.originName,
+    destinationName: input.destinationName,
+    customer: input.customer,
+  }
+}
 
 const message = computed(() => {
+  if (isSwap.value && props.swapPicked && props.swapDropped) {
+    return formatSwapSmsMessage(toFields(props.swapPicked), toFields(props.swapDropped))
+  }
   if (!action.value) return ''
-  return formatTripSmsMessage(action.value, {
-    isLoaded: Boolean(props.isLoaded),
-    containerNumber: props.containerNumber,
-    sealNumber: props.sealNumber,
-    chassisNumber: props.chassisNumber,
-    containerType: props.containerType,
-    originName: props.originName,
-    destinationName: props.destinationName,
-    customer: props.customer,
-  })
+  return formatTripSmsMessage(action.value, toFields(props))
+})
+
+const attachmentTripId = computed(() => {
+  if (isSwap.value) return props.swapDropped?.tripId ?? null
+  if (action.value === 'pickup') return props.tripId ?? null
+  return null
 })
 
 const attachmentCount = computed(() => attachmentFiles.value.length)
 
 const attachmentHint = computed(() => {
+  if (isSwap.value) {
+    if (attachmentCount.value === 0) {
+      return 'Attach the empty’s container photo and documents — the box left at the customer.'
+    }
+    const noun = attachmentCount.value === 1 ? 'file' : 'files'
+    return `${attachmentCount.value} ${noun} from the empty left at the customer will attach.`
+  }
   if (action.value === 'dropoff') {
     return 'Drop-off messages are text only. Photos and documents stay off this send.'
   }
@@ -55,14 +94,14 @@ const attachmentHint = computed(() => {
 })
 
 watch(
-  () => [props.open, props.tripId, action.value] as const,
-  async ([open, tripId, nextAction]) => {
+  () => [props.open, attachmentTripId.value] as const,
+  async ([open, tripId]) => {
     shareError.value = ''
     copied.value = false
     attachmentFiles.value = []
-    if (!open || !tripId || nextAction !== 'pickup') return
-    const files = await tripShareFilesAsFiles(tripId)
-    if (props.open && props.tripId === tripId) attachmentFiles.value = files
+    if (!open || !tripId) return
+    const next = await tripShareFilesAsFiles(tripId)
+    if (props.open && attachmentTripId.value === tripId) attachmentFiles.value = next
   },
 )
 
@@ -70,11 +109,11 @@ async function onAddFiles(event: Event) {
   const input = event.target as HTMLInputElement
   const selected = [...input.files ?? []]
   input.value = ''
-  if (!props.tripId || !selected.length) return
+  if (!attachmentTripId.value || !selected.length) return
   shareError.value = ''
   try {
-    await rememberTripShareBlobs(props.tripId, selected)
-    attachmentFiles.value = await tripShareFilesAsFiles(props.tripId)
+    await rememberTripShareBlobs(attachmentTripId.value, selected)
+    attachmentFiles.value = await tripShareFilesAsFiles(attachmentTripId.value)
   }
   catch {
     shareError.value = 'Could not attach those files.'
@@ -82,14 +121,14 @@ async function onAddFiles(event: Event) {
 }
 
 async function share() {
-  if (!action.value || !props.tripId || sharing.value) return
+  if (!action.value || sharing.value) return
   sharing.value = true
   shareError.value = ''
   copied.value = false
   try {
     const result = await shareTripSms({
       text: message.value,
-      files: action.value === 'pickup' ? attachmentFiles.value : [],
+      files: attachmentTripId.value ? attachmentFiles.value : [],
     })
     copied.value = result.copied
     if (result.aborted) return
@@ -137,7 +176,7 @@ async function share() {
         {{ attachmentHint }}
       </p>
       <label
-        v-if="action === 'pickup' && tripId"
+        v-if="attachmentTripId"
         class="sms-add-files"
       >
         <input

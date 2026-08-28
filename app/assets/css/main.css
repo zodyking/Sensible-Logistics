@@ -822,6 +822,55 @@
     color: var(--color-ink-400);
   }
 
+  .home-actions .pulse {
+    border-color: var(--color-blue-400);
+    animation: home-doc-pulse 1.6s ease-in-out infinite;
+  }
+
+  .home-actions .pulse .act-ico {
+    color: var(--color-blue-500);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .home-actions .pulse {
+      animation: none;
+      box-shadow: 0 0 0 2px var(--color-blue-100);
+    }
+  }
+
+  @keyframes home-doc-pulse {
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 rgb(47 111 167 / 0.35);
+    }
+
+    50% {
+      box-shadow: 0 0 0 6px rgb(47 111 167 / 0);
+    }
+  }
+
+  .swap-split {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--s3);
+    margin: var(--s3) 0;
+    color: var(--color-navy-800);
+    font-family: var(--font-display);
+    font-size: var(--text-sm);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .swap-split::before,
+  .swap-split::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--color-line-300);
+  }
+
   /* --- List rows --- */
   .rowlist {
     display: flex;
@@ -2235,7 +2284,8 @@
   }
 
   .sheet-actions button,
-  .sheet-actions a {
+  .sheet-actions a,
+  .sheet-actions .sms-add-files-btn {
     flex: 1;
     min-height: 48px;
     border-radius: var(--radius-md);
@@ -2245,6 +2295,7 @@
     align-items: center;
     justify-content: center;
     text-decoration: none;
+    cursor: pointer;
   }
 
   .btn-cancel {
@@ -2311,6 +2362,72 @@
 
   .sms-add-files:active {
     background: var(--color-blue-50);
+  }
+
+  .doc-list {
+    list-style: none;
+    margin: var(--s4) 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--s2);
+  }
+
+  .doc-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s3);
+    min-height: 52px;
+    padding: var(--s3);
+    border: 1px solid var(--color-line-200);
+    border-radius: var(--radius-md);
+    background: var(--color-paper-50);
+  }
+
+  .doc-row b {
+    display: block;
+    font-size: var(--text-sm);
+    color: var(--color-ink-900);
+    word-break: break-word;
+  }
+
+  .doc-row small {
+    display: block;
+    margin-top: 2px;
+    color: var(--color-ink-500);
+    font-size: var(--text-xs);
+  }
+
+  .doc-delete {
+    flex-shrink: 0;
+    min-height: 44px;
+    padding: 0 var(--s3);
+    border-radius: var(--radius-md);
+    background: var(--color-err-100);
+    color: var(--color-err-600);
+    font-size: var(--text-sm);
+    font-weight: 600;
+  }
+
+  .doc-delete:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .doc-confirm {
+    margin-top: var(--s4);
+    padding: var(--s4);
+    border: 1px solid var(--color-err-100);
+    border-radius: var(--radius-md);
+    background: var(--color-err-100);
+  }
+
+  .doc-confirm p {
+    margin: 0;
+    color: var(--color-ink-900);
+    font-size: var(--text-sm);
+    font-weight: 600;
   }
 
   /* --- Trips: toolbar, week/day groups, calendar --- */

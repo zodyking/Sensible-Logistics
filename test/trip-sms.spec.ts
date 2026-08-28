@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  canStartSwap,
+  formatSwapSmsMessage,
   formatTripSmsMessage,
   tripSmsAction,
   tripSmsLocationName,
@@ -50,7 +52,7 @@ describe('tripSmsLocationName', () => {
 })
 
 describe('formatTripSmsMessage', () => {
-  it('formats a loaded pickup with seal, photos-side fields, and origin', () => {
+  it('formats a loaded pickup with seal, location, then type', () => {
     expect(formatTripSmsMessage('pickup', {
       isLoaded: true,
       containerNumber: 'MSCU4521894',
@@ -60,12 +62,12 @@ describe('formatTripSmsMessage', () => {
       originName: 'Port Everglades Terminal 3',
       destinationName: 'Coastal Tile Imports',
     })).toBe([
-      'Picked Up Load',
+      'Picked Up Load ⬆️',
       'CT: MSCU452189-4',
       'Seal: SL-778213',
       'Chassis: ABCD123456',
-      'ZIM',
       '@Port Everglades Terminal 3',
+      'ZIM Container',
     ].join('\n'))
   })
 
@@ -78,15 +80,15 @@ describe('formatTripSmsMessage', () => {
       containerType: 'CMA',
       originName: 'Hialeah Empty Depot',
     })).toBe([
-      'Picked Up Empty',
+      'Picked Up Empty ⬆️',
       'CT: TGHU731004-0',
       'Chassis: WXYZ987654',
-      'CMA',
       '@Hialeah Empty Depot',
+      'CMA Container',
     ].join('\n'))
   })
 
-  it('formats arrive as dropped off at the destination and still omits empty seals', () => {
+  it('formats arrive as dropped, without Off, and still omits empty seals', () => {
     expect(formatTripSmsMessage('dropoff', {
       isLoaded: false,
       containerNumber: 'HLXU8845605',
@@ -95,11 +97,11 @@ describe('formatTripSmsMessage', () => {
       originName: 'Coastal Tile Imports',
       destinationName: 'Hialeah Empty Depot',
     })).toBe([
-      'Dropped Off Empty',
+      'Dropped Empty ⬇️',
       'CT: HLXU884560-5',
       'Chassis: LMNO246810',
-      'CMA',
       '@Hialeah Empty Depot',
+      'CMA Container',
     ].join('\n'))
   })
 
@@ -112,12 +114,12 @@ describe('formatTripSmsMessage', () => {
       containerType: 'TROPICAL',
       destinationName: 'Medley Distribution Center',
     })).toBe([
-      'Dropped Off Load',
+      'Dropped Load ⬇️',
       'CT: CAIU298455-1',
       'Seal: SL-9911',
       'Chassis: TRLR111111',
-      'Tropical',
       '@Medley Distribution Center',
+      'Tropical Container',
     ].join('\n'))
   })
 
@@ -127,9 +129,86 @@ describe('formatTripSmsMessage', () => {
       chassisNumber: 'CHSS000001',
       originName: 'Sensible Yard — Davie',
     })).toBe([
-      'Picked Up Empty',
+      'Picked Up Empty ⬆️',
       'Chassis: CHSS000001',
       '@Sensible Yard — Davie',
     ].join('\n'))
+  })
+})
+
+describe('formatSwapSmsMessage', () => {
+  it('stacks the outbound load above the empty left at the customer', () => {
+    expect(formatSwapSmsMessage(
+      {
+        isLoaded: true,
+        containerNumber: 'MSCU4521894',
+        sealNumber: 'SL-778213',
+        chassisNumber: 'ABCD123456',
+        containerType: 'ZIM',
+        originName: 'Coastal Tile Imports',
+      },
+      {
+        isLoaded: false,
+        containerNumber: 'TGHU7310040',
+        chassisNumber: 'WXYZ987654',
+        containerType: 'CMA',
+        destinationName: 'Coastal Tile Imports',
+      },
+    )).toBe([
+      'Swap 🔁',
+      '',
+      'Picked Up Load ⬆️',
+      'CT: MSCU452189-4',
+      'Seal: SL-778213',
+      'Chassis: ABCD123456',
+      '@Coastal Tile Imports',
+      'ZIM Container',
+      '',
+      'Dropped Empty ⬇️',
+      'CT: TGHU731004-0',
+      'Chassis: WXYZ987654',
+      '@Coastal Tile Imports',
+      'CMA Container',
+    ].join('\n'))
+  })
+})
+
+describe('canStartSwap', () => {
+  it('is only available for an empty inbound to a customer', () => {
+    expect(canStartSwap({
+      status: 'IN_TRANSIT',
+      isLoaded: false,
+      destinationType: 'CUSTOMER',
+    })).toBe(true)
+  })
+
+  it('stays off for loads, terminals, and an already-open swap', () => {
+    expect(canStartSwap({
+      status: 'IN_TRANSIT',
+      isLoaded: true,
+      destinationType: 'CUSTOMER',
+    })).toBe(false)
+    expect(canStartSwap({
+      status: 'IN_TRANSIT',
+      isLoaded: false,
+      destinationType: 'MARINE_TERMINAL',
+    })).toBe(false)
+    expect(canStartSwap({
+      status: 'IN_TRANSIT',
+      isLoaded: false,
+      destinationType: 'CUSTOMER',
+      swapPairTripId: 'pair',
+    })).toBe(false)
+    expect(canStartSwap({
+      status: 'PICKUP_IN_PROGRESS',
+      isLoaded: false,
+      destinationType: 'CUSTOMER',
+    })).toBe(false)
+    expect(canStartSwap({
+      status: 'IN_TRANSIT',
+      isLoaded: false,
+      destinationType: 'CUSTOMER',
+      kind: 'BARE_CHASSIS',
+    })).toBe(false)
   })
 })

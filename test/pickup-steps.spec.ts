@@ -83,4 +83,29 @@ describe('pickupSteps', () => {
     })
     expect(steps).toEqual(['kind', 'location', 'inventory', 'notes', 'destination', 'confirm'])
   })
+
+  it('starts a swap at on-site inventory and still ends at destination then confirm', () => {
+    const yard = pickupSteps({
+      kind: 'CONTAINER',
+      fromYard: true,
+      manualEntry: false,
+      needsClassification: false,
+      isLoaded: true,
+      swap: true,
+    })
+    const typed = pickupSteps({
+      kind: 'CONTAINER',
+      fromYard: false,
+      manualEntry: true,
+      needsClassification: true,
+      isLoaded: true,
+      swap: true,
+    })
+    expect(yard).toEqual(['inventory', 'seal', 'notes', 'destination', 'confirm'])
+    expect(typed[0]).toBe('inventory')
+    expect(typed).not.toContain('kind')
+    expect(typed).not.toContain('location')
+    expect(typed).not.toContain('load')
+    expect(typed.slice(-2)).toEqual(['destination', 'confirm'])
+  })
 })

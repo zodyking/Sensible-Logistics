@@ -54,9 +54,16 @@ const selectedLocation = computed(() =>
   ?? null,
 )
 
-const dropoffHint = computed(() =>
-  selectedLocation.value ? describeDropoffEffect(selectedLocation.value.type) : null,
+const isSwapEmpty = computed(() =>
+  Boolean(data.value?.trip.swapPairTripId && !data.value.trip.isLoaded && data.value.trip.kind !== 'BARE_CHASSIS'),
 )
+
+const dropoffHint = computed(() => {
+  if (isSwapEmpty.value) {
+    return 'This completes the empty. The load stays on Home as your active trip.'
+  }
+  return selectedLocation.value ? describeDropoffEffect(selectedLocation.value.type) : null
+})
 
 const canAdvance = computed(() => {
   switch (step.value) {
@@ -85,7 +92,7 @@ async function confirm() {
   submitting.value = true
   errorMessage.value = ''
   try {
-    await $fetch(`/api/trips/${tripId.value}/dropoff`, {
+    const result = await $fetch(`/api/trips/${tripId.value}/dropoff`, {
       method: 'POST',
       body: {
         eventId: crypto.randomUUID(),
@@ -94,6 +101,10 @@ async function confirm() {
         notes: notes.value || null,
       },
     })
+    if (result.swapCompleted) {
+      await navigateTo('/')
+      return
+    }
     await navigateTo(`/locations/${destinationLocationId.value}`)
   }
   catch (err) {

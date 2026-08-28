@@ -64,6 +64,13 @@
       "when": 1787906000000,
       "tag": "0008_phone_challenges",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1787907000000,
+      "tag": "0009_trip_swap",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm'
 import type { Database, DbExecutor } from '../utils/db'
 import {
   chassis as chassisTable,
@@ -40,6 +40,8 @@ export interface StartPickupInput {
   equipmentType?: Container['equipmentType']
   chassisId?: string | null
   originLocationId: string
+  /** Empty inbound trip this load pickup is swapping against. */
+  swapOfTripId?: string | null
   gps?: { latitude: number, longitude: number, accuracyMeters?: number } | null
 }
 
@@ -120,7 +122,31 @@ export async function startPickup(
       }
     }
 
-    const [driverLive] = await tx
+    const swapSource = input.swapOfTripId
+      ? await loadSwapSourceTrip(tx, auth, input.swapOfTripId, input.originLocationId)
+      : null
+
+    if (swapSource?.swapPairTripId) {
+      const [pair] = await tx.select().from(trips).where(eq(trips.id, swapSource.swapPairTripId)).limit(1)
+      if (pair && pair.status === 'PICKUP_IN_PROGRESS' && pair.driverId === auth.driverId) {
+        const [pairContainer] = pair.containerId
+          ? await tx.select().from(containers).where(eq(containers.id, pair.containerId)).limit(1)
+          : []
+        return {
+          trip: pair,
+          container: pairContainer ?? null,
+          outcome: 'REUSE_ACTIVE',
+          replayed: true,
+        }
+      }
+      throw createError({
+        statusCode: 409,
+        statusMessage: 'A swap is already open for this trip.',
+        data: { tripId: swapSource.swapPairTripId },
+      })
+    }
+
+    const driverLive = await tx
       .select()
       .from(trips)
       .where(and(
@@ -128,13 +154,16 @@ export async function startPickup(
         eq(trips.driverId, auth.driverId),
         inArray(trips.status, [...LIVE_TRIP_STATUSES]),
       ))
-      .limit(1)
 
-    if (driverLive) {
+    const extraLive = swapSource
+      ? driverLive.filter(row => row.id !== swapSource.id)
+      : driverLive
+
+    if (extraLive[0]) {
       throw createError({
         statusCode: 409,
         statusMessage: 'Finish or cancel your current movement before starting another pickup.',
-        data: { tripId: driverLive.id, reference: driverLive.reference },
+        data: { tripId: extraLive[0].id, reference: extraLive[0].reference },
       })
     }
 
@@ -161,11 +190,20 @@ export async function startPickup(
         originLocationId: input.originLocationId,
         status: 'PICKUP_IN_PROGRESS',
         kind: 'CONTAINER',
+        isLoaded: Boolean(swapSource),
+        swapPairTripId: swapSource?.id ?? null,
       })
       .returning()
 
     if (!trip) {
       throw createError({ statusCode: 500, statusMessage: 'Could not open the movement.' })
+    }
+
+    if (swapSource) {
+      await tx
+        .update(trips)
+        .set({ swapPairTripId: trip.id, updatedAt: new Date() })
+        .where(eq(trips.id, swapSource.id))
     }
 
     await recordEvent(
@@ -346,8 +384,13 @@ export async function confirmPickup(
       return confirmBareChassisPickup(tx, auth, trip, input)
     }
 
+    const isLoaded = Boolean(trip.swapPairTripId) || input.isLoaded
+
     if (input.chassisId) {
-      await assertChassisAvailable(tx, auth.companyId, input.chassisId, trip.containerId)
+      const mateContainerId = trip.swapPairTripId
+        ? (await tx.select({ containerId: trips.containerId }).from(trips).where(eq(trips.id, trip.swapPairTripId)).limit(1))[0]?.containerId
+        : null
+      await assertChassisAvailable(tx, auth.companyId, input.chassisId, trip.containerId, mateContainerId)
     }
 
     const destinationLocationId = await resolvePickupDestination(
@@ -358,7 +401,7 @@ export async function confirmPickup(
     )
 
     const now = new Date()
-    const sealNumber = sealForLoadedContainer(input.isLoaded, input.sealNumber)
+    const sealNumber = sealForLoadedContainer(isLoaded, input.sealNumber)
 
     await recordEvent(
       tx,
@@ -374,7 +417,7 @@ export async function confirmPickup(
         locationId: trip.originLocationId,
         chassisId: input.chassisId ?? null,
         gps: input.gps,
-        payload: { isLoaded: input.isLoaded, sealNumber },
+        payload: { isLoaded, sealNumber },
         notes: input.notes ?? null,
       },
       {
@@ -384,7 +427,7 @@ export async function confirmPickup(
         currentLocationId: null,
         currentChassisId: input.chassisId ?? null,
         activeMovementId: trip.id,
-        isLoaded: input.isLoaded,
+        isLoaded,
         sealNumber,
         containerStatus: 'IN_TRANSIT',
       },
@@ -413,7 +456,7 @@ export async function confirmPickup(
         status: 'IN_TRANSIT',
         chassisId: input.chassisId ?? null,
         destinationLocationId: destinationLocationId ?? trip.destinationLocationId,
-        isLoaded: input.isLoaded,
+        isLoaded,
         sealNumber,
         pickedUpAt: now,
         driverNotes: input.notes ?? trip.driverNotes,
@@ -608,16 +651,40 @@ export async function cancelPickup(
       await releasePickupClaim(tx, auth.companyId, trip.containerId, previous.activePoolState, previous.containerStatus)
     }
 
+    const [pair] = trip.swapPairTripId
+      ? await tx.select().from(trips).where(eq(trips.id, trip.swapPairTripId)).limit(1)
+      : []
+    const pairLive = Boolean(
+      pair && (LIVE_TRIP_STATUSES as readonly string[]).includes(pair.status),
+    )
+
     if (trip.chassisId) {
-      await tx
-        .update(chassisTable)
-        .set({
-          currentContainerId: null,
-          currentLocationId: restoreLocationId,
-          status: 'AVAILABLE',
-          updatedAt: now,
-        })
-        .where(and(eq(chassisTable.id, trip.chassisId), eq(chassisTable.companyId, auth.companyId)))
+      const giveBackToPair = Boolean(
+        pairLive
+        && pair?.chassisId === trip.chassisId
+        && pair.containerId,
+      )
+      if (giveBackToPair && pair?.containerId) {
+        await tx
+          .update(chassisTable)
+          .set({
+            currentContainerId: pair.containerId,
+            status: 'IN_USE',
+            updatedAt: now,
+          })
+          .where(and(eq(chassisTable.id, trip.chassisId), eq(chassisTable.companyId, auth.companyId)))
+      }
+      else {
+        await tx
+          .update(chassisTable)
+          .set({
+            currentContainerId: null,
+            currentLocationId: restoreLocationId,
+            status: 'AVAILABLE',
+            updatedAt: now,
+          })
+          .where(and(eq(chassisTable.id, trip.chassisId), eq(chassisTable.companyId, auth.companyId)))
+      }
     }
 
     const [cancelled] = await tx
@@ -628,14 +695,35 @@ export async function cancelPickup(
         driverNotes: input.reason ?? trip.driverNotes,
         updatedAt: now,
         version: sql`${trips.version} + 1`,
+        swapPairTripId: null,
       })
       .where(eq(trips.id, trip.id))
       .returning()
 
-    await tx
-      .update(drivers)
-      .set({ status: 'AVAILABLE', updatedAt: now })
-      .where(eq(drivers.id, auth.driverId))
+    if (pairLive && pair) {
+      await tx
+        .update(trips)
+        .set({ swapPairTripId: null, updatedAt: now })
+        .where(eq(trips.id, pair.id))
+    }
+
+    const [otherLive] = await tx
+      .select({ id: trips.id })
+      .from(trips)
+      .where(and(
+        eq(trips.companyId, auth.companyId),
+        eq(trips.driverId, auth.driverId),
+        inArray(trips.status, [...LIVE_TRIP_STATUSES]),
+        ne(trips.id, trip.id),
+      ))
+      .limit(1)
+
+    if (!otherLive) {
+      await tx
+        .update(drivers)
+        .set({ status: 'AVAILABLE', updatedAt: now })
+        .where(eq(drivers.id, auth.driverId))
+    }
 
     return { trip: cancelled! }
   })
@@ -665,7 +753,7 @@ export async function completeDropoff(
   db: Database,
   auth: AuthContext & { driverId: string },
   input: CompleteDropoffInput,
-): Promise<{ trip: Trip, container: Container | null, replayed: boolean }> {
+): Promise<{ trip: Trip, container: Container | null, replayed: boolean, swapCompleted?: boolean }> {
   return db.transaction(async (tx) => {
     if (await eventExists(tx, auth.companyId, input.eventId)) {
       const replayed = await loadTripByEvent(tx, auth.companyId, input.eventId)
@@ -723,15 +811,25 @@ export async function completeDropoff(
     )
 
     if (detachChassis && trip.chassisId) {
-      await tx
-        .update(chassisTable)
-        .set({
-          currentContainerId: null,
-          currentLocationId: input.destinationLocationId,
-          status: 'AVAILABLE',
-          updatedAt: now,
-        })
+      const [chassisRow] = await tx
+        .select({ currentContainerId: chassisTable.currentContainerId })
+        .from(chassisTable)
         .where(and(eq(chassisTable.id, trip.chassisId), eq(chassisTable.companyId, auth.companyId)))
+        .limit(1)
+      if (chassisRow?.currentContainerId && chassisRow.currentContainerId !== trip.containerId) {
+        // Chassis already moved onto the swap load — leave it in use.
+      }
+      else {
+        await tx
+          .update(chassisTable)
+          .set({
+            currentContainerId: null,
+            currentLocationId: input.destinationLocationId,
+            status: 'AVAILABLE',
+            updatedAt: now,
+          })
+          .where(and(eq(chassisTable.id, trip.chassisId), eq(chassisTable.companyId, auth.companyId)))
+      }
     }
 
     if (isFinalRelease) {
@@ -808,14 +906,32 @@ export async function completeDropoff(
       .where(eq(trips.id, trip.id))
       .returning()
 
-    await tx
-      .update(drivers)
-      .set({ status: 'AVAILABLE', updatedAt: now })
-      .where(eq(drivers.id, auth.driverId))
+    const [otherLive] = await tx
+      .select({ id: trips.id })
+      .from(trips)
+      .where(and(
+        eq(trips.companyId, auth.companyId),
+        eq(trips.driverId, auth.driverId),
+        inArray(trips.status, [...LIVE_TRIP_STATUSES]),
+        ne(trips.id, trip.id),
+      ))
+      .limit(1)
+
+    if (!otherLive) {
+      await tx
+        .update(drivers)
+        .set({ status: 'AVAILABLE', updatedAt: now })
+        .where(eq(drivers.id, auth.driverId))
+    }
 
     const [container] = await tx.select().from(containers).where(eq(containers.id, trip.containerId)).limit(1)
 
-    return { trip: updatedTrip!, container: container!, replayed: false }
+    return {
+      trip: updatedTrip!,
+      container: container!,
+      replayed: false,
+      swapCompleted: Boolean(trip.swapPairTripId && otherLive),
+    }
   })
 }
 
@@ -993,9 +1109,9 @@ export async function attachContainerToTrip(
   })
 }
 
-/** The driver's current live movement, if any. */
-export async function findActiveTrip(db: Database, companyId: string, driverId: string): Promise<Trip | null> {
-  const [trip] = await db
+/** Live movements the driver currently owns, oldest first (empty inbound before a swap load). */
+export async function findActiveTrips(db: Database, companyId: string, driverId: string): Promise<Trip[]> {
+  return db
     .select()
     .from(trips)
     .where(and(
@@ -1003,13 +1119,53 @@ export async function findActiveTrip(db: Database, companyId: string, driverId: 
       eq(trips.driverId, driverId),
       inArray(trips.status, [...LIVE_TRIP_STATUSES]),
     ))
-    .orderBy(desc(trips.createdAt))
-    .limit(1)
+    .orderBy(trips.createdAt)
+}
 
+/** The driver's current live movement, if any. */
+export async function findActiveTrip(db: Database, companyId: string, driverId: string): Promise<Trip | null> {
+  const [trip] = await findActiveTrips(db, companyId, driverId)
   return trip ?? null
 }
 
 /* ------------------------------------------------------------------ */
+
+async function loadSwapSourceTrip(
+  tx: DbExecutor,
+  auth: AuthContext & { driverId: string },
+  tripId: string,
+  originLocationId: string,
+): Promise<Trip> {
+  const [source] = await tx
+    .select()
+    .from(trips)
+    .where(and(eq(trips.id, tripId), eq(trips.companyId, auth.companyId)))
+    .limit(1)
+
+  if (!source) {
+    throw createError({ statusCode: 404, statusMessage: 'Movement not found.' })
+  }
+  if (source.driverId !== auth.driverId) {
+    throw createError({ statusCode: 403, statusMessage: 'This movement belongs to another driver.' })
+  }
+  if (!(['IN_TRANSIT', 'DROPOFF_IN_PROGRESS'] as string[]).includes(source.status)) {
+    throw createError({ statusCode: 409, statusMessage: 'Finish the empty inbound before starting a swap.' })
+  }
+  if (source.isLoaded || source.kind === 'BARE_CHASSIS') {
+    throw createError({ statusCode: 409, statusMessage: 'A swap starts from an empty inbound to a customer.' })
+  }
+  if (!source.destinationLocationId) {
+    throw createError({ statusCode: 409, statusMessage: 'Set a customer destination before swapping.' })
+  }
+  const destination = await loadLocation(tx, auth.companyId, source.destinationLocationId)
+  if (destination.type !== 'CUSTOMER') {
+    throw createError({ statusCode: 409, statusMessage: 'Swap is only available when heading to a customer location.' })
+  }
+  if (originLocationId !== source.destinationLocationId) {
+    throw createError({ statusCode: 409, statusMessage: 'Pick up the load at the customer you are heading to.' })
+  }
+  return source
+}
 
 async function loadOwnedTrip(
   tx: DbExecutor,
@@ -1117,6 +1273,7 @@ async function assertChassisAvailable(
   companyId: string,
   chassisId: string,
   containerId: string | null,
+  alsoAllowContainerId?: string | null,
 ): Promise<void> {
   const [record] = await tx
     .select()
@@ -1130,7 +1287,11 @@ async function assertChassisAvailable(
   if (record.outOfService) {
     throw createError({ statusCode: 409, statusMessage: `Chassis ${record.number} is flagged out of service.` })
   }
-  if (record.currentContainerId && record.currentContainerId !== containerId) {
+  if (
+    record.currentContainerId
+    && record.currentContainerId !== containerId
+    && record.currentContainerId !== alsoAllowContainerId
+  ) {
     throw createError({ statusCode: 409, statusMessage: `Chassis ${record.number} is already carrying another container.` })
   }
 }

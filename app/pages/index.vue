@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { tripSmsAction } from '#shared/utils/trip-sms'
+import { canStartSwap, tripSmsAction } from '#shared/utils/trip-sms'
 
 useHead({ title: 'Home' })
 
@@ -11,6 +11,7 @@ watchEffect(() => {
 })
 
 const active = computed(() => data.value?.active)
+const swapPartner = computed(() => data.value?.swapPartner ?? null)
 const todayTasks = computed(() => data.value?.todayTasks ?? [])
 const displayTrip = computed(() => data.value?.active ?? data.value?.recentCompleted ?? null)
 
@@ -18,11 +19,65 @@ const sheet = ref<'documents' | 'sms' | 'contacts' | 'cancel' | null>(null)
 const cancelling = ref(false)
 const cancelError = ref('')
 
-const canSendSms = computed(() => Boolean(displayTrip.value && tripSmsAction(displayTrip.value.trip.status)))
+const inSwap = computed(() => Boolean(active.value && swapPartner.value))
+
+const loadTrip = computed(() => {
+  if (active.value?.trip.isLoaded) return active.value
+  if (swapPartner.value?.trip.isLoaded) return swapPartner.value
+  return null
+})
+
+const emptyTrip = computed(() => {
+  if (active.value && !active.value.trip.isLoaded && active.value.trip.kind !== 'BARE_CHASSIS') return active.value
+  if (swapPartner.value && !swapPartner.value.trip.isLoaded) return swapPartner.value
+  return null
+})
+
+const swapSmsReady = computed(() => Boolean(
+  loadTrip.value
+  && emptyTrip.value
+  && tripSmsAction(loadTrip.value.trip.status)
+  && tripSmsAction(emptyTrip.value.trip.status),
+))
+
+const canSendSms = computed(() =>
+  swapSmsReady.value || Boolean(displayTrip.value && tripSmsAction(displayTrip.value.trip.status)),
+)
+
+const documentsTripId = computed(() => loadTrip.value?.trip.id ?? displayTrip.value?.trip.id ?? null)
+
+const pulseDocuments = computed(() => Boolean(
+  loadTrip.value && ['IN_TRANSIT', 'DROPOFF_IN_PROGRESS', 'PICKUP_IN_PROGRESS'].includes(loadTrip.value.trip.status),
+))
+
+const canSwap = computed(() => canStartSwap({
+  status: active.value?.trip.status,
+  isLoaded: active.value?.trip.isLoaded,
+  destinationType: active.value?.destination?.type,
+  swapPairTripId: active.value?.trip.swapPairTripId,
+  kind: active.value?.trip.kind,
+}))
+
+const continueSwapTo = computed(() => {
+  if (swapPartner.value?.trip.status === 'PICKUP_IN_PROGRESS') {
+    return `/pickups/new?trip=${swapPartner.value.trip.id}`
+  }
+  if (active.value?.trip.status === 'PICKUP_IN_PROGRESS' && active.value.trip.swapPairTripId) {
+    return `/pickups/new?trip=${active.value.trip.id}`
+  }
+  return null
+})
+
+const swapTo = computed(() => {
+  if (continueSwapTo.value) return continueSwapTo.value
+  if (canSwap.value && active.value) return `/pickups/new?swap=${active.value.trip.id}`
+  return null
+})
 
 const canAttachContainer = computed(() =>
   Boolean(
     active.value
+    && !swapPartner.value
     && active.value.chassis
     && !active.value.container
     && active.value.trip.status !== 'PICKUP_IN_PROGRESS',
@@ -30,6 +85,9 @@ const canAttachContainer = computed(() =>
 )
 
 const cancelCopy = computed(() => {
+  if (inSwap.value) {
+    return 'Cancel the swap pickup? The empty inbound stays active.'
+  }
   if (active.value && !active.value.container) {
     return 'Cancel this trip? You will go back to no active trip. The chassis returns to available.'
   }
@@ -42,15 +100,18 @@ const primaryAction = computed(() => {
 })
 
 async function confirmCancelTrip() {
-  if (!active.value || cancelling.value) return
+  const target = inSwap.value
+    ? (loadTrip.value ?? swapPartner.value ?? active.value)
+    : active.value
+  if (!target || cancelling.value) return
   cancelling.value = true
   cancelError.value = ''
   try {
-    await $fetch(`/api/trips/${active.value.trip.id}/cancel`, {
+    await $fetch(`/api/trips/${target.trip.id}/cancel`, {
       method: 'POST',
       body: {
         eventId: crypto.randomUUID(),
-        reason: 'Driver cancelled from Home.',
+        reason: inSwap.value ? 'Driver cancelled the swap pickup from Home.' : 'Driver cancelled from Home.',
       },
     })
     sheet.value = null
@@ -120,8 +181,28 @@ async function confirmCancelTrip() {
         @change-dropoff="navigateTo(`/trips/${displayTrip.trip.id}/destination`)"
       />
 
+      <template v-if="swapPartner">
+        <p class="swap-split">
+          Swap 🔁
+        </p>
+        <TripCard
+          :trip-kind="swapPartner.trip.kind === 'BARE_CHASSIS' ? 'BARE_CHASSIS' : 'CONTAINER'"
+          :container-type="swapPartner.container?.containerType"
+          :is-loaded="swapPartner.trip.isLoaded"
+          :container-number="swapPartner.container?.number"
+          :equipment-type="swapPartner.container?.equipmentType"
+          :chassis-number="swapPartner.chassis?.number"
+          :seal-number="swapPartner.trip.sealNumber"
+          :origin-name="swapPartner.origin?.name"
+          :destination-name="swapPartner.destination?.name"
+          :status="swapPartner.trip.status"
+          :can-change-dropoff="swapPartner.trip.status !== 'PICKUP_IN_PROGRESS'"
+          @change-dropoff="navigateTo(`/trips/${swapPartner.trip.id}/destination`)"
+        />
+      </template>
+
       <div
-        v-else
+        v-else-if="!displayTrip"
         class="trip-card"
       >
         <div class="trip-card-head trip-card-head-idle">
@@ -157,7 +238,9 @@ async function confirmCancelTrip() {
       <div class="home-actions">
         <button
           type="button"
-          :disabled="!displayTrip"
+          class="home-doc-action"
+          :class="{ pulse: pulseDocuments }"
+          :disabled="!documentsTripId"
           @click="sheet = 'documents'"
         >
           <span
@@ -189,14 +272,14 @@ async function confirmCancelTrip() {
           Contacts
         </button>
         <NuxtLink
-          v-if="displayTrip"
-          :to="`/trips/${displayTrip.trip.id}`"
+          v-if="swapTo"
+          :to="swapTo"
         >
           <span
             class="act-ico"
             aria-hidden="true"
-          >☰</span>
-          Trip Details
+          >🔁</span>
+          Swap
         </NuxtLink>
         <button
           v-else
@@ -206,8 +289,8 @@ async function confirmCancelTrip() {
           <span
             class="act-ico"
             aria-hidden="true"
-          >☰</span>
-          Trip Details
+          >🔁</span>
+          Swap
         </button>
       </div>
 
@@ -262,24 +345,11 @@ async function confirmCancelTrip() {
       </div>
     </template>
 
-    <BottomSheet
+    <TripDocumentsSheet
       :open="sheet === 'documents'"
-      title="Trip documents"
+      :trip-id="documentsTripId"
       @close="sheet = null"
-    >
-      <p class="text-sm text-[var(--color-ink-500)]">
-        EIRs, PODs and gate tickets attach to this movement once object storage is on. Nothing is queued for this trip yet.
-      </p>
-      <div class="sheet-actions">
-        <button
-          type="button"
-          class="btn-cancel"
-          @click="sheet = null"
-        >
-          Close
-        </button>
-      </div>
-    </BottomSheet>
+    />
 
     <TripSmsSheet
       :open="sheet === 'sms'"
@@ -293,6 +363,34 @@ async function confirmCancelTrip() {
       :origin-name="displayTrip?.origin?.name"
       :destination-name="displayTrip?.destination?.name"
       :customer="displayTrip?.trip.customer"
+      :swap-picked="swapSmsReady && loadTrip
+        ? {
+          tripId: loadTrip.trip.id,
+          status: loadTrip.trip.status,
+          isLoaded: loadTrip.trip.isLoaded,
+          containerNumber: loadTrip.container?.number,
+          sealNumber: loadTrip.trip.sealNumber,
+          chassisNumber: loadTrip.chassis?.number,
+          containerType: loadTrip.container?.containerType,
+          originName: loadTrip.origin?.name,
+          destinationName: loadTrip.destination?.name,
+          customer: loadTrip.trip.customer,
+        }
+        : null"
+      :swap-dropped="swapSmsReady && emptyTrip
+        ? {
+          tripId: emptyTrip.trip.id,
+          status: emptyTrip.trip.status,
+          isLoaded: emptyTrip.trip.isLoaded,
+          containerNumber: emptyTrip.container?.number,
+          sealNumber: emptyTrip.trip.sealNumber,
+          chassisNumber: emptyTrip.chassis?.number,
+          containerType: emptyTrip.container?.containerType,
+          originName: emptyTrip.origin?.name,
+          destinationName: emptyTrip.destination?.name,
+          customer: emptyTrip.trip.customer,
+        }
+        : null"
       @close="sheet = null"
     />
 

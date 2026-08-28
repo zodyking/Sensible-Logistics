@@ -555,6 +555,8 @@ export const trips = pgTable('trips', {
   driverNotes: text('driver_notes'),
   reviewNotes: text('review_notes'),
   requiredDocuments: jsonb('required_documents').$type<string[]>().notNull().default([]),
+  /** The paired movement in an empty-for-load customer swap. */
+  swapPairTripId: uuid('swap_pair_trip_id'),
   version: integer('version').notNull().default(1),
 
   createdAt: utc('created_at').notNull().defaultNow(),
@@ -570,6 +572,7 @@ export const trips = pgTable('trips', {
   uniqueIndex('trips_one_active_claim_per_container')
     .on(t.containerId)
     .where(sql`status in ('PICKUP_IN_PROGRESS','IN_TRANSIT','DROPOFF_IN_PROGRESS')`),
+  index('trips_swap_pair_idx').on(t.swapPairTripId),
 ])
 
 export const tripStops = pgTable('trip_stops', {

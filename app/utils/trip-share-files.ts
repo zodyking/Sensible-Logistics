@@ -157,3 +157,8 @@ export async function tripShareFilesAsFiles(tripId: string): Promise<File[]> {
   const stored = await listTripShareFiles(tripId)
   return stored.map(file => dataUrlToFile(file.dataUrl, file.fileName))
 }
+
+export async function deleteTripShareFile(tripId: string, fileName: string): Promise<void> {
+  const current = (await listTripShareFiles(tripId)).filter(item => item.fileName !== fileName)
+  await persist(tripId, current)
+}

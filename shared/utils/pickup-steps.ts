@@ -28,7 +28,24 @@ export function pickupSteps(input: {
   manualEntry: boolean
   needsClassification: boolean
   isLoaded: boolean
+  /** Second pickup of a load while an empty is still inbound to a customer. */
+  swap?: boolean
 }): PickupStep[] {
+  if (input.swap) {
+    const steps: PickupStep[] = ['inventory']
+    if (input.manualEntry && !input.fromYard) {
+      steps.push('equipment')
+      if (input.kind === 'CONTAINER' && input.needsClassification) {
+        steps.push('containerType', 'equipmentType')
+      }
+    }
+    if (input.kind === 'CONTAINER' && input.isLoaded && (input.manualEntry || input.fromYard)) {
+      steps.push('seal')
+    }
+    steps.push('notes', 'destination', 'confirm')
+    return steps
+  }
+
   const steps: PickupStep[] = ['kind', 'location', 'inventory']
 
   if (input.manualEntry && !input.fromYard) {
