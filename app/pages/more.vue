@@ -7,6 +7,10 @@ setPageLayout(user.value?.role === 'ADMIN' ? 'admin' : 'default')
 const isDriver = computed(() => user.value?.role === 'DRIVER')
 const { data: home } = await useFetch('/api/home', { immediate: isDriver.value })
 const { data: features, refresh: refreshFeatures } = await useFetch('/api/features')
+const unlocked = ref<string[]>(features.value?.unlocked ?? [])
+watch(() => features.value?.unlocked, (next) => {
+  if (next) unlocked.value = [...next]
+}, { immediate: true })
 
 const pendingSync = useState('pending-sync', () => 0)
 watchEffect(() => {
@@ -25,7 +29,7 @@ const systemCode = ref('')
 const codeBusy = ref(false)
 const codeFlash = ref('')
 
-const showConnections = computed(() => Boolean(features.value?.unlocked?.includes('CONNECTIONS')))
+const showConnections = computed(() => unlocked.value.includes('CONNECTIONS'))
 
 async function submitCode() {
   if (codeBusy.value) return
@@ -41,6 +45,7 @@ async function submitCode() {
     systemCode.value = ''
     codeFlash.value = result.enabled ? 'On' : 'Off'
     await Promise.all([refreshFeatures(), refreshSession()])
+    unlocked.value = [...result.unlocked]
   }
   catch (error) {
     codeFlash.value = apiErrorMessage(error, 'That code did not match.')
