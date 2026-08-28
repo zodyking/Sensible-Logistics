@@ -225,7 +225,7 @@ async function confirm() {
     </template>
 
     <template v-else-if="step === 'containerType'">
-      <div class="choice-grid single-row compact">
+      <div class="choice-grid">
         <button
           v-for="type in CONTAINER_TYPES"
           :key="type"
@@ -240,7 +240,7 @@ async function confirm() {
     </template>
 
     <template v-else-if="step === 'equipmentType'">
-      <div class="choice-grid single-row">
+      <div class="choice-grid">
         <button
           v-for="type in PICKUP_EQUIPMENT_SIZES"
           :key="type"

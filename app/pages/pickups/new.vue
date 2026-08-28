@@ -1043,7 +1043,7 @@ function retakePhoto() {
 
     <!-- ── Container type (new records only) ───────────────────── -->
     <template v-else-if="step === 'containerType'">
-      <div class="choice-grid single-row compact">
+      <div class="choice-grid">
         <button
           v-for="type in CONTAINER_TYPES"
           :key="type"
@@ -1060,7 +1060,7 @@ function retakePhoto() {
 
     <!-- ── Equipment type (new records only) ───────────────────── -->
     <template v-else-if="step === 'equipmentType'">
-      <div class="choice-grid single-row">
+      <div class="choice-grid">
         <button
           v-for="type in PICKUP_EQUIPMENT_SIZES"
           :key="type"
