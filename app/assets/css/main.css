@@ -2475,6 +2475,84 @@
     font-weight: 600;
   }
 
+  .contact-place {
+    margin-bottom: var(--s4);
+  }
+
+  .contact-place > b {
+    display: block;
+    margin-bottom: var(--s2);
+    font-size: var(--text-sm);
+    color: var(--color-ink-900);
+  }
+
+  .contact-row {
+    display: flex;
+    align-items: center;
+    gap: var(--s2);
+    min-height: 52px;
+    padding: 6px 0;
+    border-top: 1px solid var(--color-line-200);
+  }
+
+  .contact-copy {
+    flex: 1;
+    min-width: 0;
+    min-height: 44px;
+    padding: 4px 0;
+    text-align: left;
+    background: none;
+    border: 0;
+  }
+
+  .contact-copy small {
+    display: block;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--color-ink-400);
+  }
+
+  .contact-copy strong {
+    display: block;
+    margin-top: 2px;
+    font-family: var(--font-mono);
+    font-size: var(--text-base);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--color-navy-800);
+  }
+
+  .contact-call {
+    flex-shrink: 0;
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    border-radius: var(--radius-md);
+    background: var(--color-blue-50);
+    color: var(--color-blue-500);
+    font-size: 1.15rem;
+    text-decoration: none;
+  }
+
+  .contact-call:active {
+    background: var(--color-blue-100);
+  }
+
+  .contact-empty,
+  .contact-hint {
+    margin: var(--s2) 0 0;
+    font-size: var(--text-sm);
+    color: var(--color-ink-500);
+  }
+
+  .contact-hint {
+    margin-top: 0;
+    margin-bottom: var(--s2);
+  }
+
   /* --- Trips: toolbar, week/day groups, calendar --- */
   .trips-toolbar {
     display: flex;

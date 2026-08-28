@@ -14,11 +14,25 @@ async function bundleTrip(db: Db, trip: Trip) {
     : []
 
   const [origin] = trip.originLocationId
-    ? await db.select({ id: locations.id, name: locations.name, type: locations.type }).from(locations).where(eq(locations.id, trip.originLocationId)).limit(1)
+    ? await db.select({
+        id: locations.id,
+        name: locations.name,
+        type: locations.type,
+        mainPhone: locations.mainPhone,
+        contactPhone: locations.contactPhone,
+        contactName: locations.contactName,
+      }).from(locations).where(eq(locations.id, trip.originLocationId)).limit(1)
     : []
 
   const [destination] = trip.destinationLocationId
-    ? await db.select({ id: locations.id, name: locations.name, type: locations.type }).from(locations).where(eq(locations.id, trip.destinationLocationId)).limit(1)
+    ? await db.select({
+        id: locations.id,
+        name: locations.name,
+        type: locations.type,
+        mainPhone: locations.mainPhone,
+        contactPhone: locations.contactPhone,
+        contactName: locations.contactName,
+      }).from(locations).where(eq(locations.id, trip.destinationLocationId)).limit(1)
     : []
 
   const [chassisRow] = trip.chassisId

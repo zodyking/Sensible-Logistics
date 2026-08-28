@@ -436,24 +436,12 @@ async function confirmCancelTrip() {
       @close="sheet = null"
     />
 
-    <BottomSheet
+    <TripContactsSheet
       :open="sheet === 'contacts'"
-      title="Contacts"
+      :origin="displayTrip?.origin"
+      :destination="displayTrip?.destination"
       @close="sheet = null"
-    >
-      <p class="text-sm text-[var(--color-ink-500)]">
-        Terminal, customer and dispatch contacts will live here. None are on file for this trip yet.
-      </p>
-      <div class="sheet-actions">
-        <button
-          type="button"
-          class="btn-cancel"
-          @click="sheet = null"
-        >
-          Close
-        </button>
-      </div>
-    </BottomSheet>
+    />
 
     <BottomSheet
       :open="sheet === 'cancel'"

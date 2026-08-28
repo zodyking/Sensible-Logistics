@@ -22,8 +22,24 @@ export default defineEventHandler(async (event) => {
       trip: trips,
       container: containers,
       chassis,
-      origin: { id: originLocation.id, name: originLocation.name, city: originLocation.city, type: originLocation.type },
-      destination: { id: destinationLocation.id, name: destinationLocation.name, city: destinationLocation.city, type: destinationLocation.type },
+      origin: {
+        id: originLocation.id,
+        name: originLocation.name,
+        city: originLocation.city,
+        type: originLocation.type,
+        mainPhone: originLocation.mainPhone,
+        contactPhone: originLocation.contactPhone,
+        contactName: originLocation.contactName,
+      },
+      destination: {
+        id: destinationLocation.id,
+        name: destinationLocation.name,
+        city: destinationLocation.city,
+        type: destinationLocation.type,
+        mainPhone: destinationLocation.mainPhone,
+        contactPhone: destinationLocation.contactPhone,
+        contactName: destinationLocation.contactName,
+      },
     })
     .from(trips)
     .leftJoin(containers, eq(containers.id, trips.containerId))

@@ -16,6 +16,7 @@ const pickupStamp = computed(() => data.value?.trip.pickedUpAt ?? null)
 const dropoffStamp = computed(() => data.value?.trip.droppedOffAt ?? data.value?.trip.completedAt ?? null)
 const durationLabel = computed(() => formatDurationBetween(pickupStamp.value, dropoffStamp.value))
 const smsOpen = ref(false)
+const contactsOpen = ref(false)
 const canSendSms = computed(() => Boolean(tripSmsAction(data.value?.trip.status)))
 </script>
 
@@ -98,7 +99,11 @@ const canSendSms = computed(() => Boolean(tripSmsAction(data.value?.trip.status)
           >✉</span>
           Send SMS
         </button>
-        <button type="button">
+        <button
+          type="button"
+          :disabled="!data.origin && !data.destination"
+          @click="contactsOpen = true"
+        >
           <span
             class="act-ico"
             aria-hidden="true"
@@ -188,6 +193,13 @@ const canSendSms = computed(() => Boolean(tripSmsAction(data.value?.trip.status)
         :destination-name="data.destination?.name"
         :customer="data.trip.customer"
         @close="smsOpen = false"
+      />
+
+      <TripContactsSheet
+        :open="contactsOpen"
+        :origin="data.origin"
+        :destination="data.destination"
+        @close="contactsOpen = false"
       />
     </template>
   </section>
