@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { LOCATION_TYPE_LABELS } from '#shared/utils/domain'
+import { describeDropoffEffect } from '#shared/utils/service-life'
 import { bboxCenter, bboxFromPolygon, normalizeHeading, snapHeadingToStreet } from '#shared/utils/geo'
 import type { GeoJsonPolygon } from '#shared/utils/geo'
 import type { YardMapBox } from '~/components/LocationYardMap.vue'
@@ -21,7 +22,6 @@ const STEP_TITLES: Record<Step, string> = {
 
 const destinationLocationId = ref<string | null>(null)
 const retainChassis = ref(false)
-const isFinalRelease = ref(false)
 const notes = ref('')
 const locationSearch = ref('')
 const pending = ref<YardMapBox | null>(null)
@@ -63,6 +63,10 @@ const selectedLocation = computed(() =>
   locationList.value?.items.find(item => item.id === destinationLocationId.value)
   ?? destination.value?.location
   ?? null,
+)
+
+const dropoffHint = computed(() =>
+  selectedLocation.value ? describeDropoffEffect(selectedLocation.value.type) : null,
 )
 
 function seedPending() {
@@ -168,7 +172,6 @@ async function confirm() {
             }
           : null,
         retainChassis: retainChassis.value,
-        isFinalRelease: isFinalRelease.value,
         notes: notes.value || null,
       },
     })
@@ -319,17 +322,12 @@ async function confirm() {
           >
           Keep the chassis attached
         </label>
-        <label
-          v-if="hasContainer"
-          class="flex min-h-11 items-center gap-3 text-sm font-semibold"
+        <p
+          v-if="dropoffHint"
+          class="mt-3 text-sm text-[var(--color-ink-500)]"
         >
-          <input
-            v-model="isFinalRelease"
-            type="checkbox"
-            class="size-5"
-          >
-          Final release from the tracked network
-        </label>
+          {{ dropoffHint }}
+        </p>
         <label class="field mt-4 !mb-0">
           <span>Notes</span>
           <textarea
@@ -356,9 +354,10 @@ async function confirm() {
           <span aria-hidden="true">▸</span>
           <span>
             {{
-              hasContainer
-                ? 'Confirming parks this container on the map and closes the movement.'
-                : 'Confirming closes the chassis movement at this location.'
+              dropoffHint
+                || (hasContainer
+                  ? 'Confirming parks this container on the map and closes the movement.'
+                  : 'Confirming closes the chassis movement at this location.')
             }}
           </span>
         </p>

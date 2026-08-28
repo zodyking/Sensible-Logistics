@@ -709,7 +709,7 @@ export async function completeDropoff(
         .where(and(eq(chassisTable.id, trip.chassisId), eq(chassisTable.companyId, auth.companyId)))
     }
 
-    if (input.isFinalRelease && trip.containerId) {
+    if (isFinalRelease) {
       await recordEvent(tx, {
         id: crypto.randomUUID(),
         companyId: auth.companyId,
@@ -725,13 +725,7 @@ export async function completeDropoff(
     }
 
     if (input.placement && trip.containerId) {
-      const [destination] = await tx
-        .select()
-        .from(locations)
-        .where(eq(locations.id, input.destinationLocationId))
-        .limit(1)
-
-      if (destination && input.placement.latitude != null && input.placement.longitude != null) {
+      if (input.placement.latitude != null && input.placement.longitude != null) {
         await writePlacement(tx, auth, {
           containerId: trip.containerId,
           location: destination,
