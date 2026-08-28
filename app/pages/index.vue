@@ -120,8 +120,10 @@ async function confirmCancelTrip() {
       >
         <div class="trip-card-head">
           <div class="trip-card-meta">
-            <span class="trip-flag line">None</span>
-            <span class="trip-flag empty">Bob Tail</span>
+            <div class="trip-card-flags">
+              <span class="trip-flag line">None</span>
+              <span class="trip-flag empty">Bob tail</span>
+            </div>
           </div>
           <div class="trip-cno">
             No active trip
@@ -129,6 +131,26 @@ async function confirmCancelTrip() {
           <p class="mb-0 text-sm text-[var(--color-ink-500)]">
             Start a pickup to put a container on this card.
           </p>
+        </div>
+        <div
+          class="route-strip"
+          aria-hidden="true"
+        >
+          <div class="route-point">
+            <strong>Not set</strong>
+            <small>Pickup</small>
+          </div>
+          <div class="route-track">
+            <i class="route-dot" />
+            <span class="route-line" />
+            <span class="route-chevr">›</span>
+            <span class="route-line" />
+            <i class="route-dot" />
+          </div>
+          <div class="route-point dest">
+            <strong>Not set</strong>
+            <small>Drop-off</small>
+          </div>
         </div>
       </div>
 
