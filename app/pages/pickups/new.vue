@@ -406,9 +406,6 @@ onMounted(async () => {
 })
 
 const claimStep = computed<Step>(() => {
-  if (fromYard.value && pickupKind.value === 'CONTAINER') {
-    return swapMode.value ? 'equipment' : 'load'
-  }
   if (fromYard.value) return 'inventory'
   if (pickupKind.value === 'BARE_CHASSIS') return 'equipment'
   return needsClassification.value ? 'equipmentType' : 'equipment'
@@ -421,7 +418,7 @@ const chassisOk = computed(() => {
 
 type YardContainer = YardBox
 
-function selectYardContainer(item: YardContainer) {
+async function selectYardContainer(item: YardContainer) {
   manualEntry.value = false
   selectedYardId.value = item.id
   rawNumber.value = maskContainerInput(item.numberNormalized || item.number)
@@ -429,9 +426,23 @@ function selectYardContainer(item: YardContainer) {
   equipmentType.value = item.equipmentType
   isLoaded.value = swapMode.value ? true : item.isLoaded
   sealNumber.value = item.sealNumber ?? ''
-  if (item.currentChassisId || item.chassisNumber) {
-    chassisId.value = item.currentChassisId ?? chassisId.value
-    chassisNumber.value = item.chassisNumber ? maskChassisInput(item.chassisNumber) : chassisNumber.value
+  chassisId.value = item.currentChassisId ?? null
+  chassisNumber.value = item.chassisNumber ? maskChassisInput(item.chassisNumber) : ''
+  if (item.currentChassisId && item.chassisNumber && item.sealNumber != null) return
+  try {
+    const detail = await $fetch<{
+      container: { isLoaded: boolean, sealNumber: string | null }
+      currentChassis: { id: string, number: string } | null
+    }>(`/api/containers/${item.id}`)
+    if (!swapMode.value) isLoaded.value = Boolean(detail.container.isLoaded)
+    if (detail.container.sealNumber && !sealNumber.value) sealNumber.value = detail.container.sealNumber
+    if (detail.currentChassis) {
+      chassisId.value = detail.currentChassis.id
+      chassisNumber.value = maskChassisInput(detail.currentChassis.number)
+    }
+  }
+  catch {
+    // Inventory row is enough to continue; confirm keeps the parked chassis.
   }
 }
 
@@ -495,7 +506,7 @@ const canAdvance = computed(() => {
         && chassisOk.value
         && !blockedByConflict.value
         && !resolving.value
-        && (fromYard.value || Boolean(resolution.value))
+        && Boolean(resolution.value)
         && !readingPhoto.value
         && !cameraOpen.value
     case 'containerType':
@@ -890,7 +901,7 @@ function retakePhoto() {
               ? `Loaded containers at ${originLocation?.name || originName || 'this customer'}. Pick the outbound load.`
               : pickupKind === 'BARE_CHASSIS'
                 ? `Chassis already at ${originLocation?.name ?? 'this location'}. Pick one to skip typing the number.`
-                : `Containers already at ${originLocation?.name ?? 'this location'}. Pick one, then confirm chassis and loaded or empty.`
+                : `Containers already at ${originLocation?.name ?? 'this location'}. Pick one to skip typing and classifying it.`
           }}
         </span>
       </p>
@@ -1032,7 +1043,7 @@ function retakePhoto() {
               <ContainerNumberInput
                 id="container-number"
                 v-model="rawNumber"
-                :disabled="Boolean(tripId) || fromYard"
+                :disabled="Boolean(tripId)"
                 :invalid="containerState === 'error'"
               />
               <FieldStatus

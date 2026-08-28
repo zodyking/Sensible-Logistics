@@ -43,6 +43,9 @@ export interface MapContainer {
   longitude: number | null
   rotation: number
   suggested?: boolean
+  sealNumber?: string | null
+  currentChassisId?: string | null
+  chassisNumber?: string | null
 }
 
 function asNumber(value: string | number | null | undefined): number | null {
@@ -354,6 +357,9 @@ export function mapContainerFromRow(row: {
   locationLatitude?: string | number | null
   locationLongitude?: string | number | null
   boundary?: GeoJsonPolygon | null
+  sealNumber?: string | null
+  currentChassisId?: string | null
+  chassisNumber?: string | null
 }): MapContainer {
   const lat = asNumber(row.latitude)
   const lng = asNumber(row.longitude)
@@ -387,6 +393,9 @@ export function mapContainerFromRow(row: {
     longitude,
     rotation: row.rotation ?? 0,
     suggested: false,
+    sealNumber: row.sealNumber ?? null,
+    currentChassisId: row.currentChassisId ?? null,
+    chassisNumber: row.chassisNumber ?? null,
   }
 }
 
