@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { saveQuoSettings } from '../../../services/quo'
+import { saveQuoSettings } from '../../services/quo'
 
 const SAVED_API_KEY_MASK = '••••••••••••'
 

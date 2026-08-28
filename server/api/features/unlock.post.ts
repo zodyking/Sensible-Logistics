@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { featureIdForCode, toggleFeature } from '../../../shared/utils/feature-codes'
+import { featureIdForCode, toggleFeature } from '#shared/utils/feature-codes'
 import { readUnlockedFeatures, setUnlockedFeatures } from '../../utils/session'
 
 const schema = z.object({

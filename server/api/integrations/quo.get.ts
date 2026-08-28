@@ -1,4 +1,4 @@
-import { getQuoSettingsView } from '../../../services/quo'
+import { getQuoSettingsView } from '../../services/quo'
 
 export default defineEventHandler(async (event) => {
   const auth = await requireUnlockedFeature(event, 'CONNECTIONS')

@@ -1,4 +1,4 @@
-import { readUnlockedFeatures } from '../../utils/session'
+import { readUnlockedFeatures } from '../utils/session'
 
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
