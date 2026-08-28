@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { tripSmsAction } from '#shared/utils/trip-sms'
+
 useHead({ title: 'Home' })
 
 const { data, status, error, refresh } = await useFetch('/api/home')
@@ -10,10 +12,13 @@ watchEffect(() => {
 
 const active = computed(() => data.value?.active)
 const todayTasks = computed(() => data.value?.todayTasks ?? [])
+const displayTrip = computed(() => data.value?.active ?? data.value?.recentCompleted ?? null)
 
 const sheet = ref<'documents' | 'sms' | 'contacts' | 'cancel' | null>(null)
 const cancelling = ref(false)
 const cancelError = ref('')
+
+const canSendSms = computed(() => Boolean(displayTrip.value && tripSmsAction(displayTrip.value.trip.status)))
 
 const canAttachContainer = computed(() =>
   Boolean(
@@ -100,19 +105,19 @@ async function confirmCancelTrip() {
       </header>
 
       <TripCard
-        v-if="active"
-        :trip-kind="active.trip.kind === 'BARE_CHASSIS' ? 'BARE_CHASSIS' : 'CONTAINER'"
-        :container-type="active.container?.containerType"
-        :is-loaded="active.trip.isLoaded"
-        :container-number="active.container?.number"
-        :equipment-type="active.container?.equipmentType"
-        :chassis-number="active.chassis?.number"
-        :seal-number="active.trip.sealNumber"
-        :origin-name="active.origin?.name"
-        :destination-name="active.destination?.name"
-        :status="active.trip.status"
-        can-change-dropoff
-        @change-dropoff="navigateTo(`/trips/${active.trip.id}/destination`)"
+        v-if="displayTrip"
+        :trip-kind="displayTrip.trip.kind === 'BARE_CHASSIS' ? 'BARE_CHASSIS' : 'CONTAINER'"
+        :container-type="displayTrip.container?.containerType"
+        :is-loaded="displayTrip.trip.isLoaded"
+        :container-number="displayTrip.container?.number"
+        :equipment-type="displayTrip.container?.equipmentType"
+        :chassis-number="displayTrip.chassis?.number"
+        :seal-number="displayTrip.trip.sealNumber"
+        :origin-name="displayTrip.origin?.name"
+        :destination-name="displayTrip.destination?.name"
+        :status="displayTrip.trip.status"
+        :can-change-dropoff="Boolean(active)"
+        @change-dropoff="navigateTo(`/trips/${displayTrip.trip.id}/destination`)"
       />
 
       <div
@@ -152,7 +157,7 @@ async function confirmCancelTrip() {
       <div class="home-actions">
         <button
           type="button"
-          :disabled="!active"
+          :disabled="!displayTrip"
           @click="sheet = 'documents'"
         >
           <span
@@ -163,7 +168,7 @@ async function confirmCancelTrip() {
         </button>
         <button
           type="button"
-          :disabled="!active"
+          :disabled="!canSendSms"
           @click="sheet = 'sms'"
         >
           <span
@@ -174,7 +179,7 @@ async function confirmCancelTrip() {
         </button>
         <button
           type="button"
-          :disabled="!active"
+          :disabled="!displayTrip"
           @click="sheet = 'contacts'"
         >
           <span
@@ -184,8 +189,8 @@ async function confirmCancelTrip() {
           Contacts
         </button>
         <NuxtLink
-          v-if="active"
-          :to="`/trips/${active.trip.id}`"
+          v-if="displayTrip"
+          :to="`/trips/${displayTrip.trip.id}`"
         >
           <span
             class="act-ico"
@@ -276,24 +281,20 @@ async function confirmCancelTrip() {
       </div>
     </BottomSheet>
 
-    <BottomSheet
+    <TripSmsSheet
       :open="sheet === 'sms'"
-      title="Send SMS"
+      :trip-id="displayTrip?.trip.id"
+      :status="displayTrip?.trip.status"
+      :is-loaded="displayTrip?.trip.isLoaded"
+      :container-number="displayTrip?.container?.number"
+      :seal-number="displayTrip?.trip.sealNumber"
+      :chassis-number="displayTrip?.chassis?.number"
+      :container-type="displayTrip?.container?.containerType"
+      :origin-name="displayTrip?.origin?.name"
+      :destination-name="displayTrip?.destination?.name"
+      :customer="displayTrip?.trip.customer"
       @close="sheet = null"
-    >
-      <p class="text-sm text-[var(--color-ink-500)]">
-        Dispatch SMS from this trip is not wired yet. Use your phone’s messages app for now.
-      </p>
-      <div class="sheet-actions">
-        <button
-          type="button"
-          class="btn-cancel"
-          @click="sheet = null"
-        >
-          Close
-        </button>
-      </div>
-    </BottomSheet>
+    />
 
     <BottomSheet
       :open="sheet === 'contacts'"

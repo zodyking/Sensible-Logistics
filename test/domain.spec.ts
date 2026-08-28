@@ -22,6 +22,9 @@ import {
   EQUIPMENT_TYPE_LABELS,
   EQUIPMENT_TYPE_SHORT,
   EQUIPMENT_TYPES,
+  PICKUP_EQUIPMENT_SIZE_LABELS,
+  PICKUP_EQUIPMENT_SIZES,
+  pickupEquipmentSizeLabel,
   EVENT_GLYPH,
   EVENT_TYPE_LABELS,
   EVENT_TYPES,
@@ -69,6 +72,18 @@ describe('domain vocabulary integrity', () => {
 
   it('keeps EQUIPMENT_TYPES in lockstep with labels and lengths', () => {
     expectUnionKeysMatch(EQUIPMENT_TYPES, EQUIPMENT_TYPE_LABELS, EQUIPMENT_LENGTH_FT, EQUIPMENT_TYPE_SHORT)
+  })
+
+  it('limits new-container size picks to 20ft and 40ft', () => {
+    expect(PICKUP_EQUIPMENT_SIZES).toEqual(['DRY_20', 'DRY_40'])
+    expectUnionKeysMatch(PICKUP_EQUIPMENT_SIZES, PICKUP_EQUIPMENT_SIZE_LABELS)
+    for (const size of PICKUP_EQUIPMENT_SIZES) {
+      expect(EQUIPMENT_TYPES).toContain(size)
+    }
+    expect(pickupEquipmentSizeLabel('DRY_20')).toBe('20ft')
+    expect(pickupEquipmentSizeLabel('DRY_40')).toBe('40ft')
+    expect(pickupEquipmentSizeLabel('HC_40')).toBe('40ft')
+    expect(pickupEquipmentSizeLabel('TANK')).toBe('20ft')
   })
 
   it('keeps TRIP_KINDS in lockstep with labels', () => {

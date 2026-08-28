@@ -1,9 +1,7 @@
 <script setup lang="ts">
 import { LOCATION_TYPE_LABELS, LOCATION_TYPES } from '#shared/utils/domain'
 import type { LocationType } from '#shared/utils/domain'
-import { bboxAround, normalizeHeading, type BoundingBox, type GeoJsonPolygon } from '#shared/utils/geo'
 import { isPlacedPin } from '#shared/utils/yard-slots'
-import { fetchMapBearing } from '~/utils/leaflet-map'
 import { formatPhoneInput, isValidPhone } from '#shared/utils/phone'
 
 const { user } = useUserSession()
@@ -17,14 +15,13 @@ const returnTo = computed(() => {
   return raw.startsWith('/') ? raw : '/locations'
 })
 
-type Step = 'type' | 'name' | 'phones' | 'address' | 'map'
-const STEPS: Step[] = ['type', 'name', 'phones', 'address', 'map']
+type Step = 'type' | 'name' | 'phones' | 'address'
+const STEPS: Step[] = ['type', 'name', 'phones', 'address']
 const STEP_TITLES: Record<Step, string> = {
   type: 'What kind of location?',
   name: 'What do you call it?',
   phones: 'How do we reach them?',
   address: 'Where is it?',
-  map: 'Frame the yard',
 }
 
 type PlaceHit = {
@@ -35,7 +32,6 @@ type PlaceHit = {
   city: string | null
   state: string | null
   postalCode: string | null
-  bbox: BoundingBox | null
 }
 
 const step = ref<Step>('type')
@@ -56,11 +52,6 @@ const form = reactive({
 
 const latitude = ref<number | null>(null)
 const longitude = ref<number | null>(null)
-const bbox = ref<BoundingBox | null>(null)
-const fence = ref<GeoJsonPolygon | null>(null)
-const heading = ref(0)
-const aligningMap = ref(false)
-const mapRef = ref<{ recenter: () => void, captureFence: () => GeoJsonPolygon | null } | null>(null)
 
 const suggestions = ref<PlaceHit[]>([])
 const searching = ref(false)
@@ -101,7 +92,7 @@ async function lookupAddress(q: string) {
   }
 }
 
-async function applySuggestion(hit: PlaceHit, advance = true) {
+async function applySuggestion(hit: PlaceHit) {
   form.addressLine1 = hit.addressLine1 || hit.displayName
   form.city = hit.city ?? ''
   form.state = hit.state ?? ''
@@ -109,16 +100,7 @@ async function applySuggestion(hit: PlaceHit, advance = true) {
   form.addressQuery = hit.displayName
   latitude.value = hit.latitude
   longitude.value = hit.longitude
-  bbox.value = hit.bbox ?? bboxAround(hit.latitude, hit.longitude, 80)
-  fence.value = null
   suggestions.value = []
-  try {
-    heading.value = await fetchMapBearing(hit.latitude, hit.longitude, bbox.value)
-  }
-  catch {
-    heading.value = 0
-  }
-  if (advance) step.value = 'map'
 }
 
 const canAdvance = computed(() => {
@@ -126,23 +108,25 @@ const canAdvance = computed(() => {
     case 'type': return Boolean(form.type)
     case 'name': return form.name.trim().length >= 2
     case 'phones': return isValidPhone(form.mainPhone) && isValidPhone(form.contactPhone)
-    case 'address': return form.addressQuery.trim().length >= 3 || Boolean(isPlacedPin(latitude.value, longitude.value) && form.addressLine1)
-    case 'map': return isPlacedPin(latitude.value, longitude.value)
+    case 'address': return Boolean(isPlacedPin(latitude.value, longitude.value) && form.addressLine1)
   }
   return false
 })
 
 async function next() {
-  if (step.value === 'address' && !isPlacedPin(latitude.value, longitude.value)) {
-    const query = form.addressQuery.trim()
-    if (query.length < 3) return
-    if (!suggestions.value.length) await lookupAddress(query)
-    const first = suggestions.value[0]
-    if (!first) {
-      suggestError.value = suggestError.value || 'No United States address matched. Try a street and city.'
-      return
+  if (step.value === 'address') {
+    if (!isPlacedPin(latitude.value, longitude.value)) {
+      const query = form.addressQuery.trim()
+      if (query.length < 3) return
+      if (!suggestions.value.length) await lookupAddress(query)
+      const first = suggestions.value[0]
+      if (!first) {
+        suggestError.value = suggestError.value || 'No United States address matched. Try a street and city.'
+        return
+      }
+      applySuggestion(first)
     }
-    await applySuggestion(first, true)
+    await submit()
     return
   }
   const index = stepIndex.value
@@ -152,20 +136,6 @@ async function next() {
 function back() {
   const index = stepIndex.value
   if (index > 0) step.value = STEPS[index - 1]!
-}
-
-async function alignNewMap() {
-  if (!isPlacedPin(latitude.value, longitude.value)) return
-  aligningMap.value = true
-  try {
-    heading.value = await fetchMapBearing(latitude.value, longitude.value, bbox.value)
-  }
-  catch (error) {
-    errorMessage.value = apiErrorMessage(error, 'Could not read the nearby street.')
-  }
-  finally {
-    aligningMap.value = false
-  }
 }
 
 const submitting = ref(false)
@@ -186,13 +156,7 @@ const DUPLICATE_REASONS: Record<DuplicateSuggestion['reason'], string> = {
 }
 
 async function submit() {
-  if (!canAdvance.value || submitting.value) return
-  // If the user framed the yard but never tapped Set fence, capture the view for them.
-  const boundary = fence.value ?? mapRef.value?.captureFence() ?? null
-  if (!boundary) {
-    errorMessage.value = 'Frame the yard on the map, then save.'
-    return
-  }
+  if (!isPlacedPin(latitude.value, longitude.value) || submitting.value) return
   submitting.value = true
   errorMessage.value = ''
 
@@ -209,8 +173,6 @@ async function submit() {
         country: 'US',
         latitude: latitude.value,
         longitude: longitude.value,
-        mapHeading: heading.value,
-        boundary,
         mainPhone: form.mainPhone,
         contactName: form.contactName.trim() || null,
         contactPhone: form.contactPhone,
@@ -387,7 +349,7 @@ function createAnyway() {
             autocapitalize="words"
           >
           <small class="field-hint">
-            United States addresses only. Pick a result to drop the pin.
+            United States addresses only. Pick a result to save this site.
           </small>
         </label>
 
@@ -428,28 +390,6 @@ function createAnyway() {
       </div>
     </template>
 
-    <template v-else>
-      <MapRotateBar
-        class="mb-3"
-        :heading="heading"
-        :aligning="aligningMap"
-        @rotate="heading = normalizeHeading(heading + $event)"
-        @align="alignNewMap"
-        @recenter="mapRef?.recenter()"
-      />
-      <ClientOnly>
-        <LocationMapEditor
-          ref="mapRef"
-          :latitude="latitude"
-          :longitude="longitude"
-          :boundary="fence"
-          :heading="heading"
-          @update:boundary="fence = $event"
-          @update:heading="heading = $event"
-        />
-      </ClientOnly>
-    </template>
-
     <div class="mt-6 flex gap-3">
       <button
         v-if="stepIndex > 0"
@@ -460,22 +400,12 @@ function createAnyway() {
         Back
       </button>
       <button
-        v-if="step !== 'map'"
         type="button"
         class="btn-dark flex-1"
-        :disabled="!canAdvance"
+        :disabled="!canAdvance || submitting"
         @click="next"
       >
-        Continue
-      </button>
-      <button
-        v-else
-        type="button"
-        class="btn-primary-action flex-1 !w-auto"
-        :disabled="!canAdvance || submitting"
-        @click="submit"
-      >
-        {{ submitting ? 'Saving…' : 'Save location' }}
+        {{ step === 'address' ? (submitting ? 'Saving…' : 'Save location') : 'Continue' }}
       </button>
     </div>
   </section>

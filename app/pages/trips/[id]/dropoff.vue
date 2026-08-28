@@ -1,11 +1,6 @@
 <script setup lang="ts">
 import { LOCATION_TYPE_LABELS } from '#shared/utils/domain'
 import { describeDropoffEffect } from '#shared/utils/service-life'
-import { bboxFromPolygon, normalizeHeading } from '#shared/utils/geo'
-import type { GeoJsonPolygon } from '#shared/utils/geo'
-import { isPlacedPin, locationOrigin, nextOpenSlot, streetHeadingFromMapBearing } from '#shared/utils/yard-slots'
-import type { YardMapBox } from '~/components/LocationYardMap.vue'
-import { fetchMapBearing } from '~/utils/leaflet-map'
 
 const route = useRoute()
 const tripId = computed(() => String(route.params.id))
@@ -14,10 +9,9 @@ const { data, error, status } = await useFetch(() => `/api/trips/${tripId.value}
 
 useHead({ title: 'Drop off' })
 
-type Step = 'location' | 'place' | 'options' | 'confirm'
+type Step = 'location' | 'options' | 'confirm'
 const STEP_TITLES: Record<Step, string> = {
   location: 'Where are you dropping off?',
-  place: 'Place the container',
   options: 'Drop-off details',
   confirm: 'Confirm drop-off',
 }
@@ -26,18 +20,9 @@ const destinationLocationId = ref<string | null>(null)
 const retainChassis = ref(false)
 const notes = ref('')
 const locationSearch = ref('')
-const pending = ref<YardMapBox | null>(null)
-const boxCross = ref(false)
-const aligningMap = ref(false)
 const submitting = ref(false)
 const errorMessage = ref('')
 const step = ref<Step>('location')
-const heading = ref(0)
-const mapRef = ref<{ recenter: () => void } | null>(null)
-
-watch(() => destination.value?.location.mapHeading, (value) => {
-  if (value != null) heading.value = value
-}, { immediate: true })
 
 watch(data, (value) => {
   if (value?.destination?.id && !destinationLocationId.value) {
@@ -49,7 +34,7 @@ const { data: locationList } = await useFetch('/api/locations', {
   query: computed(() => ({ q: locationSearch.value || undefined, limit: 50 })),
 })
 
-const { data: destination, refresh: refreshDestination } = await useAsyncData(
+const { data: destination } = await useAsyncData(
   'dropoff-location',
   () => destinationLocationId.value
     ? $fetch(`/api/locations/${destinationLocationId.value}`)
@@ -59,12 +44,7 @@ const { data: destination, refresh: refreshDestination } = await useAsyncData(
 
 const hasContainer = computed(() => Boolean(data.value?.container))
 
-const STEPS = computed<Step[]>(() => {
-  const steps: Step[] = ['location']
-  if (hasContainer.value) steps.push('place')
-  steps.push('options', 'confirm')
-  return steps
-})
+const STEPS = computed<Step[]>(() => ['location', 'options', 'confirm'])
 
 const stepIndex = computed(() => Math.max(0, STEPS.value.indexOf(step.value)))
 
@@ -78,41 +58,10 @@ const dropoffHint = computed(() =>
   selectedLocation.value ? describeDropoffEffect(selectedLocation.value.type) : null,
 )
 
-function seedPending() {
-  const loc = destination.value?.location
-  const origin = locationOrigin({
-    latitude: loc?.latitude,
-    longitude: loc?.longitude,
-    mapHeading: heading.value,
-    boundary: loc?.boundary as GeoJsonPolygon | null,
-  })
-  const occupied = (destination.value?.containers ?? []).map(item => ({
-    latitude: item.latitude,
-    longitude: item.longitude,
-  }))
-  const equipmentType = data.value?.container?.equipmentType ?? 'DRY_40'
-  const slot = origin
-    ? nextOpenSlot(origin, occupied, equipmentType)
-    : null
-  const container = data.value?.container
-  pending.value = {
-    id: container?.id ?? 'pending',
-    number: container?.number ?? 'Container',
-    containerType: container?.containerType ?? 'CMA',
-    equipmentType,
-    isLoaded: Boolean(data.value?.trip.isLoaded),
-    latitude: slot?.latitude ?? loc?.latitude ?? null,
-    longitude: slot?.longitude ?? loc?.longitude ?? null,
-    rotation: slot?.rotation ?? streetHeadingFromMapBearing(heading.value),
-  }
-}
-
 const canAdvance = computed(() => {
   switch (step.value) {
     case 'location':
       return Boolean(destinationLocationId.value)
-    case 'place':
-      return Boolean(pending.value && isPlacedPin(pending.value.latitude, pending.value.longitude))
     case 'options':
     case 'confirm':
       return true
@@ -120,12 +69,8 @@ const canAdvance = computed(() => {
   return false
 })
 
-async function next() {
+function next() {
   errorMessage.value = ''
-  if (step.value === 'location') {
-    await refreshDestination()
-    if (hasContainer.value) seedPending()
-  }
   const index = stepIndex.value
   if (index < STEPS.value.length - 1) step.value = STEPS.value[index + 1]!
 }
@@ -133,50 +78,6 @@ async function next() {
 function back() {
   const index = stepIndex.value
   if (index > 0) step.value = STEPS.value[index - 1]!
-}
-
-function onPending(nextPos: { latitude: number, longitude: number, rotation: number }) {
-  if (!pending.value) return
-  pending.value = { ...pending.value, ...nextPos }
-}
-
-const confirmBoxes = computed(() => {
-  const existing = destination.value?.containers ?? []
-  return pending.value
-    ? [...existing.filter(item => item.id !== pending.value!.id), pending.value]
-    : existing
-})
-
-/* The box follows the street; one tap turns it perpendicular for cross parking. */
-watch([heading, boxCross], () => {
-  if (!pending.value) return
-  pending.value = {
-    ...pending.value,
-    rotation: normalizeHeading(streetHeadingFromMapBearing(heading.value) + (boxCross.value ? 90 : 0)),
-  }
-})
-
-function rotateMap(delta: number) {
-  heading.value = normalizeHeading(heading.value + delta)
-}
-
-async function alignMapToRoad() {
-  const loc = destination.value?.location
-  if (!loc || !isPlacedPin(loc.latitude, loc.longitude)) return
-  aligningMap.value = true
-  try {
-    heading.value = await fetchMapBearing(
-      loc.latitude,
-      loc.longitude,
-      bboxFromPolygon(loc.boundary as GeoJsonPolygon | null),
-    )
-  }
-  catch (err) {
-    errorMessage.value = apiErrorMessage(err, 'Could not read the nearby street.')
-  }
-  finally {
-    aligningMap.value = false
-  }
 }
 
 async function confirm() {
@@ -189,13 +90,6 @@ async function confirm() {
       body: {
         eventId: crypto.randomUUID(),
         destinationLocationId: destinationLocationId.value,
-        placement: hasContainer.value && pending.value && isPlacedPin(pending.value.latitude, pending.value.longitude)
-          ? {
-              latitude: pending.value.latitude,
-              longitude: pending.value.longitude,
-              rotation: pending.value.rotation,
-            }
-          : null,
         retainChassis: retainChassis.value,
         notes: notes.value || null,
       },
@@ -315,40 +209,6 @@ async function confirm() {
         />
       </template>
 
-      <template v-else-if="step === 'place'">
-        <ClientOnly>
-          <LocationYardMap
-            ref="mapRef"
-            mode="place"
-            :boundary="(destination?.location.boundary as GeoJsonPolygon | null) ?? null"
-            :latitude="destination?.location.latitude"
-            :longitude="destination?.location.longitude"
-            :heading="heading"
-            :containers="destination?.containers ?? []"
-            :pending="pending"
-            @update:pending="onPending"
-            @update:heading="heading = $event"
-          />
-        </ClientOnly>
-        <MapRotateBar
-          class="mt-3"
-          :heading="heading"
-          :aligning="aligningMap"
-          @rotate="rotateMap"
-          @align="alignMapToRoad"
-          @recenter="mapRef?.recenter()"
-        >
-          <button
-            type="button"
-            class="btn-ghost"
-            :aria-pressed="boxCross"
-            @click="boxCross = !boxCross"
-          >
-            Turn box 90°
-          </button>
-        </MapRotateBar>
-      </template>
-
       <template v-else-if="step === 'options'">
         <label class="flex min-h-11 items-center gap-3 text-sm font-semibold">
           <input
@@ -376,17 +236,6 @@ async function confirm() {
       </template>
 
       <template v-else>
-        <ClientOnly v-if="hasContainer && pending">
-          <LocationYardMap
-            mode="view"
-            :boundary="(destination?.location.boundary as GeoJsonPolygon | null) ?? null"
-            :latitude="destination?.location.latitude"
-            :longitude="destination?.location.longitude"
-            :heading="heading"
-            :containers="confirmBoxes"
-            :selected-id="pending.id"
-          />
-        </ClientOnly>
         <TripCard
           :trip-kind="data.trip.kind === 'BARE_CHASSIS' ? 'BARE_CHASSIS' : 'CONTAINER'"
           :container-type="data.container?.containerType"
@@ -404,7 +253,7 @@ async function confirm() {
             {{
               dropoffHint
                 || (hasContainer
-                  ? 'Confirming parks this container on the map and closes the movement.'
+                  ? 'Confirming records the drop-off and closes the movement.'
                   : 'Confirming closes the chassis movement at this location.')
             }}
           </span>

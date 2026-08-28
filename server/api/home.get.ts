@@ -1,9 +1,38 @@
-import { and, desc, eq, inArray, ne } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, ne, or } from 'drizzle-orm'
 import { chassis, containers, locations, trips } from '../database/schema'
+import type { Trip } from '../database/schema'
 import { findActiveTrip } from '../services/movements'
 import { calendarDateInZone } from '#shared/utils/sms-task'
 import { companyTimezone, listOpenTasksForHome } from '../services/tasks'
 import { requireDriver } from '../utils/session'
+
+type Db = ReturnType<typeof useDb>
+
+async function bundleTrip(db: Db, trip: Trip) {
+  const [container] = trip.containerId
+    ? await db.select().from(containers).where(eq(containers.id, trip.containerId)).limit(1)
+    : []
+
+  const [origin] = trip.originLocationId
+    ? await db.select({ id: locations.id, name: locations.name }).from(locations).where(eq(locations.id, trip.originLocationId)).limit(1)
+    : []
+
+  const [destination] = trip.destinationLocationId
+    ? await db.select({ id: locations.id, name: locations.name }).from(locations).where(eq(locations.id, trip.destinationLocationId)).limit(1)
+    : []
+
+  const [chassisRow] = trip.chassisId
+    ? await db.select({ id: chassis.id, number: chassis.number }).from(chassis).where(eq(chassis.id, trip.chassisId)).limit(1)
+    : []
+
+  return {
+    trip,
+    container: container ?? null,
+    origin: origin ?? null,
+    destination: destination ?? null,
+    chassis: chassisRow ?? null,
+  }
+}
 
 /**
  * Everything the driver home screen needs in one round trip — the active
@@ -22,35 +51,33 @@ export default defineEventHandler(async (event) => {
     listOpenTasksForHome(db, auth, todayIso),
   ])
 
-  let active = null
-  if (activeTrip) {
-    const [container] = activeTrip.containerId
-      ? await db.select().from(containers).where(eq(containers.id, activeTrip.containerId)).limit(1)
-      : []
+  const active = activeTrip
+    ? {
+        ...await bundleTrip(db, activeTrip),
+        /** Drives the single contextual primary action on the home card. */
+        primaryAction: activeTrip.status === 'PICKUP_IN_PROGRESS'
+          ? { label: 'Continue pickup', to: `/pickups/new?trip=${activeTrip.id}` }
+          : { label: 'Arrive', to: `/trips/${activeTrip.id}/dropoff` },
+      }
+    : null
 
-    const [origin] = activeTrip.originLocationId
-      ? await db.select({ id: locations.id, name: locations.name }).from(locations).where(eq(locations.id, activeTrip.originLocationId)).limit(1)
-      : []
+  /** Last arrive from this driver, while Home still has no live trip. */
+  let recentCompleted = null
+  if (!activeTrip) {
+    const since = new Date(Date.now() - 12 * 60 * 60 * 1000)
+    const [completedTrip] = await db
+      .select()
+      .from(trips)
+      .where(and(
+        eq(trips.companyId, auth.companyId),
+        eq(trips.driverId, auth.driverId),
+        inArray(trips.status, ['DROPPED_OFF', 'COMPLETED']),
+        or(gte(trips.droppedOffAt, since), gte(trips.completedAt, since)),
+      ))
+      .orderBy(desc(trips.droppedOffAt), desc(trips.completedAt), desc(trips.updatedAt))
+      .limit(1)
 
-    const [destination] = activeTrip.destinationLocationId
-      ? await db.select({ id: locations.id, name: locations.name }).from(locations).where(eq(locations.id, activeTrip.destinationLocationId)).limit(1)
-      : []
-
-    const [chassisRow] = activeTrip.chassisId
-      ? await db.select({ id: chassis.id, number: chassis.number }).from(chassis).where(eq(chassis.id, activeTrip.chassisId)).limit(1)
-      : []
-
-    active = {
-      trip: activeTrip,
-      container: container ?? null,
-      origin: origin ?? null,
-      destination: destination ?? null,
-      chassis: chassisRow ?? null,
-      /** Drives the single contextual primary action on the home card. */
-      primaryAction: activeTrip.status === 'PICKUP_IN_PROGRESS'
-        ? { label: 'Continue pickup', to: `/pickups/new?trip=${activeTrip.id}` }
-        : { label: 'Arrive', to: `/trips/${activeTrip.id}/dropoff` },
-    }
+    if (completedTrip) recentCompleted = await bundleTrip(db, completedTrip)
   }
 
   const recentContainers = await db
@@ -109,6 +136,7 @@ export default defineEventHandler(async (event) => {
       shortHaulStatus: 'UNKNOWN' as const,
     },
     active,
+    recentCompleted,
     recentContainers,
     recentLocations,
     recentTrips,

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ACTIVE_POOL_LABELS, CONTAINER_TYPES, CONTAINER_TYPE_LABELS, EQUIPMENT_TYPES, EQUIPMENT_TYPE_LABELS, EQUIPMENT_TYPE_SHORT, LOCATION_GLYPH, TRIP_KIND_LABELS } from '#shared/utils/domain'
+import { ACTIVE_POOL_LABELS, CONTAINER_TYPES, CONTAINER_TYPE_LABELS, EQUIPMENT_TYPE_SHORT, LOCATION_GLYPH, PICKUP_EQUIPMENT_SIZES, PICKUP_EQUIPMENT_SIZE_LABELS, TRIP_KIND_LABELS } from '#shared/utils/domain'
 import type { ContainerType, EquipmentType, TripKind } from '#shared/utils/domain'
 import { PICKUP_STEPS, pickupSteps } from '#shared/utils/pickup-steps'
 import type { PickupStep } from '#shared/utils/pickup-steps'
@@ -13,6 +13,7 @@ import {
   validateContainerNumber,
 } from '#shared/utils/iso6346'
 import { driverOcrMessage } from '#shared/utils/ocr-parse'
+import { rememberTripPhoto } from '~/utils/trip-share-files'
 
 useHead({ title: 'New pickup' })
 
@@ -43,7 +44,7 @@ const STEP_TITLES: Record<Step, string> = {
   inventory: 'Which container?',
   equipment: 'Container and chassis',
   containerType: 'Container type',
-  equipmentType: 'Equipment size',
+  equipmentType: 'Container size',
   load: 'Loaded or empty?',
   seal: 'Seal number',
   notes: 'Notes',
@@ -61,7 +62,7 @@ const selectedYardId = ref<string | null>(null)
 const manualEntry = ref(false)
 const rawNumber = ref('')
 const containerType = ref<ContainerType>('TROPICAL')
-const equipmentType = ref<EquipmentType>('HC_40')
+const equipmentType = ref<EquipmentType>('DRY_40')
 const chassisId = ref<string | null>(null)
 const chassisNumber = ref('')
 const isLoaded = ref(true)
@@ -407,7 +408,7 @@ const canAdvance = computed(() => {
       return fromYard.value || manualEntry.value
     case 'equipment':
       if (pickupKind.value === 'BARE_CHASSIS') {
-        return chassisOk.value && !readingPhoto.value
+        return chassisOk.value && !readingPhoto.value && !cameraOpen.value
       }
       return validation.value.structureValid
         && chassisOk.value
@@ -415,6 +416,7 @@ const canAdvance = computed(() => {
         && !resolving.value
         && Boolean(resolution.value)
         && !readingPhoto.value
+        && !cameraOpen.value
     case 'containerType':
     case 'equipmentType':
     case 'load':
@@ -574,6 +576,7 @@ async function confirm() {
         notes: notes.value || null,
       },
     })
+    if (capturedPhoto.value) await rememberTripPhoto(tripId.value, capturedPhoto.value)
     await navigateTo('/')
   }
   catch (error) {
@@ -608,12 +611,16 @@ watch(step, (current) => {
   cameraOpen.value = true
 })
 
+watch([tripId, capturedPhoto], ([id, photo]) => {
+  if (id && photo) void rememberTripPhoto(id, photo)
+})
+
 async function onPhoto(dataUrl: string) {
-  cameraOpen.value = false
   capturedPhoto.value = dataUrl
   readingPhoto.value = true
   ocrMessage.value = ''
   errorMessage.value = ''
+  const startedAt = Date.now()
   try {
     const result = await $fetch('/api/scan/recognize', {
       method: 'POST',
@@ -641,7 +648,9 @@ async function onPhoto(dataUrl: string) {
     )
   }
   finally {
+    await waitAtLeast(startedAt, 1000)
     readingPhoto.value = false
+    cameraOpen.value = false
   }
 }
 
@@ -915,6 +924,10 @@ function retakePhoto() {
 
     <!-- ── Container + chassis (one photo) ──────────────────────── -->
     <template v-else-if="step === 'equipment'">
+      <ScanPhotoPeek
+        v-if="capturedPhoto && !cameraOpen"
+        :src="capturedPhoto"
+      />
       <div class="card p-4">
         <label
           v-if="pickupKind === 'CONTAINER'"
@@ -962,13 +975,7 @@ function retakePhoto() {
 
       <div aria-live="polite">
         <p
-          v-if="readingPhoto"
-          class="note"
-        >
-          <span>Reading the photo…</span>
-        </p>
-        <p
-          v-else-if="ocrMessage"
+          v-if="ocrMessage && !readingPhoto"
           class="note warn"
         >
           <span>{{ ocrMessage }}</span>
@@ -1030,7 +1037,7 @@ function retakePhoto() {
 
     <!-- ── Container type (new records only) ───────────────────── -->
     <template v-else-if="step === 'containerType'">
-      <div class="choice-grid cols-2">
+      <div class="choice-grid single-row compact">
         <button
           v-for="type in CONTAINER_TYPES"
           :key="type"
@@ -1047,9 +1054,9 @@ function retakePhoto() {
 
     <!-- ── Equipment type (new records only) ───────────────────── -->
     <template v-else-if="step === 'equipmentType'">
-      <div class="choice-grid cols-2">
+      <div class="choice-grid single-row">
         <button
-          v-for="type in EQUIPMENT_TYPES"
+          v-for="type in PICKUP_EQUIPMENT_SIZES"
           :key="type"
           type="button"
           class="choice-card"
@@ -1057,7 +1064,7 @@ function retakePhoto() {
           :disabled="Boolean(tripId)"
           @click="equipmentType = type"
         >
-          {{ EQUIPMENT_TYPE_LABELS[type] }}
+          {{ PICKUP_EQUIPMENT_SIZE_LABELS[type] }}
         </button>
       </div>
     </template>
@@ -1245,6 +1252,7 @@ function retakePhoto() {
     <CaptureCamera
       v-if="cameraOpen"
       :title="pickupKind === 'BARE_CHASSIS' ? 'Chassis' : 'Container and chassis'"
+      :reading-label="pickupKind === 'BARE_CHASSIS' ? 'Reading the chassis number…' : 'Reading container and chassis numbers…'"
       @close="cameraOpen = false"
       @photo="onPhoto"
     />

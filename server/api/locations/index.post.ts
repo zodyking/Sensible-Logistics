@@ -3,7 +3,6 @@ import { locations } from '../../database/schema'
 import { findDuplicateCandidates, normalizeAddress } from '../../services/geocoding'
 import { requireAuth } from '../../utils/session'
 import { LOCATION_TYPES } from '#shared/utils/domain'
-import { bboxFromPolygon, isValidBbox } from '#shared/utils/geo'
 import { isValidPhone, toE164 } from '#shared/utils/phone'
 
 const polygonSchema = z.object({
@@ -28,7 +27,7 @@ const schema = z.object({
   country: z.string().trim().max(2).default('US'),
   latitude: z.coerce.number().min(-90).max(90),
   longitude: z.coerce.number().min(-180).max(180),
-  boundary: polygonSchema,
+  boundary: polygonSchema.optional(),
   mapHeading: z.coerce.number().min(0).max(360).optional(),
   capacity: z.coerce.number().int().min(0).max(100000).nullish(),
   hours: z.string().trim().max(200).nullish(),
@@ -41,17 +40,13 @@ const schema = z.object({
   acknowledgeDuplicates: z.boolean().default(false),
 })
 
-/** Create a location: name, type, address pin, and the OSM fence. */
+/** Create a location from name, type, phones, and a US address pin. */
 export default defineEventHandler(async (event) => {
   const auth = await requireAuth(event)
   const body = await readValidatedJson(event, schema)
   const db = useDb()
 
   const normalizedAddress = normalizeAddress(body)
-  const bbox = bboxFromPolygon(body.boundary)
-  if (!bbox || !isValidBbox(bbox)) {
-    throw createError({ statusCode: 422, statusMessage: 'Draw the location fence on the map.' })
-  }
 
   if (!body.acknowledgeDuplicates) {
     const duplicates = await findDuplicateCandidates(db, auth.companyId, {
@@ -83,7 +78,7 @@ export default defineEventHandler(async (event) => {
       normalizedAddress,
       latitude: String(body.latitude),
       longitude: String(body.longitude),
-      boundary: body.boundary,
+      boundary: body.boundary ?? null,
       mapHeading: body.mapHeading ?? 0,
       capacity: body.capacity ?? null,
       hours: body.hours ?? null,
