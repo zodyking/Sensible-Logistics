@@ -31,7 +31,7 @@ export const SERVICE_RECORD_LABELS: Record<ServiceRecordEventType, string> = {
 export const SERVICE_TERMINUS_TYPES = ['MARINE_TERMINAL', 'RAIL_TERMINAL'] as const
 export type ServiceTerminusType = (typeof SERVICE_TERMINUS_TYPES)[number]
 
-export const CUSTOMER_LOADING_TYPES = ['CUSTOMER', 'WAREHOUSE'] as const
+export const CUSTOMER_LOADING_TYPES = ['CUSTOMER'] as const
 export type CustomerLoadingType = (typeof CUSTOMER_LOADING_TYPES)[number]
 
 export interface ServiceLifeEvent {
@@ -50,7 +50,7 @@ export function isServiceTerminus(type: LocationType | null | undefined): boolea
 }
 
 export function isCustomerLoadingSite(type: LocationType | null | undefined): boolean {
-  return type === 'CUSTOMER' || type === 'WAREHOUSE'
+  return type === 'CUSTOMER'
 }
 
 export function isCompanyYard(type: LocationType | null | undefined): boolean {
@@ -75,15 +75,15 @@ export function containerStatusAfterDropoff(type: LocationType | null | undefine
 
 export function describeDropoffEffect(type: LocationType | null | undefined): string {
   if (dropoffCompletesServiceLife(type)) {
-    return 'This drop-off completes the service life. The container returns to the marine or rail terminal.'
+    return 'This drop-off completes the service life. The container returns to the Marine Terminal or Rail Yard.'
   }
   if (isCustomerLoadingSite(type)) {
     return 'The container stays on this service life and its status becomes Loading.'
   }
   if (isCompanyYard(type)) {
-    return 'Company yard is an intermediate stop. The service life stays open until a marine or rail drop-off.'
+    return 'Company Yard is an intermediate stop. The service life stays open until a Marine Terminal or Rail Yard drop-off.'
   }
-  return 'This stop stays on the current service life. It completes only at a marine terminal or rail yard.'
+  return 'This stop stays on the current service life. It completes only at a Marine Terminal or Rail Yard.'
 }
 
 function isCompletingDropoff(event: ServiceLifeEvent): boolean {

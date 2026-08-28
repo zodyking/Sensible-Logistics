@@ -29,19 +29,15 @@ describe('service-life location rules', () => {
     expect(isServiceTerminus('RAIL_TERMINAL')).toBe(true)
     expect(isServiceTerminus('COMPANY_YARD')).toBe(false)
     expect(isServiceTerminus('CUSTOMER')).toBe(false)
-    expect(isServiceTerminus('WAREHOUSE')).toBe(false)
-    expect(isServiceTerminus('DEPOT')).toBe(false)
   })
 
   it('sets Loading only at customer and warehouse drop-offs', () => {
     expect(isCustomerLoadingSite('CUSTOMER')).toBe(true)
-    expect(isCustomerLoadingSite('WAREHOUSE')).toBe(true)
+    expect(isCustomerLoadingSite('COMPANY_YARD')).toBe(false)
     expect(containerStatusAfterDropoff('CUSTOMER')).toBe('LOADING')
-    expect(containerStatusAfterDropoff('WAREHOUSE')).toBe('LOADING')
     expect(containerStatusAfterDropoff('COMPANY_YARD')).toBe('AT_YARD')
     expect(containerStatusAfterDropoff('MARINE_TERMINAL')).toBe('RETURNED')
     expect(containerStatusAfterDropoff('RAIL_TERMINAL')).toBe('RETURNED')
-    expect(containerStatusAfterDropoff('DEPOT')).toBe('AVAILABLE')
   })
 
   it('completes a service life only on a marine or rail drop-off', () => {

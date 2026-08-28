@@ -137,7 +137,7 @@ const serviceCaption = computed(() => {
           v-else
           glyph="⇄"
           title="No pickups or drop-offs yet"
-          description="This record only lists pickups and drop-offs for the current service life — from a marine or rail origin until return to a terminal."
+          description="This record only lists pickups and drop-offs for the current service life — from a Marine Terminal or Rail Yard origin until return to a terminal."
         />
 
         <div

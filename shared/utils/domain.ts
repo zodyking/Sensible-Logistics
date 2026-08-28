@@ -254,40 +254,25 @@ export const EVENT_SOURCES = ['MANUAL', 'OCR', 'GEOFENCE', 'IMPORT', 'API', 'ADM
 export type EventSource = (typeof EVENT_SOURCES)[number]
 
 export const LOCATION_TYPES = [
+  'COMPANY_YARD',
+  'CUSTOMER',
   'MARINE_TERMINAL',
   'RAIL_TERMINAL',
-  'CUSTOMER',
-  'WAREHOUSE',
-  'COMPANY_YARD',
-  'DEPOT',
-  'REPAIR_SHOP',
-  'STAGING',
-  'TEMPORARY',
 ] as const
 export type LocationType = (typeof LOCATION_TYPES)[number]
 
 export const LOCATION_TYPE_LABELS: Record<LocationType, string> = {
-  MARINE_TERMINAL: 'Marine terminal',
-  RAIL_TERMINAL: 'Rail terminal',
-  CUSTOMER: 'Customer',
-  WAREHOUSE: 'Warehouse',
-  COMPANY_YARD: 'Company yard',
-  DEPOT: 'Depot',
-  REPAIR_SHOP: 'Repair shop',
-  STAGING: 'Staging area',
-  TEMPORARY: 'Temporary site',
+  COMPANY_YARD: 'Company Yard',
+  CUSTOMER: 'Customer Location',
+  MARINE_TERMINAL: 'Marine Terminal',
+  RAIL_TERMINAL: 'Rail Yard',
 }
 
 export const LOCATION_GLYPH: Record<LocationType, string> = {
+  COMPANY_YARD: '◫',
+  CUSTOMER: '▤',
   MARINE_TERMINAL: '▣',
   RAIL_TERMINAL: '▤',
-  CUSTOMER: '▤',
-  WAREHOUSE: '▦',
-  COMPANY_YARD: '◫',
-  DEPOT: '▩',
-  REPAIR_SHOP: '⚙',
-  STAGING: '▬',
-  TEMPORARY: '◌',
 }
 
 export const TIMECARD_STATUSES = ['OPEN', 'COMPLETED', 'LOCKED'] as const

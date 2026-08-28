@@ -182,7 +182,7 @@ async function main() {
     },
     {
       name: 'Medley Distribution Center',
-      type: 'WAREHOUSE' as const,
+      type: 'CUSTOMER' as const,
       addressLine1: '9200 NW 105th Way',
       city: 'Medley',
       state: 'FL',
@@ -221,7 +221,7 @@ async function main() {
     },
     {
       name: 'Hialeah Empty Depot',
-      type: 'DEPOT' as const,
+      type: 'COMPANY_YARD' as const,
       addressLine1: '3050 E 11th Avenue',
       city: 'Hialeah',
       state: 'FL',
@@ -245,6 +245,10 @@ async function main() {
 
     if (existing[0]) {
       locationIds[seed.name] = existing[0].id
+      await db
+        .update(locations)
+        .set({ type: seed.type, updatedAt: new Date() })
+        .where(eq(locations.id, existing[0].id))
       continue
     }
 

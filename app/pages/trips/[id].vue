@@ -268,7 +268,7 @@ async function completeDropoff() {
         <input
           v-model="locationSearch"
           type="search"
-          placeholder="Search yards, customers, terminals…"
+          placeholder="Search Company Yard, Customer Location, Marine Terminal, Rail Yard…"
           aria-label="Search drop-off locations"
         >
       </div>

@@ -127,15 +127,10 @@ export const eventSourceEnum = pgEnum('event_source', [
 ])
 
 export const locationTypeEnum = pgEnum('location_type', [
+  'COMPANY_YARD',
+  'CUSTOMER',
   'MARINE_TERMINAL',
   'RAIL_TERMINAL',
-  'CUSTOMER',
-  'WAREHOUSE',
-  'COMPANY_YARD',
-  'DEPOT',
-  'REPAIR_SHOP',
-  'STAGING',
-  'TEMPORARY',
 ])
 
 export const locationStatusEnum = pgEnum('location_status', ['ACTIVE', 'PENDING_APPROVAL', 'ARCHIVED'])

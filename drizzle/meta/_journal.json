@@ -22,6 +22,13 @@
       "when": 1787900000000,
       "tag": "0002_container_status",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1787901000000,
+      "tag": "0003_four_location_types",
+      "breakpoints": true
     }
   ]
 }
