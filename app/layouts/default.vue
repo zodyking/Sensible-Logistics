@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
- * Driver operational shell — fixed brand bar, 520px column, five-tab bar
- * matching Agent-Files/design-template.html: Home, Trips, Tasks (FAB), Containers, More.
+ * Driver operational shell — sticky brand bar, 520px column, five-tab bar
+ * locked to the bottom of the viewport: Home, Trips, Tasks (FAB), Containers, More.
  */
 const route = useRoute()
 const { user } = useUserSession()
@@ -25,7 +25,7 @@ const tabs: Array<{
 </script>
 
 <template>
-  <div>
+  <div class="d-app">
     <header class="d-topbar">
       <div class="brand">
         <b>{{ user?.companyName ?? appName }}</b>
