@@ -299,6 +299,7 @@ export async function releasePickupClaim(
   companyId: string,
   containerId: string,
   previousState: Container['activePoolState'],
+  previousContainerStatus?: Container['containerStatus'],
 ): Promise<void> {
   await tx
     .update(containers)
@@ -309,6 +310,7 @@ export async function releasePickupClaim(
       lastActivityAt: new Date(),
       updatedAt: new Date(),
       version: sql`${containers.version} + 1`,
+      ...(previousContainerStatus ? { containerStatus: previousContainerStatus } : {}),
     })
     .where(and(eq(containers.id, containerId), eq(containers.companyId, companyId)))
 }

@@ -135,6 +135,36 @@ const RESOLUTION_COPY: Record<string, { variant: 'ok' | 'warn' | 'err' | 'info',
 
 const blockedByConflict = computed(() => resolution.value?.outcome === 'CONFLICT')
 
+/* --- Field status: a mark on the field, wording only when asked --- */
+type FieldState = 'ok' | 'error' | 'idle'
+
+const containerState = computed<FieldState>(() => {
+  if (!showValidation.value) return 'idle'
+  return validation.value.valid ? 'ok' : 'error'
+})
+
+const containerDetail = computed(() => {
+  if (!showValidation.value) return ''
+  const parts: string[] = []
+  if (!validation.value.valid) {
+    parts.push(validation.value.errors[0] ?? 'This is not a valid ISO 6346 number.')
+    if (validation.value.structureValid && validation.value.expectedCheckDigit !== null) {
+      parts.push(`The boxed digit should be ${validation.value.expectedCheckDigit}.`)
+    }
+  }
+  parts.push(...validation.value.warnings)
+  return parts.join(' ')
+})
+
+const chassisState = computed<FieldState>(() => {
+  if (!chassisNumber.value) return 'idle'
+  return isCompleteChassisNumber(chassisNumber.value) ? 'ok' : 'error'
+})
+
+const chassisDetail = computed(() =>
+  chassisState.value === 'error' ? 'A chassis number is four letters then six digits.' : '',
+)
+
 /* --- The movement, created once the identifier is confirmed ------ */
 const tripId = ref<string | null>(null)
 const existingTripId = ref<string | null>(null)
@@ -446,10 +476,9 @@ async function skipNotes() {
 
     <p
       v-if="hydrating"
-      class="banner info"
+      class="note"
       role="status"
     >
-      <span aria-hidden="true">▸</span>
       <span>Resuming your pickup…</span>
     </p>
 
@@ -464,10 +493,9 @@ async function skipNotes() {
 
     <p
       v-if="existingTripId && !tripId"
-      class="banner info"
+      class="note"
       role="status"
     >
-      <span aria-hidden="true">▸</span>
       <span>
         You already have a pickup in progress.
         <button
@@ -568,78 +596,28 @@ async function skipNotes() {
 
     <!-- ── Container + chassis (one photo) ──────────────────────── -->
     <template v-else-if="step === 'equipment'">
-      <p
-        v-if="readingPhoto"
-        class="banner info"
-        role="status"
-      >
-        <span aria-hidden="true">▸</span>
-        <span>Reading the photo…</span>
-      </p>
-
-      <p
-        v-else-if="ocrMessage"
-        class="banner warn"
-        role="status"
-      >
-        <span aria-hidden="true">!</span>
-        <span>{{ ocrMessage }}</span>
-      </p>
-
       <div class="card p-4">
-        <template v-if="pickupKind === 'CONTAINER'">
-          <label class="field">
-            <span>Container number</span>
+        <label
+          v-if="pickupKind === 'CONTAINER'"
+          class="field"
+          for="container-number"
+        >
+          <span>Container number</span>
+          <div class="field-row">
             <ContainerNumberInput
+              id="container-number"
               v-model="rawNumber"
               :disabled="Boolean(tripId)"
-              :invalid="showValidation && !validation.structureValid"
-              describedby="container-validation"
+              :invalid="containerState === 'error'"
             />
-            <small class="field-hint">Four letters, six digits, dash, then the boxed check digit.</small>
-          </label>
-
-          <div
-            id="container-validation"
-            aria-live="polite"
-          >
-            <template v-if="showValidation">
-              <p
-                v-if="validation.valid"
-                class="banner ok mt-3 mb-0"
-              >
-                <span aria-hidden="true">✓</span>
-                <span>
-                  <b>{{ formatContainerNumber(normalized) }}</b>
-                  ISO 6346 check digit is valid.
-                </span>
-              </p>
-
-              <p
-                v-else
-                class="banner warn mt-3 mb-0"
-              >
-                <span aria-hidden="true">!</span>
-                <span>
-                  <b>Check the number</b>
-                  {{ validation.errors[0] }}
-                  <template v-if="validation.expectedCheckDigit !== null">
-                    Expected check digit {{ validation.expectedCheckDigit }}.
-                  </template>
-                </span>
-              </p>
-
-              <p
-                v-for="warning in validation.warnings"
-                :key="warning"
-                class="banner info mt-2 mb-0"
-              >
-                <span aria-hidden="true">▸</span>
-                <span>{{ warning }}</span>
-              </p>
-            </template>
+            <FieldStatus
+              :state="containerState"
+              :detail="containerDetail"
+              label="container number"
+            />
           </div>
-        </template>
+          <small class="field-hint">Four letters, six digits, then the boxed check digit.</small>
+        </label>
 
         <label
           class="field !mb-0"
@@ -647,66 +625,78 @@ async function skipNotes() {
           for="chassis-number"
         >
           <span>Chassis number</span>
-          <ChassisNumberInput
-            id="chassis-number"
-            v-model="chassisNumber"
-            :invalid="Boolean(chassisNumber) && !chassisOk"
-            describedby="chassis-hint"
-          />
-          <small
-            id="chassis-hint"
-            class="field-hint"
-          >{{ pickupKind === 'BARE_CHASSIS' ? 'Four letters and six digits. Required for a bare chassis pickup.' : 'Four letters and six digits. Leave blank if there is no chassis.' }}</small>
+          <div class="field-row">
+            <ChassisNumberInput
+              id="chassis-number"
+              v-model="chassisNumber"
+              :invalid="chassisState === 'error'"
+            />
+            <FieldStatus
+              :state="chassisState"
+              :detail="chassisDetail"
+              label="chassis number"
+            />
+          </div>
+          <small class="field-hint">{{ pickupKind === 'BARE_CHASSIS' ? 'Four letters and six digits.' : 'Four letters and six digits. Leave blank if there is no chassis.' }}</small>
         </label>
       </div>
 
-      <div
-        v-if="pickupKind === 'CONTAINER' && resolving"
-        class="banner info mt-4"
-        role="status"
-      >
-        <span aria-hidden="true">▸</span>
-        <span>Checking the active container pool…</span>
-      </div>
-
-      <template v-else-if="pickupKind === 'CONTAINER' && resolution">
-        <div
-          class="banner mt-4"
-          :class="RESOLUTION_COPY[resolution.outcome]?.variant"
-          role="status"
+      <div aria-live="polite">
+        <p
+          v-if="readingPhoto"
+          class="note"
         >
-          <span aria-hidden="true">▸</span>
+          <span>Reading the photo…</span>
+        </p>
+        <p
+          v-else-if="ocrMessage"
+          class="note warn"
+        >
+          <span>{{ ocrMessage }}</span>
+        </p>
+
+        <p
+          v-if="pickupKind === 'CONTAINER' && resolving"
+          class="note"
+        >
+          <span>Checking the active container pool…</span>
+        </p>
+        <p
+          v-else-if="pickupKind === 'CONTAINER' && resolution"
+          class="note"
+          :class="RESOLUTION_COPY[resolution.outcome]?.variant"
+        >
           <span>
-            <b>{{ RESOLUTION_COPY[resolution.outcome]?.title }}</b>
+            <b>{{ RESOLUTION_COPY[resolution.outcome]?.title }}.</b>
             {{ resolution.message }}
           </span>
-        </div>
+        </p>
+      </div>
 
-        <div
-          v-if="resolution.outcome === 'CONFLICT' && resolution.holder"
-          class="card mt-4 p-4"
-        >
-          <span class="eyebrow">Current holder</span>
-          <div class="trip-facts mt-3 !border-t-0 !pt-0">
-            <div class="trip-fact">
-              <small>Driver</small>
-              <b>{{ resolution.holder.driverName }}</b>
-            </div>
-            <div class="trip-fact">
-              <small>State</small>
-              <b>{{ ACTIVE_POOL_LABELS[resolution.holder.activePoolState as keyof typeof ACTIVE_POOL_LABELS] }}</b>
-            </div>
-            <div class="trip-fact">
-              <small>Believed at</small>
-              <b>{{ resolution.holder.believedLocationName ?? 'In transit' }}</b>
-            </div>
+      <div
+        v-if="pickupKind === 'CONTAINER' && resolution?.outcome === 'CONFLICT' && resolution.holder"
+        class="card mt-4 p-4"
+      >
+        <span class="eyebrow">Current holder</span>
+        <div class="trip-facts mt-3 !border-t-0 !pt-0">
+          <div class="trip-fact">
+            <small>Driver</small>
+            <b>{{ resolution.holder.driverName }}</b>
           </div>
-          <p class="mt-4 text-sm text-[var(--color-ink-500)]">
-            A second pickup cannot be started for this container. Contact dispatch or an administrator to
-            resolve the conflict.
-          </p>
+          <div class="trip-fact">
+            <small>State</small>
+            <b>{{ ACTIVE_POOL_LABELS[resolution.holder.activePoolState as keyof typeof ACTIVE_POOL_LABELS] }}</b>
+          </div>
+          <div class="trip-fact">
+            <small>Believed at</small>
+            <b>{{ resolution.holder.believedLocationName ?? 'In transit' }}</b>
+          </div>
         </div>
-      </template>
+        <p class="mt-4 text-sm text-[var(--color-ink-500)]">
+          A second pickup cannot be started for this container. Contact dispatch or an administrator to
+          resolve the conflict.
+        </p>
+      </div>
 
       <button
         v-if="!tripId"
@@ -830,13 +820,12 @@ async function skipNotes() {
         origin-label="Pickup"
       />
 
-      <p class="banner info">
-        <span aria-hidden="true">▸</span>
+      <p class="note">
         <span>
           {{
             pickupKind === 'BARE_CHASSIS'
               ? 'Confirming records the chassis pickup and departure. You can hang a container on it from Home.'
-              : 'Confirming records the pickup, custody and departure events and moves the container into your custody.'
+              : 'Confirming records the pickup and puts the container in transit on this service life.'
           }}
         </span>
       </p>

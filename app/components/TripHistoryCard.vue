@@ -9,20 +9,24 @@ import type { ContainerType, TripKind, TripStatus } from '#shared/utils/domain'
 import { formatChassisNumber, formatContainerNumber } from '#shared/utils/iso6346'
 
 const props = defineProps<{
-  id: string
+  to: string
   status: TripStatus
-  kind?: TripKind | null
-  containerNumber?: string | null
-  containerType?: ContainerType | null
-  chassisNumber?: string | null
   reference: string
   originName?: string | null
   destinationName?: string | null
-  pickedUpAt?: string | null
-  droppedOffAt?: string | null
+  pickedUpAt?: string | Date | null
+  droppedOffAt?: string | Date | null
+  containerNumber?: string | null
+  containerType?: ContainerType | null
+  chassisNumber?: string | null
+  kind?: TripKind | null
   isLoaded?: boolean | null
-  createdAt: string
+  createdAt?: string | Date | null
 }>()
+
+const isBareChassis = computed(() =>
+  props.kind === 'BARE_CHASSIS' || (!props.containerNumber && Boolean(props.chassisNumber)),
+)
 
 const title = computed(() => {
   if (props.containerNumber) {
@@ -34,12 +38,14 @@ const title = computed(() => {
   return props.reference
 })
 
-const isBareChassis = computed(() =>
-  props.kind === 'BARE_CHASSIS' || (!props.containerNumber && Boolean(props.chassisNumber)),
-)
-
 const origin = computed(() => props.originName?.trim() || 'No origin')
 const destination = computed(() => props.destinationName?.trim() || 'Not set')
+
+const dropoffLabel = computed(() => {
+  if (props.droppedOffAt) return formatTime(props.droppedOffAt)
+  if (['CANCELLED', 'EXCEPTION'].includes(props.status)) return '—'
+  return 'Open'
+})
 
 const metaLine = computed(() => {
   const bits: string[] = []
@@ -53,14 +59,14 @@ const metaLine = computed(() => {
   else if (props.isLoaded != null) {
     bits.push(props.isLoaded ? 'Loaded' : 'Empty')
   }
-  bits.push(`${formatTime(props.pickedUpAt ?? props.createdAt)} → ${formatTime(props.droppedOffAt)}`)
+  bits.push(`${formatTime(props.pickedUpAt ?? props.createdAt)} → ${dropoffLabel.value}`)
   return bits.join(' · ')
 })
 </script>
 
 <template>
   <NuxtLink
-    :to="`/trips/${id}`"
+    :to="to"
     class="trip-move"
     :class="TRIP_STATUS_CHIP[status]"
   >

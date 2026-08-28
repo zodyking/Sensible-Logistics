@@ -34,6 +34,7 @@ export interface ContainerStatePatch {
   releasedAt?: Date | null
   isLoaded?: boolean
   sealNumber?: string | null
+  containerStatus?: (typeof containers.$inferInsert)['containerStatus']
 }
 
 /**

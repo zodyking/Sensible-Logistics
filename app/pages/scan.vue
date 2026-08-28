@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { formatContainerNumber, isCompleteChassisNumber, maskChassisInput, maskContainerInput, validateContainerNumber } from '#shared/utils/iso6346'
+import { isCompleteChassisNumber, maskChassisInput, maskContainerInput, validateContainerNumber } from '#shared/utils/iso6346'
 import { driverOcrMessage } from '#shared/utils/ocr-parse'
 
 useHead({ title: 'Scan' })
@@ -15,6 +15,35 @@ const containerValidation = computed(() => validateContainerNumber(containerNumb
 const chassisOk = computed(() => !chassisNumber.value || isCompleteChassisNumber(chassisNumber.value))
 const canContinue = computed(() =>
   containerValidation.value.structureValid && chassisOk.value && !reading.value,
+)
+
+type FieldState = 'ok' | 'error' | 'idle'
+
+const containerState = computed<FieldState>(() => {
+  if (containerNumber.value.length < 11) return 'idle'
+  return containerValidation.value.valid ? 'ok' : 'error'
+})
+
+const containerDetail = computed(() => {
+  if (containerState.value === 'idle') return ''
+  const parts: string[] = []
+  if (!containerValidation.value.valid) {
+    parts.push(containerValidation.value.errors[0] ?? 'This is not a valid ISO 6346 number.')
+    if (containerValidation.value.structureValid && containerValidation.value.expectedCheckDigit !== null) {
+      parts.push(`The boxed digit should be ${containerValidation.value.expectedCheckDigit}.`)
+    }
+  }
+  parts.push(...containerValidation.value.warnings)
+  return parts.join(' ')
+})
+
+const chassisState = computed<FieldState>(() => {
+  if (!chassisNumber.value) return 'idle'
+  return isCompleteChassisNumber(chassisNumber.value) ? 'ok' : 'error'
+})
+
+const chassisDetail = computed(() =>
+  chassisState.value === 'error' ? 'A chassis number is four letters then six digits.' : '',
 )
 
 async function onPhoto(dataUrl: string) {
@@ -72,61 +101,68 @@ async function continuePickup() {
       back-label="Home"
     />
 
-    <p
-      v-if="reading"
-      class="banner info"
-      role="status"
-    >
-      <span aria-hidden="true">▸</span>
-      <span>Reading the photo…</span>
-    </p>
-
-    <p
-      v-else-if="errorMessage"
-      class="banner warn"
-      role="status"
-    >
-      <span aria-hidden="true">!</span>
-      <span>{{ errorMessage }}</span>
-    </p>
-
     <div
       v-if="captured"
       class="card p-4"
     >
-      <label class="field">
+      <label
+        class="field"
+        for="scan-container"
+      >
         <span>Container number</span>
-        <ContainerNumberInput
-          v-model="containerNumber"
-          :invalid="containerNumber.length >= 11 && !containerValidation.structureValid"
-        />
-        <small class="field-hint">Four letters, six digits, dash, then the boxed check digit.</small>
+        <div class="field-row">
+          <ContainerNumberInput
+            id="scan-container"
+            v-model="containerNumber"
+            :invalid="containerState === 'error'"
+          />
+          <FieldStatus
+            :state="containerState"
+            :detail="containerDetail"
+            label="container number"
+          />
+        </div>
+        <small class="field-hint">Four letters, six digits, then the boxed check digit.</small>
       </label>
 
-      <p
-        v-if="containerValidation.structureValid"
-        class="banner mt-3 mb-4"
-        :class="containerValidation.valid ? 'ok' : 'warn'"
+      <label
+        class="field !mb-0 mt-5"
+        for="scan-chassis"
       >
-        <span aria-hidden="true">{{ containerValidation.valid ? '✓' : '!' }}</span>
-        <span>
-          <b>{{ formatContainerNumber(containerNumber) }}</b>
-          {{ containerValidation.valid ? 'ISO 6346 check digit is valid.' : containerValidation.errors[0] }}
-        </span>
-      </p>
-
-      <label class="field !mb-0">
         <span>Chassis number</span>
-        <ChassisNumberInput
-          v-model="chassisNumber"
-          :invalid="Boolean(chassisNumber) && !chassisOk"
-        />
+        <div class="field-row">
+          <ChassisNumberInput
+            id="scan-chassis"
+            v-model="chassisNumber"
+            :invalid="chassisState === 'error'"
+          />
+          <FieldStatus
+            :state="chassisState"
+            :detail="chassisDetail"
+            label="chassis number"
+          />
+        </div>
         <small class="field-hint">Four letters and six digits. Leave blank if there is no chassis.</small>
       </label>
     </div>
 
+    <div aria-live="polite">
+      <p
+        v-if="reading"
+        class="note"
+      >
+        <span>Reading the photo…</span>
+      </p>
+      <p
+        v-else-if="errorMessage"
+        class="note warn"
+      >
+        <span>{{ errorMessage }}</span>
+      </p>
+    </div>
+
     <p
-      v-else
+      v-if="!captured"
       class="text-sm text-[var(--color-ink-500)]"
     >
       Point the camera at the container number and the chassis plate, then take one photo.

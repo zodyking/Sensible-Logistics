@@ -2,7 +2,7 @@ import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { containers, drivers, locations, users } from '../../database/schema'
 import { requireAuth } from '../../utils/session'
-import { ACTIVE_POOL_STATES, CONTAINER_TYPES } from '#shared/utils/domain'
+import { ACTIVE_POOL_STATES, CONTAINER_STATUSES, CONTAINER_TYPES } from '#shared/utils/domain'
 import { normalizeContainerNumber } from '#shared/utils/iso6346'
 
 const querySchema = z.object({
@@ -10,6 +10,7 @@ const querySchema = z.object({
   state: z.enum(ACTIVE_POOL_STATES).optional(),
   type: z.enum(CONTAINER_TYPES).optional(),
   loaded: z.enum(['true', 'false']).optional(),
+  status: z.enum(CONTAINER_STATUSES).optional(),
   locationId: z.string().uuid().optional(),
   /** `active` hides released containers; `all` includes full history. */
   scope: z.enum(['active', 'all']).default('active'),
@@ -31,6 +32,7 @@ export default defineEventHandler(async (event) => {
   if (query.state) filters.push(eq(containers.activePoolState, query.state))
   if (query.type) filters.push(eq(containers.containerType, query.type))
   if (query.loaded) filters.push(eq(containers.isLoaded, query.loaded === 'true'))
+  if (query.status) filters.push(eq(containers.containerStatus, query.status))
   if (query.locationId) filters.push(eq(containers.currentLocationId, query.locationId))
 
   if (query.q) {
@@ -55,6 +57,7 @@ export default defineEventHandler(async (event) => {
       containerType: containers.containerType,
       equipmentType: containers.equipmentType,
       isLoaded: containers.isLoaded,
+      containerStatus: containers.containerStatus,
       activePoolState: containers.activePoolState,
       checkDigitValid: containers.checkDigitValid,
       sealNumber: containers.sealNumber,

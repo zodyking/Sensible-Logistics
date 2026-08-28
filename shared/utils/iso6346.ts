@@ -181,15 +181,14 @@ export function maskContainerInput(input: string): string {
   return letters + digits
 }
 
-/** Display form: `MSCU 452189-4`. Partial values keep the same grouping. */
+/** Display form: `MSCU452189-4`. Partial values keep the same grouping. */
 export function formatContainerNumber(input: string): string {
   const compact = maskContainerInput(input)
   if (!compact) return ''
   const letters = compact.replace(/\d/g, '')
   const digits = compact.slice(letters.length)
-  if (!digits) return letters
-  if (digits.length <= 6) return `${letters} ${digits}`
-  return `${letters} ${digits.slice(0, 6)}-${digits.slice(6)}`
+  if (digits.length <= 6) return letters + digits
+  return `${letters}${digits.slice(0, 6)}-${digits.slice(6)}`
 }
 
 const CHASSIS_STRUCTURE_RE = /^[A-Z]{4}\d{6}$/
@@ -216,14 +215,9 @@ export function isCompleteChassisNumber(input: string): boolean {
   return CHASSIS_STRUCTURE_RE.test(maskChassisInput(input))
 }
 
-/** Display form: `AIMZ 481345`. Partial values keep the same grouping. */
+/** Display form: `AIMZ481345`, the way it is painted on the plate. */
 export function formatChassisNumber(input: string): string {
-  const compact = maskChassisInput(input)
-  if (!compact) return ''
-  const letters = compact.replace(/\d/g, '')
-  const digits = compact.slice(letters.length)
-  if (!digits) return letters
-  return `${letters} ${digits}`
+  return maskChassisInput(input)
 }
 
 /**

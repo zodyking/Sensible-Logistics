@@ -85,6 +85,25 @@ const normalized = computed(() => normalizeContainerNumber(rawNumber.value))
 const validation = computed(() => validateContainerNumber(rawNumber.value))
 const showValidation = computed(() => normalized.value.length >= 11)
 
+/* --- Field status: a mark on the field, wording only when asked --- */
+const containerState = computed<'ok' | 'error' | 'idle'>(() => {
+  if (!showValidation.value) return 'idle'
+  return validation.value.valid ? 'ok' : 'error'
+})
+
+const containerDetail = computed(() => {
+  if (!showValidation.value) return ''
+  const parts: string[] = []
+  if (!validation.value.valid) {
+    parts.push(validation.value.errors[0] ?? 'This is not a valid ISO 6346 number.')
+    if (validation.value.structureValid && validation.value.expectedCheckDigit !== null) {
+      parts.push(`The boxed digit should be ${validation.value.expectedCheckDigit}.`)
+    }
+  }
+  parts.push(...validation.value.warnings)
+  return parts.join(' ')
+})
+
 async function checkPool() {
   if (normalized.value.length < 11) return
   resolving.value = true
@@ -269,106 +288,79 @@ function retakePhoto() {
       </p>
 
       <template v-if="step === 'equipment'">
-        <p
-          v-if="readingPhoto"
-          class="banner info"
-          role="status"
-        >
-          <span aria-hidden="true">▸</span>
-          <span>Reading the photo…</span>
-        </p>
-
-        <p
-          v-else-if="ocrMessage"
-          class="banner warn"
-          role="status"
-        >
-          <span aria-hidden="true">!</span>
-          <span>{{ ocrMessage }}</span>
-        </p>
-
         <div class="card p-4">
           <p class="mb-4 text-sm text-[var(--color-ink-500)]">
             Chassis {{ chassisNumber || 'on this trip' }} is live. Scan or type the container you are hanging on it.
           </p>
-          <label class="field !mb-0">
-            <span>Container number</span>
-            <ContainerNumberInput
-              v-model="rawNumber"
-              :invalid="showValidation && !validation.structureValid"
-              describedby="attach-container-validation"
-            />
-            <small class="field-hint">Four letters, six digits, dash, then the boxed check digit.</small>
-          </label>
-
-          <div
-            id="attach-container-validation"
-            aria-live="polite"
+          <label
+            class="field !mb-0"
+            for="attach-container"
           >
-            <template v-if="showValidation">
-              <p
-                v-if="validation.valid"
-                class="banner ok mt-3 mb-0"
-              >
-                <span aria-hidden="true">✓</span>
-                <span>
-                  <b>{{ formatContainerNumber(normalized) }}</b>
-                  ISO 6346 check digit is valid.
-                </span>
-              </p>
-              <p
-                v-else
-                class="banner warn mt-3 mb-0"
-              >
-                <span aria-hidden="true">!</span>
-                <span>
-                  <b>Check the number</b>
-                  {{ validation.errors[0] }}
-                </span>
-              </p>
-            </template>
-          </div>
+            <span>Container number</span>
+            <div class="field-row">
+              <ContainerNumberInput
+                id="attach-container"
+                v-model="rawNumber"
+                :invalid="containerState === 'error'"
+              />
+              <FieldStatus
+                :state="containerState"
+                :detail="containerDetail"
+                label="container number"
+              />
+            </div>
+            <small class="field-hint">Four letters, six digits, then the boxed check digit.</small>
+          </label>
+        </div>
+
+        <div aria-live="polite">
+          <p
+            v-if="readingPhoto"
+            class="note"
+          >
+            <span>Reading the photo…</span>
+          </p>
+          <p
+            v-else-if="ocrMessage"
+            class="note warn"
+          >
+            <span>{{ ocrMessage }}</span>
+          </p>
+
+          <p
+            v-if="resolving"
+            class="note"
+          >
+            <span>Checking the active container pool…</span>
+          </p>
+          <p
+            v-else-if="resolution"
+            class="note"
+            :class="RESOLUTION_COPY[resolution.outcome]?.variant"
+          >
+            <span>
+              <b>{{ RESOLUTION_COPY[resolution.outcome]?.title }}.</b>
+              {{ resolution.message }}
+            </span>
+          </p>
         </div>
 
         <div
-          v-if="resolving"
-          class="banner info mt-4"
-          role="status"
+          v-if="resolution?.outcome === 'CONFLICT' && resolution.holder"
+          class="card mt-4 p-4"
         >
-          <span aria-hidden="true">▸</span>
-          <span>Checking the active container pool…</span>
-        </div>
-
-        <template v-else-if="resolution">
-          <div
-            class="banner mt-4"
-            :class="RESOLUTION_COPY[resolution.outcome]?.variant"
-            role="status"
-          >
-            <span aria-hidden="true">▸</span>
-            <span>
-              <b>{{ RESOLUTION_COPY[resolution.outcome]?.title }}</b>
-              {{ resolution.message }}
-            </span>
-          </div>
-
-          <div
-            v-if="resolution.outcome === 'CONFLICT' && resolution.holder"
-            class="card mt-4 p-4"
-          >
-            <span class="eyebrow">Current holder</span>
-            <div class="trip-facts mt-3 !border-t-0 !pt-0">
-              <div class="trip-fact">
-                <small>Driver</small>
-                <b>{{ resolution.holder.driverName }}</b>
-              </div>
-              <div class="trip-fact">
-                <small>State</small>
-                <b>{{ ACTIVE_POOL_LABELS[resolution.holder.activePoolState as keyof typeof ACTIVE_POOL_LABELS] }}</b>
-              </div>
+          <span class="eyebrow">Current holder</span>
+          <div class="trip-facts mt-3 !border-t-0 !pt-0">
+            <div class="trip-fact">
+              <small>Driver</small>
+              <b>{{ resolution.holder.driverName }}</b>
+            </div>
+            <div class="trip-fact">
+              <small>State</small>
+              <b>{{ ACTIVE_POOL_LABELS[resolution.holder.activePoolState as keyof typeof ACTIVE_POOL_LABELS] }}</b>
             </div>
           </div>
-        </template>
+        </div>
 
         <button
           type="button"
@@ -463,8 +455,7 @@ function retakePhoto() {
           origin-label="Pickup"
         />
 
-        <p class="banner info">
-          <span aria-hidden="true">▸</span>
+        <p class="note">
           <span>This hangs the container on the live chassis and puts the box in your custody.</span>
         </p>
 

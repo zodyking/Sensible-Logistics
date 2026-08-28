@@ -161,7 +161,7 @@ function boxStyle(item: YardContainer, index: number) {
     </div>
 
     <div class="map-hint">
-      Position, angle and door direction are recorded exactly as placed on the map. Tap a container for its full history.
+      Position, angle and door direction are recorded exactly as placed. Tap a container for its current service life.
     </div>
     <div class="legend">
       <span>

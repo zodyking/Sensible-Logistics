@@ -27,6 +27,7 @@ export default defineEventHandler(async (event) => {
       equipmentType: containers.equipmentType,
       containerType: containers.containerType,
       isLoaded: containers.isLoaded,
+      containerStatus: containers.containerStatus,
       x: containerPlacements.x,
       y: containerPlacements.y,
       rotation: containerPlacements.rotation,

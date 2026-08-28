@@ -10,6 +10,10 @@ useHead({ title: () => data.value?.trip.reference ?? 'Trip' })
 
 const isLive = computed(() =>
   ['PICKUP_IN_PROGRESS', 'IN_TRANSIT', 'DROPOFF_IN_PROGRESS'].includes(data.value?.trip.status ?? ''))
+
+const pickupStamp = computed(() => data.value?.trip.pickedUpAt ?? null)
+const dropoffStamp = computed(() => data.value?.trip.droppedOffAt ?? data.value?.trip.completedAt ?? null)
+const durationLabel = computed(() => formatDurationBetween(pickupStamp.value, dropoffStamp.value))
 </script>
 
 <template>
@@ -38,6 +42,12 @@ const isLive = computed(() =>
         back-to="/pickups"
         back-label="Trips"
       />
+      <p
+        v-if="durationLabel"
+        class="trip-duration mb-4"
+      >
+        {{ durationLabel }}
+      </p>
 
       <TripCard
         :trip-kind="data.trip.kind === 'BARE_CHASSIS' ? 'BARE_CHASSIS' : 'CONTAINER'"
