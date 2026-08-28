@@ -13,7 +13,39 @@ watchEffect(() => {
 const active = computed(() => data.value?.active)
 const swapPartner = computed(() => data.value?.swapPartner ?? null)
 const todayTasks = computed(() => data.value?.todayTasks ?? [])
-const displayTrip = computed(() => data.value?.active ?? data.value?.recentCompleted ?? null)
+const CLEARED_HOME_TRIP_KEY = 'sensible-home-cleared-trip'
+const clearedTripId = ref<string | null>(null)
+
+onMounted(() => {
+  try {
+    clearedTripId.value = localStorage.getItem(CLEARED_HOME_TRIP_KEY)
+  }
+  catch {
+    clearedTripId.value = null
+  }
+})
+
+const displayTrip = computed(() => {
+  if (data.value?.active) return data.value.active
+  const recent = data.value?.recentCompleted
+  if (!recent) return null
+  if (clearedTripId.value && recent.trip.id === clearedTripId.value) return null
+  return recent
+})
+
+const canClearDashboard = computed(() => Boolean(!active.value && displayTrip.value))
+
+function clearDashboard() {
+  const id = data.value?.recentCompleted?.trip.id
+  if (!id) return
+  clearedTripId.value = id
+  try {
+    localStorage.setItem(CLEARED_HOME_TRIP_KEY, id)
+  }
+  catch {
+    // Still hides the completed card for this session.
+  }
+}
 
 const sheet = ref<'documents' | 'sms' | 'contacts' | 'cancel' | null>(null)
 const cancelling = ref(false)
@@ -315,6 +347,14 @@ async function confirmCancelTrip() {
           @click="sheet = 'cancel'"
         >
           Cancel Trip
+        </button>
+        <button
+          v-else-if="canClearDashboard"
+          type="button"
+          class="btn-clear-dash"
+          @click="clearDashboard"
+        >
+          Clear dashboard
         </button>
       </div>
 
