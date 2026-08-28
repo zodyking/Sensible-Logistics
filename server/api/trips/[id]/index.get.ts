@@ -1,5 +1,6 @@
 import { aliasedTable, and, desc, eq } from 'drizzle-orm'
 import { chassis, containerEvents, containers, locations, trips, users } from '../../../database/schema'
+import { companyTimezone, listTasksForTrip } from '../../../services/tasks'
 import { assertTenant, requireAuth } from '../../../utils/session'
 
 const originLocation = aliasedTable(locations, 'origin_location')
@@ -34,22 +35,26 @@ export default defineEventHandler(async (event) => {
 
   assertTenant(auth, row?.trip, 'Movement')
 
-  const timeline = await db
-    .select({
-      id: containerEvents.id,
-      eventType: containerEvents.eventType,
-      occurredAt: containerEvents.occurredAt,
-      notes: containerEvents.notes,
-      locationName: locations.name,
-      actorFirstName: users.firstName,
-      actorLastName: users.lastName,
-    })
-    .from(containerEvents)
-    .leftJoin(locations, eq(locations.id, containerEvents.locationId))
-    .leftJoin(users, eq(users.id, containerEvents.actorUserId))
-    .where(and(eq(containerEvents.companyId, auth.companyId), eq(containerEvents.tripId, id)))
-    .orderBy(desc(containerEvents.occurredAt))
-    .limit(100)
+  const timezone = await companyTimezone(db, auth.companyId)
+  const [timeline, tasks] = await Promise.all([
+    db
+      .select({
+        id: containerEvents.id,
+        eventType: containerEvents.eventType,
+        occurredAt: containerEvents.occurredAt,
+        notes: containerEvents.notes,
+        locationName: locations.name,
+        actorFirstName: users.firstName,
+        actorLastName: users.lastName,
+      })
+      .from(containerEvents)
+      .leftJoin(locations, eq(locations.id, containerEvents.locationId))
+      .leftJoin(users, eq(users.id, containerEvents.actorUserId))
+      .where(and(eq(containerEvents.companyId, auth.companyId), eq(containerEvents.tripId, id)))
+      .orderBy(desc(containerEvents.occurredAt))
+      .limit(100),
+    listTasksForTrip(db, auth, row!.trip, timezone),
+  ])
 
-  return { ...row!, timeline }
+  return { ...row!, timeline, tasks }
 })

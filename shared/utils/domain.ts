@@ -391,6 +391,35 @@ export const EXCEPTION_TYPES = [
 ] as const
 export type ExceptionType = (typeof EXCEPTION_TYPES)[number]
 
+export const DISPATCH_TASK_KINDS = ['PICKUP', 'DROPOFF', 'LOAD', 'EMPTY', 'WORK', 'NOTE'] as const
+export type DispatchTaskKind = (typeof DISPATCH_TASK_KINDS)[number]
+
+export const DISPATCH_TASK_KIND_LABELS: Record<DispatchTaskKind, string> = {
+  PICKUP: 'Pickup',
+  DROPOFF: 'Drop-off',
+  LOAD: 'Live load',
+  EMPTY: 'Empty',
+  WORK: 'Work',
+  NOTE: 'Dispatch',
+}
+
+export const DISPATCH_TASK_STATUSES = ['OPEN', 'IN_PROGRESS', 'DONE', 'DISMISSED'] as const
+export type DispatchTaskStatus = (typeof DISPATCH_TASK_STATUSES)[number]
+
+export const DISPATCH_TASK_STATUS_LABELS: Record<DispatchTaskStatus, string> = {
+  OPEN: 'Open',
+  IN_PROGRESS: 'In progress',
+  DONE: 'Done',
+  DISMISSED: 'Dismissed',
+}
+
+export const DISPATCH_TASK_STATUS_CHIP: Record<DispatchTaskStatus, 'ok' | 'warn' | 'err' | 'transit' | 'idle'> = {
+  OPEN: 'warn',
+  IN_PROGRESS: 'transit',
+  DONE: 'ok',
+  DISMISSED: 'idle',
+}
+
 /** 150 air miles expressed in statute miles (spec 14.3). */
 export const SHORT_HAUL_RADIUS_MILES = 172.6
 /** Duty must end within 14 consecutive hours of reporting for duty. */
