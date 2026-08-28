@@ -282,12 +282,12 @@ async function confirm() {
           </button>
         </div>
 
-        <NuxtLink
-          :to="{ path: '/locations/new', query: { returnTo: `/trips/${tripId}/dropoff` } }"
-          class="btn-ghost mt-4 w-full"
-        >
-          Add a location
-        </NuxtLink>
+        <EmptyState
+          v-else
+          glyph="◫"
+          title="No locations match"
+          description="Pick an existing location. Add new ones from More → Customers & locations."
+        />
       </template>
 
       <template v-else-if="step === 'place'">

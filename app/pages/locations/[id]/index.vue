@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { CONTAINER_TYPE_LABELS, EQUIPMENT_TYPE_SHORT, LOCATION_TYPE_LABELS } from '#shared/utils/domain'
 import { formatContainerNumber } from '#shared/utils/iso6346'
+import { formatPhoneDisplay, toE164 } from '#shared/utils/phone'
 import { bboxCenter, bboxFromPolygon, normalizeHeading, snapHeadingToStreet } from '#shared/utils/geo'
 import type { GeoJsonPolygon } from '#shared/utils/geo'
 import type { YardMapBox } from '~/components/LocationYardMap.vue'
@@ -154,12 +155,41 @@ const subtitle = computed(() => {
       <PageHeader
         eyebrow="Location"
         :title="data.location.name"
-        back-to="/containers"
+        back-to="/locations"
         back-label="Locations"
       />
       <p class="mb-4 text-sm text-[var(--color-ink-500)]">
         {{ subtitle }}
       </p>
+      <div
+        v-if="data.location.mainPhone || data.location.contactPhone"
+        class="card mb-4 p-4 text-sm"
+      >
+        <p
+          v-if="data.location.mainPhone"
+          class="mb-0"
+        >
+          <span class="eyebrow">Main number</span>
+          <a
+            class="mt-1 block font-semibold"
+            :href="`tel:${toE164(data.location.mainPhone)}`"
+          >{{ formatPhoneDisplay(data.location.mainPhone) }}</a>
+        </p>
+        <p
+          v-if="data.location.contactPhone"
+          class="mb-0"
+          :class="data.location.mainPhone ? 'mt-3' : ''"
+        >
+          <span class="eyebrow">Contact</span>
+          <a
+            class="mt-1 block font-semibold"
+            :href="`tel:${toE164(data.location.contactPhone)}`"
+          >
+            <template v-if="data.location.contactName">{{ data.location.contactName }} · </template>
+            {{ formatPhoneDisplay(data.location.contactPhone) }}
+          </a>
+        </p>
+      </div>
 
       <p
         v-if="errorMessage"

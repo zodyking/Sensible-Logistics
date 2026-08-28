@@ -7,7 +7,7 @@ const querySchema = z.object({
   limit: z.coerce.number().int().min(1).max(8).default(6),
 })
 
-/** Address typeahead. Proxied so the browser never talks to Photon directly. */
+/** Address typeahead restricted to United States results. Proxied so the browser never talks to Photon directly. */
 export default defineEventHandler(async (event) => {
   await requireAuth(event)
   const query = readValidatedQuery(event, querySchema)

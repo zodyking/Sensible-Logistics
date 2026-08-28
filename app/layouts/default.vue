@@ -13,8 +13,8 @@ const tabs = [
   { to: '/', label: 'Home', icon: '⌂', match: (p: string) => p === '/' },
   { to: '/pickups', label: 'Trips', icon: '⇄', match: (p: string) => p.startsWith('/pickups') || p.startsWith('/trips') },
   { to: '/timecard', label: 'Time', icon: 'time', match: (p: string) => p.startsWith('/timecard'), fab: true },
-  { to: '/containers', label: 'Containers', icon: '▦', match: (p: string) => p.startsWith('/containers') || p.startsWith('/locations') },
-  { to: '/more', label: 'More', icon: '≡', match: (p: string) => p.startsWith('/more') || p.startsWith('/scan') },
+  { to: '/containers', label: 'Containers', icon: '▦', match: (p: string) => p.startsWith('/containers') || (/^\/locations\/[^/]+/.test(p) && !p.startsWith('/locations/new')) },
+  { to: '/more', label: 'More', icon: '≡', match: (p: string) => p.startsWith('/more') || p.startsWith('/scan') || p === '/locations' || p.startsWith('/locations/new') },
 ]
 </script>
 
