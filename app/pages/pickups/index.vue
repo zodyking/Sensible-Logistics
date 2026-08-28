@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { tripOccursOnDay, tripPickupDay, toLocalIsoDate } from '#shared/utils/trip-days'
+import { countDayWork, formatDayWorkSummary, tripOccursOnDay, tripPickupDay, toLocalIsoDate } from '#shared/utils/trip-days'
 
 useHead({ title: 'My Trips' })
 
@@ -47,11 +47,14 @@ const grouped = computed(() => {
   }
 
   for (const trip of visibleTrips.value) {
-    const iso = tripPickupDay(trip) ?? todayIso.value
-    const days = ensureDay(iso)
-    const bucket = days.get(iso) ?? []
+    const pickupIso = tripPickupDay(trip) ?? todayIso.value
+    const listIso = dayFilter.value === 'today' ? todayIso.value : pickupIso
+    const days = ensureDay(listIso)
+    const bucket = days.get(listIso) ?? []
     bucket.push(trip)
-    days.set(iso, bucket)
+    days.set(listIso, bucket)
+    const dropIso = toLocalIsoDate(trip.droppedOffAt)
+    if (dayFilter.value !== 'today' && dropIso && dropIso !== pickupIso) ensureDay(dropIso)
   }
 
   for (const iso of tasksByDate.value.keys()) {
@@ -69,6 +72,7 @@ const grouped = computed(() => {
         .map(([iso, items]) => ({
           iso,
           label: formatDayHeading(iso, todayIso.value),
+          summary: formatDayWorkSummary(countDayWork(visibleTrips.value, iso)),
           items,
           tasks: tasksByDate.value.get(iso) ?? [],
         })),
@@ -143,6 +147,7 @@ const monthLabel = computed(() =>
 )
 
 const selectedDayLabel = computed(() => formatDayHeading(selectedIso.value, todayIso.value))
+const selectedDaySummary = computed(() => formatDayWorkSummary(countDayWork(trips.value, selectedIso.value)))
 
 const selectedDayTrips = computed(() =>
   trips.value
@@ -282,7 +287,11 @@ function calendarDayLabel(cell: { iso: string, hasTrip: boolean, selected: boole
               class="day-block"
             >
               <div class="day-label">
-                {{ day.label }}
+                <span>{{ day.label }}</span>
+                <small
+                  v-if="day.summary"
+                  class="day-summary"
+                >{{ day.summary }}</small>
               </div>
               <TripListCard
                 v-for="trip in day.items"
@@ -383,9 +392,7 @@ function calendarDayLabel(cell: { iso: string, hasTrip: boolean, selected: boole
         <div class="cal-day-panel">
           <div class="section-label">
             <span>{{ selectedDayLabel }}</span>
-            <span v-if="selectedDayTrips.length || selectedDayTasks.length">
-              {{ selectedDayTrips.length + selectedDayTasks.length }}
-            </span>
+            <span v-if="selectedDaySummary">{{ selectedDaySummary }}</span>
           </div>
 
           <TripListCard
