@@ -1,14 +1,21 @@
 <script setup lang="ts">
+import { stepsFromBlob } from '#shared/utils/task-steps'
+import type { TaskStep } from '#shared/utils/task-steps'
+
 useHead({ title: 'Tasks' })
 
 type PhoneGuide = 'iphone' | 'android'
 type CopyKey = 'url' | 'phrase' | 'json'
+type PageMode = 'view' | 'edit'
 
 const { data, status, error, refresh } = await useFetch('/api/tasks')
 
+const mode = ref<PageMode>('edit')
+const draft = ref('')
+const adding = ref(false)
+const persistTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const guide = ref<PhoneGuide>('iphone')
-const setupOpen = ref(true)
-const setupToggleLocked = ref(false)
+const setupOpen = ref(false)
 const checking = ref(false)
 const pinging = ref(false)
 const rotating = ref(false)
@@ -37,25 +44,33 @@ const earlierTasks = computed(() =>
   allTasks.value.filter(task => task.workDate < todayIso.value && task.status !== 'DISMISSED'),
 )
 
+const draftStepCount = computed(() => stepsFromBlob(draft.value).length)
+
 const jsonBody = computed(() => JSON.stringify({
   text: '(the SMS text)',
   from: '(the sender)',
 }, null, 2))
 
-watch(() => setup.value?.tested, (tested) => {
-  if (setupToggleLocked.value) return
-  if (tested) setupOpen.value = false
-}, { immediate: true })
+const setupStateLabel = computed(() => {
+  if (setup.value?.tested) return 'SMS on'
+  if (setup.value?.connected) return 'SMS receiving'
+  return 'SMS forwarding'
+})
 
 onMounted(() => {
+  if (todayTasks.value.length) mode.value = 'view'
   const tick = () => {
-    if (document.visibilityState === 'visible') void refresh()
+    if (document.visibilityState !== 'visible') return
+    if (mode.value === 'edit' || persistTimers.size || adding.value) return
+    void refresh()
   }
   const id = window.setInterval(tick, 12000)
   document.addEventListener('visibilitychange', tick)
   onBeforeUnmount(() => {
     window.clearInterval(id)
     document.removeEventListener('visibilitychange', tick)
+    for (const timer of persistTimers.values()) clearTimeout(timer)
+    persistTimers.clear()
   })
 })
 
@@ -71,6 +86,76 @@ async function copyValue(key: CopyKey, value: string) {
   copyTimers[key] = setTimeout(() => {
     copyState[key] = 'idle'
   }, 2200)
+}
+
+async function submitDraft() {
+  const text = draft.value.trim()
+  if (!text || adding.value) return
+  adding.value = true
+  actionError.value = ''
+  try {
+    await $fetch('/api/tasks', { method: 'POST', body: { text } })
+    draft.value = ''
+    mode.value = 'edit'
+    await refresh()
+  }
+  catch (err) {
+    actionError.value = apiErrorMessage(err, 'Could not add that work.')
+  }
+  finally {
+    adding.value = false
+  }
+}
+
+function onDraftEnter(event: KeyboardEvent) {
+  if (event.shiftKey) return
+  event.preventDefault()
+  void submitDraft()
+}
+
+function applyStepsLocally(id: string, steps: TaskStep[]) {
+  const task = data.value?.tasks.find(row => row.id === id)
+  if (!task) return
+  task.steps = steps
+  const done = steps.length > 0 && steps.every(step => step.done)
+  const some = steps.some(step => step.done) && !done
+  if (done) task.status = 'DONE'
+  else if (some) task.status = 'IN_PROGRESS'
+  else if (task.status === 'DONE') task.status = 'OPEN'
+}
+
+async function flushSteps(id: string, steps: TaskStep[]) {
+  actionError.value = ''
+  try {
+    const result = await $fetch<{ task: { status: string, title: string, rawText: string } }>(
+      `/api/tasks/${id}`,
+      { method: 'PATCH', body: { steps } },
+    )
+    const task = data.value?.tasks.find(row => row.id === id)
+    if (task && result.task) {
+      task.status = result.task.status as typeof task.status
+      task.title = result.task.title
+      task.rawText = result.task.rawText
+    }
+  }
+  catch (err) {
+    actionError.value = apiErrorMessage(err, 'Could not update the steps.')
+  }
+}
+
+function persistSteps(id: string, steps: TaskStep[], immediate = true) {
+  applyStepsLocally(id, steps)
+  const pending = persistTimers.get(id)
+  if (pending) clearTimeout(pending)
+  if (immediate) {
+    persistTimers.delete(id)
+    void flushSteps(id, steps)
+    return
+  }
+  persistTimers.set(id, setTimeout(() => {
+    persistTimers.delete(id)
+    void flushSteps(id, steps)
+  }, 320))
 }
 
 async function checkNow() {
@@ -90,8 +175,6 @@ async function checkNow() {
       flash.value = 'Nothing received yet. Send the test phrase from Messages, then check again.'
       testResult.value = 'Nothing received yet. Send the test phrase from Messages, then check again.'
     }
-    await nextTick()
-    document.querySelector('.task-test-result')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   }
   catch (err) {
     actionError.value = apiErrorMessage(err, 'Could not check setup.')
@@ -152,20 +235,42 @@ async function patchTask(id: string, statusValue: 'DONE' | 'DISMISSED') {
     actionError.value = apiErrorMessage(err, 'Could not update the task.')
   }
 }
-
-const setupStateLabel = computed(() => {
-  if (setup.value?.tested) return 'Forwarding confirmed'
-  if (setup.value?.connected) return 'Messages arriving'
-  return 'Not connected'
-})
 </script>
 
 <template>
   <section class="d-page">
-    <span class="eyebrow">Dispatch</span>
-    <h1 class="d-title">
-      Tasks
-    </h1>
+    <div class="task-head">
+      <div>
+        <span class="eyebrow">Dispatch</span>
+        <h1 class="d-title task-title">
+          Tasks
+        </h1>
+      </div>
+      <div
+        class="view-toggle"
+        role="tablist"
+        aria-label="Task mode"
+      >
+        <button
+          type="button"
+          role="tab"
+          :aria-selected="mode === 'view'"
+          :class="{ on: mode === 'view' }"
+          @click="mode = 'view'"
+        >
+          View
+        </button>
+        <button
+          type="button"
+          role="tab"
+          :aria-selected="mode === 'edit'"
+          :class="{ on: mode === 'edit' }"
+          @click="mode = 'edit'"
+        >
+          Edit
+        </button>
+      </div>
+    </div>
 
     <div
       v-if="status === 'pending' && !data"
@@ -202,236 +307,87 @@ const setupStateLabel = computed(() => {
         <span>{{ flash }}</span>
       </p>
 
-      <div
-        class="task-setup-status card"
-        :class="{ ready: setup?.tested, pending: !setup?.tested }"
+      <p
+        v-if="mode === 'view' && todayTasks.length"
+        class="task-mode-hint"
       >
-        <div class="task-setup-status-row">
-          <div>
-            <small class="eyebrow">SMS inbox</small>
-            <b>{{ setupStateLabel }}</b>
-            <p v-if="setup?.lastTestAt">
-              Test received {{ formatRelative(setup.lastTestAt) }}
-            </p>
-            <p v-else-if="setup?.lastReceivedAt">
-              Last message {{ formatRelative(setup.lastReceivedAt) }}
-            </p>
-            <p v-else>
-              Forward dispatcher texts from your phone. Only work messages become tasks.
-            </p>
-          </div>
-          <button
-            type="button"
-            class="btn-ghost"
-            :aria-expanded="setupOpen"
-            @click="setupToggleLocked = true; setupOpen = !setupOpen"
-          >
-            {{ setupOpen ? 'Hide setup' : 'Setup' }}
-          </button>
-        </div>
-      </div>
+        Check off work as you go. Switch to Edit to paste, split, or undo a step.
+      </p>
 
-      <div
-        v-if="setupOpen && setup"
-        class="task-setup card"
+      <form
+        v-if="mode === 'edit'"
+        class="task-compose card"
+        @submit.prevent="submitDraft"
       >
-        <h2>Connect dispatcher texts</h2>
-        <p class="task-setup-lead">
-          Your boss texts you the day’s work. iPhone Shortcuts or an Android automation
-          forwards those SMS messages here. We keep lines with pickup, drop-off, or
-          “work for tomorrow” (including the misspelling <i>tommorow</i>).
-        </p>
-
-        <div
-          class="view-toggle"
-          role="tablist"
-          aria-label="Phone setup"
-        >
-          <button
-            type="button"
-            role="tab"
-            :aria-selected="guide === 'iphone'"
-            :class="{ on: guide === 'iphone' }"
-            @click="guide = 'iphone'"
-          >
-            iPhone
-          </button>
-          <button
-            type="button"
-            role="tab"
-            :aria-selected="guide === 'android'"
-            :class="{ on: guide === 'android' }"
-            @click="guide = 'android'"
-          >
-            Android
-          </button>
-        </div>
-
-        <ol
-          v-if="guide === 'iphone'"
-          class="task-steps"
-        >
-          <li>
-            Open the <b>Shortcuts</b> app (built in on iPhone).
-          </li>
-          <li>
-            Tap <b>Automation</b>, then <b>+</b>, then <b>Create Personal Automation</b>.
-          </li>
-          <li>
-            Choose <b>Message</b> → <b>Message Received</b>. Optionally set Sender to your dispatcher so only their texts forward.
-          </li>
-          <li>
-            Add action <b>Get Contents of URL</b>. Paste the webhook URL below.
-          </li>
-          <li>
-            Method <b>POST</b>. Headers: <span class="mono">Content-Type: application/json</span>.
-            Request body JSON with keys <span class="mono">text</span> (the message) and
-            <span class="mono">from</span> (the sender).
-          </li>
-          <li>
-            Tap Next. Turn <b>Ask Before Running</b> off, then Don’t Notify, then Done.
-            iOS may ask you to confirm the first few runs.
-          </li>
-        </ol>
-
-        <ol
-          v-else
-          class="task-steps"
-        >
-          <li>
-            Install <b>MacroDroid</b> or <b>Tasker</b> and grant SMS permission.
-          </li>
-          <li>
-            <b>MacroDroid:</b> Trigger = SMS Received (optionally from your dispatcher).
-            Action = HTTP Request, method POST, URL = the webhook below, content type JSON,
-            body <span class="mono">{"text":"[sms_message]","from":"[sms_number]"}</span>.
-          </li>
-          <li>
-            <b>Tasker:</b> Profile → Event → Phone → Received Text. Task → HTTP Request POST
-            with body JSON using <span class="mono">%SMSRB</span> (text) and
-            <span class="mono">%SMSRF</span> (sender).
-          </li>
-          <li>
-            Save the macro and send a test from another phone.
-          </li>
-        </ol>
-
-        <div class="task-copy-block">
-          <span class="eyebrow">Webhook URL</span>
-          <code class="task-copy-value">{{ setup.webhookUrl }}</code>
-          <button
-            type="button"
-            class="btn-ghost"
-            @click="copyValue('url', setup.webhookUrl)"
-          >
-            {{ copyState.url === 'copied' ? '✓ Copied' : 'Copy URL' }}
-          </button>
-        </div>
-
-        <div class="task-copy-block">
-          <span class="eyebrow">JSON body</span>
-          <pre class="task-copy-value">{{ jsonBody }}</pre>
-          <button
-            type="button"
-            class="btn-ghost"
-            @click="copyValue('json', jsonBody)"
-          >
-            {{ copyState.json === 'copied' ? '✓ Copied' : 'Copy JSON' }}
-          </button>
-        </div>
-
-        <div class="task-test">
-          <h3>Test that it works</h3>
-          <ol class="task-steps">
-            <li>
-              Copy the test phrase
-              <code class="mono">{{ setup.testPhrase }}</code>
-              and send it in a text that your automation will forward — from another phone,
-              or to yourself if the automation is not sender-filtered.
-            </li>
-            <li>
-              Wait a few seconds, then tap <b>Check now</b>. This screen looks for that phrase
-              on the webhook. A green “Forwarding confirmed” means Shortcuts or Android is wired.
-            </li>
-          </ol>
-          <div class="task-copy-block">
-            <span class="eyebrow">Test phrase</span>
-            <code class="task-copy-value">{{ setup.testPhrase }}</code>
-            <button
-              type="button"
-              class="btn-ghost"
-              @click="copyValue('phrase', setup.testPhrase)"
-            >
-              {{ copyState.phrase === 'copied' ? '✓ Copied' : 'Copy phrase' }}
-            </button>
-          </div>
-          <div class="task-test-actions">
-            <button
-              type="button"
-              class="btn-dark"
-              :disabled="checking"
-              @click="checkNow"
-            >
-              {{ checking ? 'Checking…' : 'Check now' }}
-            </button>
-            <button
-              type="button"
-              class="btn-ghost"
-              :disabled="pinging"
-              @click="pingWebhook"
-            >
-              {{ pinging ? 'Pinging…' : 'Check the link only' }}
-            </button>
-          </div>
-          <p
-            v-if="testResult"
-            class="task-test-result"
-            :class="{ ok: setup?.tested }"
-            role="status"
-          >
-            {{ testResult }}
+        <label
+          class="sr-only"
+          for="task-blob"
+        >Paste today’s work</label>
+        <textarea
+          id="task-blob"
+          v-model="draft"
+          class="task-compose-input"
+          rows="4"
+          placeholder="Paste the container work here. Enter turns each line into a checked step."
+          autocomplete="off"
+          @keydown.enter="onDraftEnter"
+        />
+        <div class="task-compose-bar">
+          <p class="field-hint mb-0">
+            {{ draftStepCount ? `${draftStepCount} step${draftStepCount === 1 ? '' : 's'}` : 'Enter formats steps · Shift+Enter new line' }}
           </p>
-          <p class="field-hint">
-            “Check the link only” POSTs the test phrase from this app. That proves the URL is
-            reachable, not that Messages are forwarding. Use Check now after a real SMS for the
-            full test.
-          </p>
+          <button
+            class="btn-dark"
+            type="submit"
+            :disabled="adding || !draft.trim()"
+          >
+            {{ adding ? 'Adding…' : 'Add steps' }}
+          </button>
         </div>
-
-        <button
-          type="button"
-          class="btn-ghost task-rotate"
-          @click="confirmRotate = true"
-        >
-          Rotate webhook link
-        </button>
-      </div>
+      </form>
 
       <div class="section-label">
         <span>Today</span>
         <span v-if="todayTasks.length">{{ todayTasks.length }}</span>
       </div>
-      <DispatchTaskCard
+      <article
         v-for="task in todayTasks"
-        :id="task.id"
         :key="task.id"
-        :title="task.title"
-        :raw-text="task.rawText"
-        :sender="task.sender"
-        :received-at="task.receivedAt"
-        :work-date="task.workDate"
-        :kind="task.kind"
-        :status="task.status"
-        :trip-id="task.tripId"
-        actions
-        @done="patchTask(task.id, 'DONE')"
-        @dismiss="patchTask(task.id, 'DISMISSED')"
-      />
+        class="task-card task-card-list"
+        :class="{ done: task.status === 'DONE' }"
+      >
+        <div class="task-card-top">
+          <StatusChip
+            :variant="task.status === 'DONE' ? 'ok' : 'warn'"
+            :label="task.status === 'DONE' ? 'Done' : 'Open'"
+          />
+          <span class="task-card-when">{{ formatWorkDate(task.workDate) }}</span>
+        </div>
+        <TaskChecklist
+          :steps="task.steps"
+          :mode="mode"
+          @change="(steps, immediate) => persistSteps(task.id, steps, immediate)"
+        />
+        <div
+          v-if="mode === 'edit'"
+          class="task-card-actions"
+        >
+          <button
+            type="button"
+            class="btn-ghost"
+            @click="patchTask(task.id, 'DISMISSED')"
+          >
+            Remove
+          </button>
+        </div>
+      </article>
       <EmptyState
         v-if="!todayTasks.length"
         glyph="☰"
-        title="No tasks for today"
-        description="When a dispatcher text matches pickup, drop-off, or work for today, it lands here."
+        title="No steps yet"
+        :description="mode === 'edit'
+          ? 'Paste the dispatcher text above, then press Enter to break it into checkboxes.'
+          : 'Switch to Edit to paste today’s container work.'"
       />
 
       <template v-if="upcomingTasks.length">
@@ -439,47 +395,189 @@ const setupStateLabel = computed(() => {
           <span>Upcoming</span>
           <span>{{ upcomingTasks.length }}</span>
         </div>
-        <DispatchTaskCard
+        <article
           v-for="task in upcomingTasks"
-          :id="task.id"
           :key="task.id"
-          :title="task.title"
-          :raw-text="task.rawText"
-          :sender="task.sender"
-          :received-at="task.receivedAt"
-          :work-date="task.workDate"
-          :kind="task.kind"
-          :status="task.status"
-          :trip-id="task.tripId"
-          actions
-          @done="patchTask(task.id, 'DONE')"
-          @dismiss="patchTask(task.id, 'DISMISSED')"
-        />
+          class="task-card task-card-list"
+        >
+          <div class="task-card-top">
+            <StatusChip
+              variant="idle"
+              :label="formatWorkDate(task.workDate)"
+            />
+          </div>
+          <TaskChecklist
+            :steps="task.steps"
+            :mode="mode"
+            @change="(steps, immediate) => persistSteps(task.id, steps, immediate)"
+          />
+        </article>
       </template>
 
       <template v-if="earlierTasks.length">
         <div class="section-label">
           <span>Earlier</span>
         </div>
-        <DispatchTaskCard
+        <article
           v-for="task in earlierTasks"
-          :id="task.id"
           :key="task.id"
-          :title="task.title"
-          :raw-text="task.rawText"
-          :sender="task.sender"
-          :received-at="task.receivedAt"
-          :work-date="task.workDate"
-          :kind="task.kind"
-          :status="task.status"
-          :trip-id="task.tripId"
-          compact
-          actions
-          @done="patchTask(task.id, 'DONE')"
-          @dismiss="patchTask(task.id, 'DISMISSED')"
-        />
+          class="task-card task-card-list compact"
+        >
+          <div class="task-card-top">
+            <StatusChip
+              :variant="task.status === 'DONE' ? 'ok' : 'idle'"
+              :label="formatWorkDate(task.workDate)"
+            />
+          </div>
+          <TaskChecklist
+            :steps="task.steps"
+            :mode="mode"
+            @change="(steps, immediate) => persistSteps(task.id, steps, immediate)"
+          />
+        </article>
       </template>
+
+      <button
+        type="button"
+        class="task-sms-link"
+        @click="setupOpen = true"
+      >
+        <span>{{ setupStateLabel }}</span>
+        <span>{{ setup?.tested ? 'Connected' : 'Optional setup' }}</span>
+      </button>
     </template>
+
+    <BottomSheet
+      :open="setupOpen"
+      title="SMS forwarding"
+      @close="setupOpen = false"
+    >
+      <p
+        v-if="setup"
+        class="text-sm text-[var(--color-ink-700)]"
+      >
+        Optional. Forward dispatcher texts from iPhone Shortcuts or Android. You can still paste
+        work by hand on this page.
+      </p>
+
+      <div
+        v-if="setup"
+        class="view-toggle mt-4"
+        role="tablist"
+        aria-label="Phone setup"
+      >
+        <button
+          type="button"
+          role="tab"
+          :aria-selected="guide === 'iphone'"
+          :class="{ on: guide === 'iphone' }"
+          @click="guide = 'iphone'"
+        >
+          iPhone
+        </button>
+        <button
+          type="button"
+          role="tab"
+          :aria-selected="guide === 'android'"
+          :class="{ on: guide === 'android' }"
+          @click="guide = 'android'"
+        >
+          Android
+        </button>
+      </div>
+
+      <ol
+        v-if="guide === 'iphone'"
+        class="task-steps"
+      >
+        <li>Open Shortcuts → Automation → Create Personal Automation → Message Received.</li>
+        <li>Add Get Contents of URL. Paste the webhook. Method POST, JSON body keys text and from.</li>
+        <li>Turn Ask Before Running off, then Done.</li>
+      </ol>
+      <ol
+        v-else
+        class="task-steps"
+      >
+        <li>MacroDroid or Tasker: SMS Received → HTTP POST to the webhook as JSON { text, from }.</li>
+        <li>Grant SMS permission and send a test from another phone.</li>
+      </ol>
+
+      <div
+        v-if="setup"
+        class="task-copy-block"
+      >
+        <span class="eyebrow">Webhook URL</span>
+        <code class="task-copy-value">{{ setup.webhookUrl }}</code>
+        <button
+          type="button"
+          class="btn-ghost"
+          @click="copyValue('url', setup.webhookUrl)"
+        >
+          {{ copyState.url === 'copied' ? '✓ Copied' : 'Copy URL' }}
+        </button>
+      </div>
+      <div
+        v-if="setup"
+        class="task-copy-block"
+      >
+        <span class="eyebrow">JSON body</span>
+        <pre class="task-copy-value">{{ jsonBody }}</pre>
+        <button
+          type="button"
+          class="btn-ghost"
+          @click="copyValue('json', jsonBody)"
+        >
+          {{ copyState.json === 'copied' ? '✓ Copied' : 'Copy JSON' }}
+        </button>
+      </div>
+      <div
+        v-if="setup"
+        class="task-copy-block"
+      >
+        <span class="eyebrow">Test phrase</span>
+        <code class="task-copy-value">{{ setup.testPhrase }}</code>
+        <button
+          type="button"
+          class="btn-ghost"
+          @click="copyValue('phrase', setup.testPhrase)"
+        >
+          {{ copyState.phrase === 'copied' ? '✓ Copied' : 'Copy phrase' }}
+        </button>
+      </div>
+      <div class="task-test-actions">
+        <button
+          type="button"
+          class="btn-dark"
+          :disabled="checking"
+          @click="checkNow"
+        >
+          {{ checking ? 'Checking…' : 'Check now' }}
+        </button>
+        <button
+          type="button"
+          class="btn-ghost"
+          :disabled="pinging"
+          @click="pingWebhook"
+        >
+          {{ pinging ? 'Pinging…' : 'Check the link only' }}
+        </button>
+      </div>
+      <p
+        v-if="testResult"
+        class="task-test-result"
+        :class="{ ok: setup?.tested }"
+        role="status"
+      >
+        {{ testResult }}
+      </p>
+      <button
+        type="button"
+        class="btn-ghost task-rotate"
+        @click="confirmRotate = true"
+      >
+        Rotate webhook link
+      </button>
+    </BottomSheet>
 
     <BottomSheet
       :open="confirmRotate"
@@ -487,8 +585,7 @@ const setupStateLabel = computed(() => {
       @close="confirmRotate = false"
     >
       <p class="text-sm text-[var(--color-ink-500)]">
-        The old URL stops working. Update the URL in Shortcuts or Android after this, then send
-        the test phrase again.
+        The old URL stops working. Update Shortcuts or Android after this, then send the test phrase again.
       </p>
       <div class="sheet-actions">
         <button

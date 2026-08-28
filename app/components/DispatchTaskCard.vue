@@ -2,7 +2,6 @@
 import {
   DISPATCH_TASK_KIND_LABELS,
   DISPATCH_TASK_STATUS_CHIP,
-  DISPATCH_TASK_STATUS_LABELS,
 } from '#shared/utils/domain'
 import type { DispatchTaskKind, DispatchTaskStatus } from '#shared/utils/domain'
 
@@ -16,6 +15,7 @@ const props = defineProps<{
   kind: DispatchTaskKind
   status: DispatchTaskStatus
   tripId?: string | null
+  steps?: Array<{ id: string, text: string, done: boolean }>
   compact?: boolean
   actions?: boolean
 }>()
@@ -25,6 +25,8 @@ const emit = defineEmits<{
   dismiss: []
 }>()
 
+const doneCount = computed(() => (props.steps ?? []).filter(step => step.done).length)
+const stepCount = computed(() => props.steps?.length ?? 0)
 const kindLabel = computed(() => DISPATCH_TASK_KIND_LABELS[props.kind])
 const canStartPickup = computed(() =>
   props.actions
@@ -58,7 +60,7 @@ const canStartPickup = computed(() =>
     <p class="task-card-meta">
       <span>{{ formatWorkDate(workDate) }}</span>
       <span v-if="sender">From {{ sender }}</span>
-      <span>{{ DISPATCH_TASK_STATUS_LABELS[status] }}</span>
+      <span v-if="stepCount">{{ doneCount }}/{{ stepCount }} steps</span>
     </p>
     <div
       v-if="actions && status !== 'DISMISSED'"
