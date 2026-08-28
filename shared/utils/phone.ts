@@ -55,3 +55,10 @@ export function toE164(value: string | null | undefined): string {
   if (digits.length !== 10) return raw
   return `+1${digits}`
 }
+
+/** True when both values canonicalise to the same North American number. */
+export function phonesEqual(a: string | null | undefined, b: string | null | undefined): boolean {
+  const left = toE164(a)
+  const right = toE164(b)
+  return Boolean(left && right && left === right)
+}
