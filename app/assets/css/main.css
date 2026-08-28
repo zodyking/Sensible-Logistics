@@ -1595,6 +1595,10 @@
     color: var(--color-navy-900);
   }
 
+  .capture-flash:disabled {
+    opacity: 0.45;
+  }
+
   .capture-stage {
     position: absolute;
     inset: 0;

@@ -239,12 +239,13 @@ async function onLibrary(event: Event) {
         />
         <b>{{ previewUrl ? 'Reading photo' : title }}</b>
         <button
-          v-if="!previewUrl && torchAvailable"
+          v-if="!previewUrl"
           type="button"
           class="capture-iconbtn capture-flash"
           :class="{ on: torchOn }"
+          :disabled="!torchAvailable"
           :aria-pressed="torchOn"
-          :aria-label="torchOn ? 'Turn flash off' : 'Turn flash on'"
+          :aria-label="torchOn ? 'Turn flash off' : (torchAvailable ? 'Turn flash on' : 'Flash is not available on this camera')"
           @click="toggleTorch"
         >
           Flash
