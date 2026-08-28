@@ -123,7 +123,7 @@ async function signOut() {
         </div>
         <div class="row-main">
           <b>Settings</b>
-          <small>Profile, truck, notifications</small>
+          <small>Name, email, password, and phone</small>
         </div>
         <div
           class="row-end"

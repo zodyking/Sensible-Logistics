@@ -14,7 +14,7 @@ const tabs = [
   { to: '/pickups', label: 'Trips', icon: '⇄', match: (p: string) => p.startsWith('/pickups') || p.startsWith('/trips') },
   { to: '/timecard', label: 'Time', icon: 'time', match: (p: string) => p.startsWith('/timecard'), fab: true },
   { to: '/containers', label: 'Containers', icon: '▦', match: (p: string) => p.startsWith('/containers') || (/^\/locations\/[^/]+/.test(p) && !p.startsWith('/locations/new')) },
-  { to: '/more', label: 'More', icon: '≡', match: (p: string) => p.startsWith('/more') || p.startsWith('/scan') || p === '/locations' || p.startsWith('/locations/new') },
+  { to: '/more', label: 'More', icon: '≡', match: (p: string) => p.startsWith('/more') || p.startsWith('/scan') || p === '/locations' || p.startsWith('/locations/new') || p === '/settings' || p.startsWith('/documents') },
 ]
 </script>
 
