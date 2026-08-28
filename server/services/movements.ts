@@ -6,14 +6,19 @@ import {
   containerPlacements,
   containers,
   drivers,
+  locations,
   trips,
 } from '../database/schema'
-import type { Container, Trip } from '../database/schema'
+import type { Container, Location, Trip } from '../database/schema'
 import { claimContainerForPickup, nextTripReference, releasePickupClaim } from './activePool'
 import { eventExists, recordEvent } from './events'
 import type { AuthContext } from '../utils/session'
 import { normalizeContainerNumber } from '#shared/utils/iso6346'
-import type { TripKind } from '#shared/utils/domain'
+import type { ContainerStatus, TripKind } from '#shared/utils/domain'
+import {
+  containerStatusAfterDropoff,
+  dropoffCompletesServiceLife,
+} from '#shared/utils/service-life'
 
 /**
  * Driver-owned pickup and drop-off orchestration (spec 6.2, 6.3).
@@ -142,6 +147,7 @@ export async function startPickup(
     })
 
     const previousState = claim.outcome === 'REACTIVATE' ? 'INACTIVE' : claim.container.activePoolState
+    const previousContainerStatus = claim.container.containerStatus
 
     const reference = await nextTripReference(tx, auth.companyId)
     const [trip] = await tx
@@ -161,23 +167,6 @@ export async function startPickup(
       throw createError({ statusCode: 500, statusMessage: 'Could not open the movement.' })
     }
 
-    if (claim.outcome !== 'REUSE_ACTIVE') {
-      await recordEvent(tx, {
-        id: crypto.randomUUID(),
-        companyId: auth.companyId,
-        containerId: claim.container.id,
-        eventType: 'ACTIVATED',
-        actorUserId: auth.userId,
-        actorDriverId: auth.driverId,
-        tripId: trip.id,
-        locationId: input.originLocationId,
-        payload: { outcome: claim.outcome },
-        notes: claim.outcome === 'REACTIVATE'
-          ? 'Existing historical record returned to the active pool.'
-          : 'New permanent container record created.',
-      })
-    }
-
     await recordEvent(
       tx,
       {
@@ -191,7 +180,7 @@ export async function startPickup(
         locationId: input.originLocationId,
         gps: input.gps,
         // Recorded so a cancellation can restore the exact prior pool state.
-        payload: { previousState, outcome: claim.outcome, reference },
+        payload: { previousState, previousContainerStatus, outcome: claim.outcome, reference },
       },
       { activeMovementId: trip.id },
     )
@@ -379,51 +368,16 @@ export async function confirmPickup(
         activeMovementId: trip.id,
         isLoaded: input.isLoaded,
         sealNumber: input.sealNumber ?? null,
+        containerStatus: 'IN_TRANSIT',
       },
     )
 
     if (input.chassisId) {
-      await recordEvent(tx, {
-        id: crypto.randomUUID(),
-        companyId: auth.companyId,
-        containerId: trip.containerId,
-        eventType: 'CHASSIS_ATTACH',
-        occurredAt: now,
-        actorUserId: auth.userId,
-        actorDriverId: auth.driverId,
-        tripId: trip.id,
-        chassisId: input.chassisId,
-      })
-
       await tx
         .update(chassisTable)
         .set({ currentContainerId: trip.containerId, status: 'IN_USE', updatedAt: now })
         .where(and(eq(chassisTable.id, input.chassisId), eq(chassisTable.companyId, auth.companyId)))
     }
-
-    await recordEvent(tx, {
-      id: crypto.randomUUID(),
-      companyId: auth.companyId,
-      containerId: trip.containerId,
-      eventType: input.isLoaded ? 'LOADED' : 'EMPTIED',
-      occurredAt: now,
-      actorUserId: auth.userId,
-      actorDriverId: auth.driverId,
-      tripId: trip.id,
-    })
-
-    await recordEvent(tx, {
-      id: crypto.randomUUID(),
-      companyId: auth.companyId,
-      containerId: trip.containerId,
-      eventType: 'DEPARTED',
-      occurredAt: now,
-      actorUserId: auth.userId,
-      actorDriverId: auth.driverId,
-      tripId: trip.id,
-      locationId: trip.originLocationId,
-      gps: input.gps,
-    })
 
     // The pickup vacates the origin slot, so any live placement is closed out.
     await tx
@@ -491,20 +445,6 @@ async function confirmBareChassisPickup(
     notes: input.notes ?? null,
   })
 
-  await recordEvent(tx, {
-    id: crypto.randomUUID(),
-    companyId: auth.companyId,
-    containerId: null,
-    eventType: 'DEPARTED',
-    occurredAt: now,
-    actorUserId: auth.userId,
-    actorDriverId: auth.driverId,
-    tripId: trip.id,
-    locationId: trip.originLocationId,
-    chassisId,
-    gps: input.gps,
-  })
-
   await tx
     .update(chassisTable)
     .set({ status: 'IN_USE', currentContainerId: null, updatedAt: now })
@@ -568,7 +508,7 @@ export async function cancelPickup(
         id: input.eventId,
         companyId: auth.companyId,
         containerId: null,
-        eventType: trip.status === 'PICKUP_IN_PROGRESS' ? 'PICKUP_CANCELLED' : 'STATUS_CHANGE',
+        eventType: 'PICKUP_CANCELLED',
         actorUserId: auth.userId,
         actorDriverId: auth.driverId,
         tripId: trip.id,
@@ -610,34 +550,36 @@ export async function cancelPickup(
       return { trip: cancelledBare! }
     }
 
-    const previousState = await previousPoolState(tx, auth.companyId, trip.id)
+    const previous = await previousPickupState(tx, auth.companyId, trip.id)
 
     await recordEvent(tx, {
       id: input.eventId,
       companyId: auth.companyId,
       containerId: trip.containerId,
-      eventType: trip.status === 'PICKUP_IN_PROGRESS' ? 'PICKUP_CANCELLED' : 'STATUS_CHANGE',
+      eventType: 'PICKUP_CANCELLED',
       actorUserId: auth.userId,
       actorDriverId: auth.driverId,
       tripId: trip.id,
       locationId: restoreLocationId,
       payload: {
-        restoredState: previousState,
+        restoredState: previous.activePoolState,
+        restoredContainerStatus: previous.containerStatus,
         cancelledFrom: trip.status,
       },
       notes: input.reason ?? 'Driver cancelled the trip.',
     }, trip.status === 'PICKUP_IN_PROGRESS'
       ? undefined
       : {
-          activePoolState: previousState === 'INACTIVE' ? 'AT_LOCATION' : previousState,
+          activePoolState: previous.activePoolState === 'INACTIVE' ? 'AT_LOCATION' : previous.activePoolState,
           currentDriverId: null,
           currentLocationId: restoreLocationId,
           activeMovementId: null,
           currentChassisId: null,
+          containerStatus: previous.containerStatus,
         })
 
     if (trip.status === 'PICKUP_IN_PROGRESS') {
-      await releasePickupClaim(tx, auth.companyId, trip.containerId, previousState)
+      await releasePickupClaim(tx, auth.companyId, trip.containerId, previous.activePoolState, previous.containerStatus)
     }
 
     if (trip.chassisId) {
@@ -680,8 +622,11 @@ export interface CompleteDropoffInput {
   /** Optional exact yard placement. TODO(Phase 2): Konva editor supplies these. */
   placement?: { x: number, y: number, rotation: number, zoneId?: string | null, slotCode?: string | null } | null
   retainChassis: boolean
-  /** Removes the container from the active pool entirely. */
-  isFinalRelease: boolean
+  /**
+   * Ignored by the server. A service life completes only when the drop-off
+   * location is a marine terminal or rail yard.
+   */
+  isFinalRelease?: boolean
   notes?: string | null
   gps?: { latitude: number, longitude: number, accuracyMeters?: number } | null
 }
@@ -713,19 +658,9 @@ export async function completeDropoff(
 
     const now = new Date()
     const detachChassis = Boolean(trip.chassisId) && !input.retainChassis
-
-    await recordEvent(tx, {
-      id: crypto.randomUUID(),
-      companyId: auth.companyId,
-      containerId: trip.containerId,
-      eventType: 'ARRIVED',
-      occurredAt: now,
-      actorUserId: auth.userId,
-      actorDriverId: auth.driverId,
-      tripId: trip.id,
-      locationId: input.destinationLocationId,
-      gps: input.gps,
-    })
+    const destination = await loadLocation(tx, auth.companyId, input.destinationLocationId)
+    const isFinalRelease = dropoffCompletesServiceLife(destination.type)
+    const containerStatus = containerStatusAfterDropoff(destination.type)
 
     await recordEvent(
       tx,
@@ -742,32 +677,26 @@ export async function completeDropoff(
         chassisId: input.retainChassis ? trip.chassisId : null,
         gps: input.gps,
         yardPosition: input.placement ?? null,
-        payload: { isFinalRelease: input.isFinalRelease, retainChassis: input.retainChassis },
+        payload: {
+          isFinalRelease,
+          retainChassis: input.retainChassis,
+          locationType: destination.type,
+          containerStatus,
+        },
         notes: input.notes ?? null,
       },
       {
-        activePoolState: input.isFinalRelease ? 'INACTIVE' : 'AT_LOCATION',
+        activePoolState: isFinalRelease ? 'INACTIVE' : 'AT_LOCATION',
         currentDriverId: null,
         currentLocationId: input.destinationLocationId,
         activeMovementId: null,
         currentChassisId: input.retainChassis ? trip.chassisId : null,
-        releasedAt: input.isFinalRelease ? now : null,
+        releasedAt: isFinalRelease ? now : null,
+        containerStatus,
       },
     )
 
     if (detachChassis && trip.chassisId) {
-      await recordEvent(tx, {
-        id: crypto.randomUUID(),
-        companyId: auth.companyId,
-        containerId: trip.containerId,
-        eventType: 'CHASSIS_DETACH',
-        occurredAt: now,
-        actorUserId: auth.userId,
-        actorDriverId: auth.driverId,
-        tripId: trip.id,
-        chassisId: trip.chassisId,
-      })
-
       await tx
         .update(chassisTable)
         .set({
@@ -777,21 +706,6 @@ export async function completeDropoff(
           updatedAt: now,
         })
         .where(and(eq(chassisTable.id, trip.chassisId), eq(chassisTable.companyId, auth.companyId)))
-    }
-
-    if (input.isFinalRelease) {
-      await recordEvent(tx, {
-        id: crypto.randomUUID(),
-        companyId: auth.companyId,
-        containerId: trip.containerId,
-        eventType: 'RELEASED',
-        occurredAt: now,
-        actorUserId: auth.userId,
-        actorDriverId: auth.driverId,
-        tripId: trip.id,
-        locationId: input.destinationLocationId,
-        notes: 'Final release from the tracked network.',
-      })
     }
 
     if (input.placement) {
@@ -824,7 +738,7 @@ export async function completeDropoff(
         status: 'COMPLETED',
         destinationLocationId: input.destinationLocationId,
         chassisId: input.retainChassis ? trip.chassisId : null,
-        isFinalRelease: input.isFinalRelease,
+        isFinalRelease,
         droppedOffAt: now,
         completedAt: now,
         driverNotes: input.notes ?? trip.driverNotes,
@@ -853,6 +767,8 @@ async function completeBareChassisDropoff(
 ): Promise<{ trip: Trip, container: null, replayed: boolean }> {
   const now = new Date()
   const detachChassis = Boolean(trip.chassisId) && !input.retainChassis
+  const destination = await loadLocation(tx, auth.companyId, input.destinationLocationId)
+  const isFinalRelease = dropoffCompletesServiceLife(destination.type)
 
   await recordEvent(tx, {
     id: input.eventId,
@@ -866,7 +782,12 @@ async function completeBareChassisDropoff(
     locationId: input.destinationLocationId,
     chassisId: input.retainChassis ? trip.chassisId : null,
     gps: input.gps,
-    payload: { kind: 'BARE_CHASSIS', retainChassis: input.retainChassis },
+    payload: {
+      kind: 'BARE_CHASSIS',
+      retainChassis: input.retainChassis,
+      locationType: destination.type,
+      isFinalRelease,
+    },
     notes: input.notes ?? null,
   })
 
@@ -888,6 +809,7 @@ async function completeBareChassisDropoff(
       status: 'COMPLETED',
       destinationLocationId: input.destinationLocationId,
       chassisId: input.retainChassis ? trip.chassisId : null,
+      isFinalRelease,
       droppedOffAt: now,
       completedAt: now,
       driverNotes: input.notes ?? trip.driverNotes,
@@ -950,18 +872,6 @@ export async function attachContainerToTrip(
     })
 
     const now = new Date()
-    if (claim.outcome !== 'REUSE_ACTIVE') {
-      await recordEvent(tx, {
-        id: crypto.randomUUID(),
-        companyId: auth.companyId,
-        containerId: claim.container.id,
-        eventType: 'ACTIVATED',
-        actorUserId: auth.userId,
-        actorDriverId: auth.driverId,
-        tripId: trip.id,
-        payload: { outcome: claim.outcome, attachedToBareChassis: true },
-      })
-    }
 
     await recordEvent(
       tx,
@@ -969,13 +879,17 @@ export async function attachContainerToTrip(
         id: input.eventId,
         companyId: auth.companyId,
         containerId: claim.container.id,
-        eventType: 'CHASSIS_ATTACH',
+        eventType: 'PICKUP_CONFIRMED',
         occurredAt: now,
         actorUserId: auth.userId,
         actorDriverId: auth.driverId,
         tripId: trip.id,
         chassisId: trip.chassisId,
-        payload: { previousState: claim.container.activePoolState },
+        payload: {
+          previousState: claim.container.activePoolState,
+          previousContainerStatus: claim.container.containerStatus,
+          attachedToBareChassis: true,
+        },
       },
       {
         activePoolState: 'DRIVER_CUSTODY',
@@ -985,19 +899,9 @@ export async function attachContainerToTrip(
         activeMovementId: trip.id,
         isLoaded: input.isLoaded ?? false,
         sealNumber: input.sealNumber ?? null,
+        containerStatus: 'IN_TRANSIT',
       },
     )
-
-    await recordEvent(tx, {
-      id: crypto.randomUUID(),
-      companyId: auth.companyId,
-      containerId: claim.container.id,
-      eventType: input.isLoaded ? 'LOADED' : 'EMPTIED',
-      occurredAt: now,
-      actorUserId: auth.userId,
-      actorDriverId: auth.driverId,
-      tripId: trip.id,
-    })
 
     await tx
       .update(chassisTable)
@@ -1065,12 +969,12 @@ async function loadOwnedTrip(
   return trip
 }
 
-/** Reads the pool state captured on PICKUP_STARTED so cancel can restore it. */
-async function previousPoolState(
+/** Reads the pool and container status captured on PICKUP_STARTED so cancel can restore them. */
+async function previousPickupState(
   tx: DbExecutor,
   companyId: string,
   tripId: string,
-): Promise<Container['activePoolState']> {
+): Promise<{ activePoolState: Container['activePoolState'], containerStatus: ContainerStatus }> {
   const [event] = await tx
     .select({ payload: containerEvents.payload })
     .from(containerEvents)
@@ -1082,7 +986,28 @@ async function previousPoolState(
     .limit(1)
 
   const previous = event?.payload?.previousState
-  return typeof previous === 'string' ? (previous as Container['activePoolState']) : 'INACTIVE'
+  const previousStatus = event?.payload?.previousContainerStatus
+  return {
+    activePoolState: typeof previous === 'string' ? (previous as Container['activePoolState']) : 'INACTIVE',
+    containerStatus: typeof previousStatus === 'string' ? (previousStatus as ContainerStatus) : 'AVAILABLE',
+  }
+}
+
+async function loadLocation(
+  tx: DbExecutor,
+  companyId: string,
+  locationId: string,
+): Promise<Location> {
+  const [location] = await tx
+    .select()
+    .from(locations)
+    .where(and(eq(locations.id, locationId), eq(locations.companyId, companyId)))
+    .limit(1)
+
+  if (!location) {
+    throw createError({ statusCode: 404, statusMessage: 'Drop-off location not found.' })
+  }
+  return location
 }
 
 /** Resolves the trip/container pair touched by an already-stored event id. */

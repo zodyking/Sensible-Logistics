@@ -182,7 +182,7 @@ async function main() {
     },
     {
       name: 'Medley Distribution Center',
-      type: 'WAREHOUSE' as const,
+      type: 'CUSTOMER' as const,
       addressLine1: '9200 NW 105th Way',
       city: 'Medley',
       state: 'FL',
@@ -194,8 +194,34 @@ async function main() {
       hours: 'Mon–Sat 07:00–19:00',
     },
     {
+      name: 'Coastal Tile Imports',
+      type: 'CUSTOMER' as const,
+      addressLine1: '11800 NW 102nd Place',
+      city: 'Medley',
+      state: 'FL',
+      postalCode: '33178',
+      latitude: '25.8680000',
+      longitude: '-80.3520000',
+      capacity: 12,
+      appointmentRequired: true,
+      hours: 'Mon–Fri 07:00–16:00',
+    },
+    {
+      name: 'FEC Rail Ramp — Hialeah',
+      type: 'RAIL_TERMINAL' as const,
+      addressLine1: '7200 NW 37th Avenue',
+      city: 'Miami',
+      state: 'FL',
+      postalCode: '33147',
+      latitude: '25.8470000',
+      longitude: '-80.2560000',
+      capacity: null,
+      appointmentRequired: true,
+      hours: 'Mon–Sat 06:00–18:00',
+    },
+    {
       name: 'Hialeah Empty Depot',
-      type: 'DEPOT' as const,
+      type: 'COMPANY_YARD' as const,
       addressLine1: '3050 E 11th Avenue',
       city: 'Hialeah',
       state: 'FL',
@@ -219,6 +245,10 @@ async function main() {
 
     if (existing[0]) {
       locationIds[seed.name] = existing[0].id
+      await db
+        .update(locations)
+        .set({ type: seed.type, updatedAt: new Date() })
+        .where(eq(locations.id, existing[0].id))
       continue
     }
 
@@ -254,8 +284,9 @@ async function main() {
 
   const yardId = locationIds['Sensible Yard — Davie']!
   const portId = locationIds['Port Everglades Terminal 3']!
-  const warehouseId = locationIds['Medley Distribution Center']!
   const depotId = locationIds['Hialeah Empty Depot']!
+  const customerId = locationIds['Coastal Tile Imports']!
+  const railId = locationIds['FEC Rail Ramp — Hialeah']!
 
   /* ---- Driver + truck ------------------------------------------ */
   const [driver] = await db
@@ -321,7 +352,7 @@ async function main() {
   /* ---- Containers ----------------------------------------------- */
   type ContainerSeed = Pick<
     schema.NewContainer,
-    'containerType' | 'equipmentType' | 'isLoaded' | 'activePoolState' | 'currentLocationId'
+    'containerType' | 'equipmentType' | 'isLoaded' | 'containerStatus' | 'activePoolState' | 'currentLocationId'
   > & Partial<Pick<
     schema.NewContainer,
     'sealNumber' | 'steamshipLine' | 'commodity' | 'lastFreeDay' | 'customerReference' | 'isReefer' | 'isUrgent'
@@ -333,6 +364,7 @@ async function main() {
       containerType: 'ZIM' as const,
       equipmentType: 'HC_40' as const,
       isLoaded: true,
+      containerStatus: 'AT_YARD' as const,
       activePoolState: 'AT_LOCATION' as const,
       currentLocationId: yardId,
       sealNumber: 'SL-778213',
@@ -345,6 +377,7 @@ async function main() {
       containerType: 'CMA' as const,
       equipmentType: 'DRY_40' as const,
       isLoaded: false,
+      containerStatus: 'AVAILABLE' as const,
       activePoolState: 'AT_LOCATION' as const,
       currentLocationId: depotId,
       steamshipLine: 'CMA CGM',
@@ -354,6 +387,7 @@ async function main() {
       containerType: 'TROPICAL' as const,
       equipmentType: 'REEFER' as const,
       isLoaded: true,
+      containerStatus: 'AVAILABLE' as const,
       activePoolState: 'AT_LOCATION' as const,
       currentLocationId: portId,
       isReefer: true,
@@ -366,9 +400,10 @@ async function main() {
       number: containerNumber('HLXU', '884560'),
       containerType: 'CMA' as const,
       equipmentType: 'DRY_40' as const,
-      isLoaded: true,
+      isLoaded: false,
+      containerStatus: 'LOADING' as const,
       activePoolState: 'AT_LOCATION' as const,
-      currentLocationId: warehouseId,
+      currentLocationId: customerId,
       steamshipLine: 'CMA CGM',
       commodity: 'Packaged goods',
       customerReference: 'PO-44812',
@@ -377,9 +412,10 @@ async function main() {
       number: containerNumber('KOCU', '610233'),
       containerType: 'KING_OCEAN' as const,
       equipmentType: 'DRY_20' as const,
-      isLoaded: true,
+      isLoaded: false,
+      containerStatus: 'RETURNED' as const,
       activePoolState: 'INACTIVE' as const,
-      currentLocationId: null,
+      currentLocationId: railId,
       steamshipLine: 'King Ocean',
     },
   ]
@@ -398,6 +434,7 @@ async function main() {
         containerType: seed.containerType,
         equipmentType: seed.equipmentType,
         isLoaded: seed.isLoaded,
+        containerStatus: seed.containerStatus,
         sealNumber: seed.sealNumber ?? null,
         steamshipLine: seed.steamshipLine ?? null,
         commodity: seed.commodity ?? null,
@@ -413,116 +450,153 @@ async function main() {
       })
       .onConflictDoUpdate({
         target: [containers.companyId, containers.numberNormalized],
-        set: { lastActivityAt: daysAgo(1, 14) },
+        set: {
+          lastActivityAt: daysAgo(1, 14),
+          containerStatus: seed.containerStatus,
+          isLoaded: seed.isLoaded,
+          activePoolState: seed.activePoolState,
+          currentLocationId: seed.currentLocationId,
+        },
       })
       .returning({ id: containers.id })
 
     if (row) containerIds[normalized] = row.id
   }
 
-  /* ---- One completed trip with its event timeline ---------------- */
-  const tripContainerId = containerIds[normalizeContainerNumber(containerSeed[0]!.number)]!
-  const existingTrip = await db
-    .select({ id: trips.id })
-    .from(trips)
-    .where(and(eq(trips.companyId, company.id), eq(trips.reference, 'TRP-1001')))
-    .limit(1)
-
-  if (!existingTrip[0]) {
-    const pickedUpAt = daysAgo(1, 12, 5)
-    const droppedOffAt = daysAgo(1, 14, 40)
+  /* ---- Service-life pickup / drop-off histories ------------------ */
+  async function seedCompletedTrip(input: {
+    reference: string
+    containerId: string
+    chassisId: string | null
+    originId: string
+    destinationId: string
+    pickedUpAt: Date
+    droppedOffAt: Date
+    isLoaded: boolean
+    isFinalRelease: boolean
+    customer?: string
+    notes?: string
+  }) {
+    const existing = await db
+      .select({ id: trips.id })
+      .from(trips)
+      .where(and(eq(trips.companyId, company.id), eq(trips.reference, input.reference)))
+      .limit(1)
+    if (existing[0]) return existing[0].id
 
     const [trip] = await db
       .insert(trips)
       .values({
         companyId: company.id,
-        reference: 'TRP-1001',
+        reference: input.reference,
         driverId: driver.id,
-        containerId: tripContainerId,
-        chassisId: chassisIds[0] ?? null,
-        originLocationId: portId,
-        destinationLocationId: yardId,
+        containerId: input.containerId,
+        chassisId: input.chassisId,
+        originLocationId: input.originId,
+        destinationLocationId: input.destinationId,
         status: 'COMPLETED',
-        isLoaded: true,
-        sealNumber: 'SL-778213',
-        customer: 'Coastal Tile Imports',
-        steamshipLine: 'ZIM',
-        pickedUpAt,
-        droppedOffAt,
-        completedAt: droppedOffAt,
-        driverNotes: 'Gate 3 was backed up roughly 40 minutes.',
+        isLoaded: input.isLoaded,
+        isFinalRelease: input.isFinalRelease,
+        customer: input.customer ?? null,
+        pickedUpAt: input.pickedUpAt,
+        droppedOffAt: input.droppedOffAt,
+        completedAt: input.droppedOffAt,
+        driverNotes: input.notes ?? null,
       })
       .returning()
 
-    if (trip) {
-      await db.insert(containerEvents).values([
-        {
-          id: randomUUID(),
-          companyId: company.id,
-          containerId: tripContainerId,
-          eventType: 'PICKUP_STARTED',
-          occurredAt: daysAgo(1, 11, 48),
-          actorUserId: driverUser.id,
-          actorDriverId: driver.id,
-          source: 'MANUAL',
-          tripId: trip.id,
-          locationId: portId,
-          payload: { previousState: 'INACTIVE', nextState: 'PICKUP_IN_PROGRESS' },
-        },
-        {
-          id: randomUUID(),
-          companyId: company.id,
-          containerId: tripContainerId,
-          eventType: 'PICKUP_CONFIRMED',
-          occurredAt: pickedUpAt,
-          actorUserId: driverUser.id,
-          actorDriverId: driver.id,
-          source: 'MANUAL',
-          tripId: trip.id,
-          locationId: portId,
-          chassisId: chassisIds[0] ?? null,
-          payload: { previousState: 'PICKUP_IN_PROGRESS', nextState: 'DRIVER_CUSTODY', sealNumber: 'SL-778213' },
-        },
-        {
-          id: randomUUID(),
-          companyId: company.id,
-          containerId: tripContainerId,
-          eventType: 'DEPARTED',
-          occurredAt: daysAgo(1, 12, 20),
-          actorDriverId: driver.id,
-          source: 'MANUAL',
-          tripId: trip.id,
-          locationId: portId,
-          payload: {},
-        },
-        {
-          id: randomUUID(),
-          companyId: company.id,
-          containerId: tripContainerId,
-          eventType: 'ARRIVED',
-          occurredAt: daysAgo(1, 14, 25),
-          actorDriverId: driver.id,
-          source: 'MANUAL',
-          tripId: trip.id,
-          locationId: yardId,
-          payload: {},
-        },
-        {
-          id: randomUUID(),
-          companyId: company.id,
-          containerId: tripContainerId,
-          eventType: 'DROPOFF_CONFIRMED',
-          occurredAt: droppedOffAt,
-          actorUserId: driverUser.id,
-          actorDriverId: driver.id,
-          source: 'MANUAL',
-          tripId: trip.id,
-          locationId: yardId,
-          payload: { previousState: 'DRIVER_CUSTODY', nextState: 'AT_LOCATION' },
-        },
-      ])
-    }
+    if (!trip) return null
+
+    await db.insert(containerEvents).values([
+      {
+        id: randomUUID(),
+        companyId: company.id,
+        containerId: input.containerId,
+        eventType: 'PICKUP_CONFIRMED',
+        occurredAt: input.pickedUpAt,
+        actorUserId: driverUser.id,
+        actorDriverId: driver.id,
+        source: 'MANUAL',
+        tripId: trip.id,
+        locationId: input.originId,
+        chassisId: input.chassisId,
+        payload: {},
+      },
+      {
+        id: randomUUID(),
+        companyId: company.id,
+        containerId: input.containerId,
+        eventType: 'DROPOFF_CONFIRMED',
+        occurredAt: input.droppedOffAt,
+        actorUserId: driverUser.id,
+        actorDriverId: driver.id,
+        source: 'MANUAL',
+        tripId: trip.id,
+        locationId: input.destinationId,
+        chassisId: input.chassisId,
+        payload: { isFinalRelease: input.isFinalRelease },
+      },
+    ])
+
+    return trip.id
   }
+
+  const yardContainerId = containerIds[normalizeContainerNumber(containerSeed[0]!.number)]!
+  const loadingContainerId = containerIds[normalizeContainerNumber(containerSeed[3]!.number)]!
+  const returnedContainerId = containerIds[normalizeContainerNumber(containerSeed[4]!.number)]!
+
+  await seedCompletedTrip({
+    reference: 'TRP-1001',
+    containerId: yardContainerId,
+    chassisId: chassisIds[0] ?? null,
+    originId: portId,
+    destinationId: yardId,
+    pickedUpAt: daysAgo(1, 12, 5),
+    droppedOffAt: daysAgo(1, 14, 40),
+    isLoaded: true,
+    isFinalRelease: false,
+    customer: 'Coastal Tile Imports',
+    notes: 'Gate 3 was backed up roughly 40 minutes.',
+  })
+
+  await seedCompletedTrip({
+    reference: 'TRP-1002',
+    containerId: loadingContainerId,
+    chassisId: chassisIds[1] ?? null,
+    originId: portId,
+    destinationId: customerId,
+    pickedUpAt: daysAgo(1, 9, 10),
+    droppedOffAt: daysAgo(1, 11, 25),
+    isLoaded: false,
+    isFinalRelease: false,
+    customer: 'Coastal Tile Imports',
+  })
+
+  await seedCompletedTrip({
+    reference: 'TRP-1003',
+    containerId: returnedContainerId,
+    chassisId: chassisIds[2] ?? null,
+    originId: portId,
+    destinationId: customerId,
+    pickedUpAt: daysAgo(3, 8, 15),
+    droppedOffAt: daysAgo(3, 10, 40),
+    isLoaded: false,
+    isFinalRelease: false,
+    customer: 'Coastal Tile Imports',
+  })
+
+  await seedCompletedTrip({
+    reference: 'TRP-1004',
+    containerId: returnedContainerId,
+    chassisId: chassisIds[2] ?? null,
+    originId: customerId,
+    destinationId: railId,
+    pickedUpAt: daysAgo(2, 13, 5),
+    droppedOffAt: daysAgo(2, 15, 50),
+    isLoaded: true,
+    isFinalRelease: true,
+    customer: 'Coastal Tile Imports',
+  })
 
   /* ---- Timecards: three completed days + today's open tour ------- */
   const timecardSeed = [

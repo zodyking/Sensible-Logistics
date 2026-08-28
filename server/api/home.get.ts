@@ -54,6 +54,7 @@ export default defineEventHandler(async (event) => {
       number: containers.number,
       activePoolState: containers.activePoolState,
       isLoaded: containers.isLoaded,
+      containerStatus: containers.containerStatus,
       lastActivityAt: containers.lastActivityAt,
       locationName: locations.name,
     })

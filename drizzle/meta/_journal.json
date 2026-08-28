@@ -15,6 +15,20 @@
       "when": 1787850000000,
       "tag": "0001_bare_chassis",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1787900000000,
+      "tag": "0002_container_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1787901000000,
+      "tag": "0003_four_location_types",
+      "breakpoints": true
     }
   ]
 }

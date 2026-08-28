@@ -4,6 +4,9 @@ import {
   ACTIVE_POOL_CHIP,
   ACTIVE_POOL_LABELS,
   ACTIVE_POOL_STATES,
+  CONTAINER_STATUS_CHIP,
+  CONTAINER_STATUS_LABELS,
+  CONTAINER_STATUSES,
   CONTAINER_TYPE_LABELS,
   CONTAINER_TYPES,
   CYCLE_LIMITS,
@@ -49,6 +52,10 @@ function expectUnionKeysMatch<T extends string>(
 describe('domain vocabulary integrity', () => {
   it('keeps ACTIVE_POOL_STATES in lockstep with labels and chips', () => {
     expectUnionKeysMatch(ACTIVE_POOL_STATES, ACTIVE_POOL_LABELS, ACTIVE_POOL_CHIP)
+  })
+
+  it('keeps CONTAINER_STATUSES in lockstep with labels and chips', () => {
+    expectUnionKeysMatch(CONTAINER_STATUSES, CONTAINER_STATUS_LABELS, CONTAINER_STATUS_CHIP)
   })
 
   it('keeps CONTAINER_TYPES in lockstep with labels', () => {

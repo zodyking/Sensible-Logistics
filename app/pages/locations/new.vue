@@ -16,15 +16,10 @@ const returnTo = computed(() => {
 })
 
 const DEFAULT_CAPACITY: Record<LocationType, number> = {
+  COMPANY_YARD: 48,
+  CUSTOMER: 6,
   MARINE_TERMINAL: 240,
   RAIL_TERMINAL: 80,
-  CUSTOMER: 6,
-  WAREHOUSE: 40,
-  COMPANY_YARD: 48,
-  DEPOT: 80,
-  REPAIR_SHOP: 8,
-  STAGING: 20,
-  TEMPORARY: 12,
 }
 
 type Step = 'type' | 'name' | 'address' | 'map'

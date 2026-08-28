@@ -11,8 +11,9 @@ import {
   users,
 } from '../../database/schema'
 import { assertTenant, requireAuth } from '../../utils/session'
+import { sliceCurrentServiceLife, summarizeServiceLife } from '#shared/utils/service-life'
 
-/** Container record: identity, current state, custody timeline and documents. */
+/** Container record: identity, current state, current service-life pickups/drop-offs. */
 export default defineEventHandler(async (event) => {
   const auth = await requireAuth(event)
   const id = getRouterParam(event, 'id')
@@ -43,7 +44,7 @@ export default defineEventHandler(async (event) => {
         .limit(1)
     : []
 
-  const timeline = await db
+  const events = await db
     .select({
       id: containerEvents.id,
       eventType: containerEvents.eventType,
@@ -53,7 +54,9 @@ export default defineEventHandler(async (event) => {
       notes: containerEvents.notes,
       payload: containerEvents.payload,
       yardPosition: containerEvents.yardPosition,
+      tripId: containerEvents.tripId,
       locationName: locations.name,
+      locationType: locations.type,
       tripReference: trips.reference,
       actorFirstName: users.firstName,
       actorLastName: users.lastName,
@@ -66,7 +69,10 @@ export default defineEventHandler(async (event) => {
     .leftJoin(chassis, eq(chassis.id, containerEvents.chassisId))
     .where(and(eq(containerEvents.companyId, auth.companyId), eq(containerEvents.containerId, id)))
     .orderBy(desc(containerEvents.occurredAt), desc(containerEvents.createdAt))
-    .limit(200)
+    .limit(400)
+
+  const timeline = sliceCurrentServiceLife(events)
+  const serviceLife = summarizeServiceLife(timeline)
 
   const [placement] = await db
     .select()
@@ -91,6 +97,7 @@ export default defineEventHandler(async (event) => {
     currentChassis: currentChassis ?? null,
     currentDriver: currentDriver ? { id: currentDriver.id, name: `${currentDriver.firstName} ${currentDriver.lastName}` } : null,
     placement: placement ?? null,
+    serviceLife,
     timeline,
     documents: files,
   }

@@ -13,7 +13,7 @@ const schema = z.object({
     slotCode: z.string().trim().max(40).nullish(),
   }).nullish(),
   retainChassis: z.boolean().default(false),
-  isFinalRelease: z.boolean().default(false),
+  isFinalRelease: z.boolean().optional(),
   notes: z.string().trim().max(2000).nullish(),
   gps: z.object({
     latitude: z.number(),

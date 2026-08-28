@@ -32,6 +32,35 @@ export const ACTIVE_POOL_CHIP: Record<ActivePoolState, 'ok' | 'warn' | 'err' | '
   EXCEPTION: 'err',
 }
 
+/**
+ * Operational container status for the current service life — where the box
+ * sits in the marine/rail → yard/customer → marine/rail cycle.
+ */
+export const CONTAINER_STATUSES = [
+  'AVAILABLE',
+  'IN_TRANSIT',
+  'AT_YARD',
+  'LOADING',
+  'RETURNED',
+] as const
+export type ContainerStatus = (typeof CONTAINER_STATUSES)[number]
+
+export const CONTAINER_STATUS_LABELS: Record<ContainerStatus, string> = {
+  AVAILABLE: 'Available',
+  IN_TRANSIT: 'In transit',
+  AT_YARD: 'At yard',
+  LOADING: 'Loading',
+  RETURNED: 'Returned',
+}
+
+export const CONTAINER_STATUS_CHIP: Record<ContainerStatus, 'ok' | 'warn' | 'err' | 'transit' | 'idle'> = {
+  AVAILABLE: 'idle',
+  IN_TRANSIT: 'transit',
+  AT_YARD: 'ok',
+  LOADING: 'warn',
+  RETURNED: 'idle',
+}
+
 /** Business classification required on every container (spec 5.1). */
 export const CONTAINER_TYPES = ['TROPICAL', 'ZIM', 'CMA', 'KING_OCEAN'] as const
 export type ContainerType = (typeof CONTAINER_TYPES)[number]
@@ -225,40 +254,25 @@ export const EVENT_SOURCES = ['MANUAL', 'OCR', 'GEOFENCE', 'IMPORT', 'API', 'ADM
 export type EventSource = (typeof EVENT_SOURCES)[number]
 
 export const LOCATION_TYPES = [
+  'COMPANY_YARD',
+  'CUSTOMER',
   'MARINE_TERMINAL',
   'RAIL_TERMINAL',
-  'CUSTOMER',
-  'WAREHOUSE',
-  'COMPANY_YARD',
-  'DEPOT',
-  'REPAIR_SHOP',
-  'STAGING',
-  'TEMPORARY',
 ] as const
 export type LocationType = (typeof LOCATION_TYPES)[number]
 
 export const LOCATION_TYPE_LABELS: Record<LocationType, string> = {
-  MARINE_TERMINAL: 'Marine terminal',
-  RAIL_TERMINAL: 'Rail terminal',
-  CUSTOMER: 'Customer',
-  WAREHOUSE: 'Warehouse',
-  COMPANY_YARD: 'Company yard',
-  DEPOT: 'Depot',
-  REPAIR_SHOP: 'Repair shop',
-  STAGING: 'Staging area',
-  TEMPORARY: 'Temporary site',
+  COMPANY_YARD: 'Company Yard',
+  CUSTOMER: 'Customer Location',
+  MARINE_TERMINAL: 'Marine Terminal',
+  RAIL_TERMINAL: 'Rail Yard',
 }
 
 export const LOCATION_GLYPH: Record<LocationType, string> = {
+  COMPANY_YARD: '◫',
+  CUSTOMER: '▤',
   MARINE_TERMINAL: '▣',
   RAIL_TERMINAL: '▤',
-  CUSTOMER: '▤',
-  WAREHOUSE: '▦',
-  COMPANY_YARD: '◫',
-  DEPOT: '▩',
-  REPAIR_SHOP: '⚙',
-  STAGING: '▬',
-  TEMPORARY: '◌',
 }
 
 export const TIMECARD_STATUSES = ['OPEN', 'COMPLETED', 'LOCKED'] as const

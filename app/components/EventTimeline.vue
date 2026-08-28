@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { EVENT_GLYPH, EVENT_TYPE_LABELS } from '#shared/utils/domain'
-import type { EventType } from '#shared/utils/domain'
-import { formatChassisNumber } from '#shared/utils/iso6346'
+import type { EventType, LocationType } from '#shared/utils/domain'
+import { formatChassisNumber, formatContainerNumber } from '#shared/utils/iso6346'
+import { SERVICE_RECORD_LABELS, dropoffCompletesServiceLife, isServiceRecordEvent } from '#shared/utils/service-life'
 
 interface TimelineEntry {
   id: string
@@ -11,17 +12,33 @@ interface TimelineEntry {
   notes?: string | null
   source?: string | null
   locationName?: string | null
+  locationType?: LocationType | null
   tripReference?: string | null
   chassisNumber?: string | null
+  containerNumber?: string | null
   actorFirstName?: string | null
   actorLastName?: string | null
 }
 
-const props = defineProps<{ entries: TimelineEntry[] }>()
+const props = withDefaults(defineProps<{
+  entries: TimelineEntry[]
+  /** Pickup/drop-off labels for an equipment service record. */
+  kind?: 'service' | 'default'
+}>(), {
+  kind: 'default',
+})
+
+function title(entry: TimelineEntry) {
+  if (props.kind === 'service' && isServiceRecordEvent(entry.eventType)) {
+    return SERVICE_RECORD_LABELS[entry.eventType]
+  }
+  return EVENT_TYPE_LABELS[entry.eventType] ?? entry.eventType
+}
 
 /** Immutable history reads newest-first; the rail marks the first and last. */
 function nodeClass(entry: TimelineEntry, index: number) {
-  if (entry.eventType === 'RELEASED' || entry.eventType === 'DROPOFF_CONFIRMED') return 'final'
+  if (entry.eventType === 'DROPOFF_CONFIRMED' && dropoffCompletesServiceLife(entry.locationType)) return 'final'
+  if (entry.eventType === 'RELEASED' || (entry.eventType === 'DROPOFF_CONFIRMED' && props.kind !== 'service')) return 'final'
   if (entry.eventType === 'DAMAGE_REPORTED' || entry.eventType === 'PICKUP_CANCELLED') return 'alert'
   if (index === props.entries.length - 1) return 'start'
   return ''
@@ -34,6 +51,7 @@ function meta(entry: TimelineEntry) {
     entry.locationName,
     actor || null,
     entry.chassisNumber ? `Chassis ${formatChassisNumber(entry.chassisNumber) || entry.chassisNumber}` : null,
+    entry.containerNumber ? formatContainerNumber(entry.containerNumber) || entry.containerNumber : null,
     entry.tripReference,
   ].filter(Boolean).join(' · ')
 }
@@ -60,7 +78,7 @@ function isDelayed(entry: TimelineEntry) {
         aria-hidden="true"
       >{{ EVENT_GLYPH[entry.eventType] ?? '•' }}</span>
       <div class="tl-title">
-        {{ EVENT_TYPE_LABELS[entry.eventType] ?? entry.eventType }}
+        {{ title(entry) }}
       </div>
       <div class="tl-meta">
         {{ meta(entry) }}

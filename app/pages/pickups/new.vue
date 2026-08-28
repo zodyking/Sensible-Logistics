@@ -836,7 +836,7 @@ async function skipNotes() {
           {{
             pickupKind === 'BARE_CHASSIS'
               ? 'Confirming records the chassis pickup and departure. You can hang a container on it from Home.'
-              : 'Confirming records the pickup, custody and departure events and moves the container into your custody.'
+              : 'Confirming records the pickup and puts the container in transit on this service life.'
           }}
         </span>
       </p>

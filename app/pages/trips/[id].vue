@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { LOCATION_TYPE_LABELS, TRIP_STATUS_CHIP, TRIP_STATUS_LABELS } from '#shared/utils/domain'
 import { formatChassisNumber, formatContainerNumber } from '#shared/utils/iso6346'
+import { describeDropoffEffect } from '#shared/utils/service-life'
 
 const route = useRoute()
 const tripId = computed(() => String(route.params.id))
@@ -12,7 +13,6 @@ useHead({ title: () => data.value?.trip.reference ?? 'Trip' })
 const showDropoff = ref(false)
 const destinationLocationId = ref<string | null>(null)
 const retainChassis = ref(false)
-const isFinalRelease = ref(false)
 const placeInYard = ref(false)
 const notes = ref('')
 const submitting = ref(false)
@@ -45,6 +45,12 @@ const dropoffStamp = computed(() => data.value?.trip.droppedOffAt ?? data.value?
 
 const durationLabel = computed(() => formatDurationBetween(pickupStamp.value, dropoffStamp.value))
 
+const selectedDropoff = computed(() =>
+  locationData.value?.items.find(item => item.id === destinationLocationId.value) ?? null)
+
+const dropoffHint = computed(() =>
+  selectedDropoff.value ? describeDropoffEffect(selectedDropoff.value.type) : null)
+
 const dropoffTimeLabel = computed(() => {
   if (dropoffStamp.value) return formatDateTime(dropoffStamp.value)
   if (data.value?.trip.status === 'CANCELLED') return 'Cancelled'
@@ -64,7 +70,6 @@ async function completeDropoff() {
         destinationLocationId: destinationLocationId.value,
         placement: placeInYard.value ? { x: 0, y: 0, rotation: 0 } : null,
         retainChassis: retainChassis.value,
-        isFinalRelease: isFinalRelease.value,
         notes: notes.value || null,
       },
     })
@@ -179,8 +184,8 @@ async function completeDropoff() {
       </div>
 
       <NuxtLink
-        v-if="data.container"
-        :to="`/containers/${data.container.id}`"
+        v-if="data.container || data.chassis"
+        :to="data.container ? `/containers/${data.container.id}` : `/chassis/${data.chassis?.id}`"
         class="equip-link"
       >
         <span>
@@ -263,7 +268,7 @@ async function completeDropoff() {
         <input
           v-model="locationSearch"
           type="search"
-          placeholder="Search yards, customers, terminals…"
+          placeholder="Search Company Yard, Customer Location, Marine Terminal, Rail Yard…"
           aria-label="Search drop-off locations"
         >
       </div>
@@ -303,17 +308,12 @@ async function completeDropoff() {
         >
         Keep the chassis attached
       </label>
-      <label
-        v-if="data?.container"
-        class="flex min-h-11 items-center gap-3 text-sm font-semibold"
+      <p
+        v-if="dropoffHint"
+        class="text-sm text-[var(--color-ink-700)]"
       >
-        <input
-          v-model="isFinalRelease"
-          type="checkbox"
-          class="size-5"
-        >
-        Final release from the tracked network
-      </label>
+        {{ dropoffHint }}
+      </p>
 
       <label class="field !mb-0">
         <span>Notes</span>
