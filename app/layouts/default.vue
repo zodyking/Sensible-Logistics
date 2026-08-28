@@ -20,7 +20,7 @@ const tabs: Array<{
   { to: '/pickups', label: 'Trips', icon: 'trips', match: p => p.startsWith('/pickups') || p.startsWith('/trips') },
   { to: '/tasks', label: 'Tasks', fab: true, match: p => p.startsWith('/tasks') || p.startsWith('/timecard') },
   { to: '/containers', label: 'Containers', icon: 'containers', match: p => p.startsWith('/containers') || (/^\/locations\/[^/]+/.test(p) && !p.startsWith('/locations/new')) },
-  { to: '/more', label: 'More', icon: 'more', match: p => p.startsWith('/more') || p.startsWith('/scan') || p === '/locations' || p.startsWith('/locations/new') || p === '/settings' || p.startsWith('/documents') || p.startsWith('/connections') },
+  { to: '/more', label: 'More', icon: 'more', match: p => p.startsWith('/more') || p.startsWith('/scan') || p === '/locations' || p.startsWith('/locations/new') || p === '/settings' || p.startsWith('/documents') || p.startsWith('/connections') || p.startsWith('/reset') },
 ]
 </script>
 

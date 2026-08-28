@@ -220,6 +220,8 @@ export const users = pgTable('users', {
   profilePhotoUrl: text('profile_photo_url'),
   lastLoginAt: utc('last_login_at'),
   disabledAt: utc('disabled_at'),
+  /** Cheat-code unlocks for this user until they enter the same code again. */
+  unlockedFeatures: jsonb('unlocked_features').$type<string[]>().notNull().default([]),
   createdAt: utc('created_at').notNull().defaultNow(),
   updatedAt: utc('updated_at').notNull().defaultNow(),
 }, t => [uniqueIndex('users_email_key').on(sql`lower(${t.email})`)])
