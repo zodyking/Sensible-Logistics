@@ -306,6 +306,7 @@ export interface ConfirmPickupInput {
   eventId: string
   tripId: string
   chassisId?: string | null
+  destinationLocationId?: string | null
   isLoaded: boolean
   sealNumber?: string | null
   notes?: string | null
@@ -348,6 +349,13 @@ export async function confirmPickup(
     if (input.chassisId) {
       await assertChassisAvailable(tx, auth.companyId, input.chassisId, trip.containerId)
     }
+
+    const destinationLocationId = await resolvePickupDestination(
+      tx,
+      auth.companyId,
+      trip,
+      input.destinationLocationId,
+    )
 
     const now = new Date()
     const sealNumber = sealForLoadedContainer(input.isLoaded, input.sealNumber)
@@ -404,6 +412,7 @@ export async function confirmPickup(
       .set({
         status: 'IN_TRANSIT',
         chassisId: input.chassisId ?? null,
+        destinationLocationId: destinationLocationId ?? trip.destinationLocationId,
         isLoaded: input.isLoaded,
         sealNumber,
         pickedUpAt: now,
@@ -437,6 +446,12 @@ async function confirmBareChassisPickup(
   }
 
   await assertChassisAvailable(tx, auth.companyId, chassisId, null)
+  const destinationLocationId = await resolvePickupDestination(
+    tx,
+    auth.companyId,
+    trip,
+    input.destinationLocationId,
+  )
   const now = new Date()
 
   await recordEvent(tx, {
@@ -465,6 +480,7 @@ async function confirmBareChassisPickup(
     .set({
       status: 'IN_TRANSIT',
       chassisId,
+      destinationLocationId: destinationLocationId ?? trip.destinationLocationId,
       isLoaded: false,
       pickedUpAt: now,
       driverNotes: input.notes ?? trip.driverNotes,
@@ -1037,6 +1053,24 @@ async function previousPickupState(
     activePoolState: typeof previous === 'string' ? (previous as Container['activePoolState']) : 'INACTIVE',
     containerStatus: typeof previousStatus === 'string' ? (previousStatus as ContainerStatus) : 'AVAILABLE',
   }
+}
+
+async function resolvePickupDestination(
+  tx: DbExecutor,
+  companyId: string,
+  trip: Trip,
+  destinationLocationId: string | null | undefined,
+): Promise<string | null> {
+  const nextId = destinationLocationId ?? trip.destinationLocationId
+  if (!nextId) return null
+  if (nextId === trip.originLocationId) {
+    throw createError({
+      statusCode: 422,
+      statusMessage: 'Drop-off must be a different location from pickup.',
+    })
+  }
+  await loadLocation(tx, companyId, nextId)
+  return nextId
 }
 
 async function loadLocation(

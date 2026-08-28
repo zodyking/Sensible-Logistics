@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { ACTIVE_POOL_LABELS, CONTAINER_TYPES, CONTAINER_TYPE_LABELS, EQUIPMENT_TYPES, EQUIPMENT_TYPE_LABELS, LOCATION_GLYPH, TRIP_KIND_LABELS } from '#shared/utils/domain'
+import { ACTIVE_POOL_LABELS, CONTAINER_TYPES, CONTAINER_TYPE_LABELS, EQUIPMENT_TYPES, EQUIPMENT_TYPE_LABELS, EQUIPMENT_TYPE_SHORT, LOCATION_GLYPH, TRIP_KIND_LABELS } from '#shared/utils/domain'
 import type { ContainerType, EquipmentType, TripKind } from '#shared/utils/domain'
+import { PICKUP_STEPS, pickupSteps } from '#shared/utils/pickup-steps'
+import type { PickupStep } from '#shared/utils/pickup-steps'
 import {
   formatChassisNumber,
   formatContainerNumber,
@@ -14,22 +16,29 @@ import { driverOcrMessage } from '#shared/utils/ocr-parse'
 
 useHead({ title: 'New pickup' })
 
-type Step = 'kind' | 'location' | 'equipment' | 'containerType' | 'equipmentType' | 'load' | 'seal' | 'notes' | 'confirm'
+type Step = PickupStep
 
 const STEP_TITLES: Record<Step, string> = {
   kind: 'What are you picking up?',
   location: 'Where are you picking up?',
+  inventory: 'Which container?',
   equipment: 'Container and chassis',
   containerType: 'Container type',
   equipmentType: 'Equipment size',
   load: 'Loaded or empty?',
   seal: 'Seal number',
   notes: 'Notes',
+  destination: 'Where are you dropping off?',
   confirm: 'Confirm pickup',
 }
 
 const originLocationId = ref<string | null>(null)
+const destinationLocationId = ref<string | null>(null)
+const originName = ref('')
+const destinationName = ref('')
 const pickupKind = ref<TripKind>('CONTAINER')
+const selectedYardId = ref<string | null>(null)
+const manualEntry = ref(false)
 const rawNumber = ref('')
 const containerType = ref<ContainerType>('TROPICAL')
 const equipmentType = ref<EquipmentType>('HC_40')
@@ -47,40 +56,111 @@ type Resolution = Awaited<ReturnType<typeof resolveNumber>>
 const resolution = ref<Resolution | null>(null)
 
 const needsClassification = computed(() => resolution.value?.outcome === 'CREATE')
+const fromYard = computed(() => Boolean(selectedYardId.value) && !manualEntry.value)
 
-const STEPS = computed<Step[]>(() => {
-  const steps: Step[] = ['kind', 'location', 'equipment']
-  if (pickupKind.value === 'CONTAINER' && needsClassification.value) {
-    steps.push('containerType', 'equipmentType')
-  }
-  if (pickupKind.value === 'CONTAINER') {
-    steps.push('load')
-    if (isLoaded.value) steps.push('seal')
-  }
-  steps.push('notes', 'confirm')
-  return steps
-})
+const STEPS = computed<Step[]>(() => pickupSteps({
+  kind: pickupKind.value,
+  fromYard: fromYard.value,
+  manualEntry: manualEntry.value,
+  needsClassification: needsClassification.value,
+  isLoaded: isLoaded.value,
+}))
 
 const step = ref<Step>('kind')
 const stepIndex = computed(() => Math.max(0, STEPS.value.indexOf(step.value)))
 
 watch(STEPS, (steps) => {
   if (steps.includes(step.value)) return
-  const order: Step[] = ['kind', 'location', 'equipment', 'containerType', 'equipmentType', 'load', 'seal', 'notes', 'confirm']
-  const from = order.indexOf(step.value)
-  const following = order.slice(from + 1).find(name => steps.includes(name))
-  const previous = [...order.slice(0, Math.max(0, from))].reverse().find(name => steps.includes(name))
+  const from = PICKUP_STEPS.indexOf(step.value)
+  const following = PICKUP_STEPS.slice(from + 1).find(name => steps.includes(name))
+  const previous = [...PICKUP_STEPS.slice(0, Math.max(0, from))].reverse().find(name => steps.includes(name))
   step.value = following ?? previous ?? 'kind'
 })
 
 /* --- Data sources ----------------------------------------------- */
 const locationSearch = ref('')
+const destinationSearch = ref('')
+const listSearch = computed(() =>
+  step.value === 'destination' ? destinationSearch.value : locationSearch.value,
+)
 const { data: locationData } = await useFetch('/api/locations', {
-  query: computed(() => ({ q: locationSearch.value || undefined, limit: 50 })),
+  query: computed(() => ({ q: listSearch.value || undefined, limit: 50 })),
+})
+
+const inventory = ref<{
+  containers: Array<{
+    id: string
+    number: string
+    numberNormalized: string | null
+    containerType: ContainerType
+    equipmentType: EquipmentType
+    isLoaded: boolean
+    sealNumber: string | null
+    currentChassisId: string | null
+    chassisNumber: string | null
+    doNotMove: boolean
+    activePoolState: string
+  }>
+  chassis: Array<{
+    id: string
+    number: string
+    provider: string | null
+    sizeCompatibility: string | null
+    status: string
+  }>
+} | null>(null)
+const inventoryPending = ref(false)
+const inventoryQuery = ref('')
+
+watch(originLocationId, async (id) => {
+  selectedYardId.value = null
+  manualEntry.value = false
+  inventoryQuery.value = ''
+  if (destinationLocationId.value && destinationLocationId.value === id) {
+    destinationLocationId.value = null
+  }
+  if (!id) {
+    inventory.value = null
+    return
+  }
+  inventoryPending.value = true
+  try {
+    inventory.value = await $fetch(`/api/locations/${id}/inventory`)
+  }
+  catch (error) {
+    inventory.value = { containers: [], chassis: [] }
+    errorMessage.value = apiErrorMessage(error, 'Could not load equipment at this location.')
+  }
+  finally {
+    inventoryPending.value = false
+  }
+})
+
+const yardContainers = computed(() => {
+  const items = inventory.value?.containers ?? []
+  const needle = inventoryQuery.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
+  if (!needle) return items
+  return items.filter(item =>
+    (item.numberNormalized || item.number).toUpperCase().replace(/[^A-Z0-9]/g, '').includes(needle),
+  )
+})
+
+const yardChassis = computed(() => {
+  const items = inventory.value?.chassis ?? []
+  const needle = inventoryQuery.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
+  if (!needle) return items
+  return items.filter(item =>
+    item.number.toUpperCase().replace(/[^A-Z0-9]/g, '').includes(needle)
+    || (item.provider ?? '').toUpperCase().includes(inventoryQuery.value.trim().toUpperCase()),
+  )
 })
 
 watch(pickupKind, (kind) => {
   STEP_TITLES.equipment = kind === 'BARE_CHASSIS' ? 'Chassis' : 'Container and chassis'
+  STEP_TITLES.inventory = kind === 'BARE_CHASSIS' ? 'Which chassis?' : 'Which container?'
+  selectedYardId.value = null
+  manualEntry.value = false
+  inventoryQuery.value = ''
 })
 
 const route = useRoute()
@@ -181,6 +261,9 @@ async function hydrateFromTrip(id: string) {
     }
     tripId.value = data.trip.id
     originLocationId.value = data.trip.originLocationId
+    destinationLocationId.value = data.trip.destinationLocationId
+    originName.value = data.origin?.name ?? ''
+    destinationName.value = data.destination?.name ?? ''
     pickupKind.value = data.trip.kind === 'BARE_CHASSIS' ? 'BARE_CHASSIS' : 'CONTAINER'
     rawNumber.value = maskContainerInput(data.container?.numberNormalized ?? data.container?.number ?? '')
     if (data.container?.containerType) containerType.value = data.container.containerType
@@ -190,7 +273,8 @@ async function hydrateFromTrip(id: string) {
     isLoaded.value = Boolean(data.trip.isLoaded)
     sealNumber.value = data.trip.sealNumber ?? ''
     notes.value = data.trip.driverNotes ?? ''
-    step.value = 'equipment'
+    manualEntry.value = true
+    step.value = data.trip.destinationLocationId ? 'confirm' : 'destination'
   }
   catch (error) {
     errorMessage.value = apiErrorMessage(error, 'Could not resume that pickup.')
@@ -216,6 +300,7 @@ onMounted(async () => {
 })
 
 const claimStep = computed<Step>(() => {
+  if (fromYard.value) return 'inventory'
   if (pickupKind.value === 'BARE_CHASSIS') return 'equipment'
   return needsClassification.value ? 'equipmentType' : 'equipment'
 })
@@ -225,8 +310,62 @@ const chassisOk = computed(() => {
   return !chassisNumber.value || isCompleteChassisNumber(chassisNumber.value)
 })
 
+type YardContainer = NonNullable<typeof inventory.value>['containers'][number]
+type YardChassis = NonNullable<typeof inventory.value>['chassis'][number]
+
+function selectYardContainer(item: YardContainer) {
+  manualEntry.value = false
+  selectedYardId.value = item.id
+  rawNumber.value = maskContainerInput(item.numberNormalized || item.number)
+  containerType.value = item.containerType
+  equipmentType.value = item.equipmentType
+  isLoaded.value = item.isLoaded
+  sealNumber.value = item.sealNumber ?? ''
+  chassisId.value = item.currentChassisId
+  chassisNumber.value = item.chassisNumber ? maskChassisInput(item.chassisNumber) : ''
+}
+
+function selectYardChassis(item: YardChassis) {
+  manualEntry.value = false
+  selectedYardId.value = item.id
+  chassisId.value = item.id
+  chassisNumber.value = maskChassisInput(item.number)
+}
+
+function enterUnlisted() {
+  selectedYardId.value = null
+  manualEntry.value = true
+  if (pickupKind.value === 'CONTAINER') {
+    rawNumber.value = ''
+    resolution.value = null
+  }
+  else {
+    chassisId.value = null
+    chassisNumber.value = ''
+  }
+  void next()
+}
+
+function chooseOrigin(location: { id: string, name: string }) {
+  originLocationId.value = location.id
+  originName.value = location.name
+}
+
+function chooseDestination(location: { id: string, name: string }) {
+  destinationLocationId.value = location.id
+  destinationName.value = location.name
+}
+
 const originLocation = computed(() =>
   locationData.value?.items.find(item => item.id === originLocationId.value) ?? null,
+)
+
+const destinationLocation = computed(() =>
+  locationData.value?.items.find(item => item.id === destinationLocationId.value) ?? null,
+)
+
+const destinationOptions = computed(() =>
+  (locationData.value?.items ?? []).filter(item => item.id !== originLocationId.value),
 )
 
 const canAdvance = computed(() => {
@@ -235,6 +374,8 @@ const canAdvance = computed(() => {
       return pickupKind.value === 'CONTAINER' || pickupKind.value === 'BARE_CHASSIS'
     case 'location':
       return Boolean(originLocationId.value)
+    case 'inventory':
+      return fromYard.value || manualEntry.value
     case 'equipment':
       if (pickupKind.value === 'BARE_CHASSIS') {
         return chassisOk.value && !readingPhoto.value
@@ -249,10 +390,13 @@ const canAdvance = computed(() => {
     case 'equipmentType':
     case 'load':
     case 'notes':
-    case 'confirm':
       return true
     case 'seal':
       return Boolean(sealNumber.value.trim())
+    case 'destination':
+      return Boolean(destinationLocationId.value) && destinationLocationId.value !== originLocationId.value
+    case 'confirm':
+      return Boolean(destinationLocationId.value)
   }
   return false
 })
@@ -274,6 +418,16 @@ async function attachChassis() {
 async function next() {
   errorMessage.value = ''
 
+  if (step.value === 'inventory' && !manualEntry.value) {
+    try {
+      await attachChassis()
+    }
+    catch (error) {
+      errorMessage.value = apiErrorMessage(error, 'Could not save the chassis.')
+      return
+    }
+  }
+
   if (step.value === 'equipment') {
     try {
       await attachChassis()
@@ -287,6 +441,19 @@ async function next() {
   if (step.value === claimStep.value && !tripId.value) {
     await startPickup()
     if (errorMessage.value) return
+  }
+
+  if (step.value === 'destination' && tripId.value && destinationLocationId.value) {
+    try {
+      await $fetch(`/api/trips/${tripId.value}/destination`, {
+        method: 'POST',
+        body: { destinationLocationId: destinationLocationId.value },
+      })
+    }
+    catch (error) {
+      errorMessage.value = apiErrorMessage(error, 'Could not save the drop-off.')
+      return
+    }
   }
 
   const index = stepIndex.value
@@ -359,6 +526,10 @@ async function confirm() {
     step.value = 'seal'
     return
   }
+  if (!destinationLocationId.value) {
+    errorMessage.value = 'Choose a drop-off location.'
+    return
+  }
   submitting.value = true
   errorMessage.value = ''
 
@@ -368,6 +539,7 @@ async function confirm() {
       body: {
         eventId: crypto.randomUUID(),
         chassisId: chassisId.value,
+        destinationLocationId: destinationLocationId.value,
         isLoaded: pickupKind.value === 'CONTAINER' ? isLoaded.value : false,
         sealNumber: pickupKind.value === 'CONTAINER' && isLoaded.value ? (sealNumber.value.trim() || null) : null,
         notes: notes.value || null,
@@ -556,7 +728,7 @@ function retakePhoto() {
           type="button"
           class="row"
           :aria-pressed="originLocationId === location.id"
-          @click="originLocationId = location.id"
+          @click="chooseOrigin(location)"
         >
           <span
             class="row-ico"
@@ -586,6 +758,126 @@ function retakePhoto() {
         title="No locations match"
         description="Pick an existing yard, terminal, or customer. Add new ones from More → Customers & locations."
       />
+    </template>
+
+    <!-- ── Yard inventory ──────────────────────────────────────── -->
+    <template v-else-if="step === 'inventory'">
+      <p class="note">
+        <span>
+          {{
+            pickupKind === 'BARE_CHASSIS'
+              ? `Chassis already at ${originLocation?.name ?? 'this location'}. Pick one to skip typing the number.`
+              : `Containers already at ${originLocation?.name ?? 'this location'}. Pick one to skip typing and classifying it.`
+          }}
+        </span>
+      </p>
+
+      <div class="searchbar">
+        <span aria-hidden="true">⌕</span>
+        <input
+          v-model="inventoryQuery"
+          type="search"
+          :placeholder="pickupKind === 'BARE_CHASSIS' ? 'Search chassis…' : 'Search containers…'"
+          :aria-label="pickupKind === 'BARE_CHASSIS' ? 'Search chassis' : 'Search containers'"
+        >
+      </div>
+
+      <p
+        v-if="inventoryPending"
+        class="note"
+        role="status"
+      >
+        <span>Loading what’s on site…</span>
+      </p>
+
+      <div
+        v-else-if="pickupKind === 'CONTAINER' && yardContainers.length"
+        class="card rowlist"
+      >
+        <button
+          v-for="item in yardContainers"
+          :key="item.id"
+          type="button"
+          class="row"
+          :aria-pressed="selectedYardId === item.id"
+          @click="selectYardContainer(item)"
+        >
+          <span
+            class="row-ico"
+            aria-hidden="true"
+          >▦</span>
+          <span class="row-main">
+            <b>{{ formatContainerNumber(item.numberNormalized || item.number) }}</b>
+            <small>
+              {{ CONTAINER_TYPE_LABELS[item.containerType] }}
+              · {{ EQUIPMENT_TYPE_SHORT[item.equipmentType] }}
+              · {{ item.isLoaded ? 'Loaded' : 'Empty' }}
+            </small>
+          </span>
+          <span class="row-end">
+            <StatusChip
+              v-if="selectedYardId === item.id"
+              variant="ok"
+              label="Selected"
+            />
+            <span
+              v-else
+              aria-hidden="true"
+            >›</span>
+          </span>
+        </button>
+      </div>
+
+      <div
+        v-else-if="pickupKind === 'BARE_CHASSIS' && yardChassis.length"
+        class="card rowlist"
+      >
+        <button
+          v-for="item in yardChassis"
+          :key="item.id"
+          type="button"
+          class="row"
+          :aria-pressed="selectedYardId === item.id"
+          @click="selectYardChassis(item)"
+        >
+          <span
+            class="row-ico"
+            aria-hidden="true"
+          >▭</span>
+          <span class="row-main">
+            <b>{{ formatChassisNumber(item.number) }}</b>
+            <small>{{ [item.provider, item.sizeCompatibility].filter(Boolean).join(' · ') || 'Available' }}</small>
+          </span>
+          <span class="row-end">
+            <StatusChip
+              v-if="selectedYardId === item.id"
+              variant="ok"
+              label="Selected"
+            />
+            <span
+              v-else
+              aria-hidden="true"
+            >›</span>
+          </span>
+        </button>
+      </div>
+
+      <EmptyState
+        v-else
+        glyph="▦"
+        :title="pickupKind === 'BARE_CHASSIS' ? 'No chassis on site' : 'No containers on site'"
+        :description="pickupKind === 'BARE_CHASSIS'
+          ? 'Nothing matching that search is parked here. Enter the chassis number instead.'
+          : 'Nothing matching that search is parked here. Enter the container number instead.'"
+      />
+
+      <button
+        type="button"
+        class="btn-ghost mt-4 w-full"
+        @click="enterUnlisted"
+      >
+        {{ pickupKind === 'BARE_CHASSIS' ? 'Number isn’t listed — enter chassis' : 'Number isn’t listed — enter container' }}
+      </button>
     </template>
 
     <!-- ── Container + chassis (one photo) ──────────────────────── -->
@@ -793,6 +1085,66 @@ function retakePhoto() {
       </div>
     </template>
 
+    <!-- ── Destination ─────────────────────────────────────────── -->
+    <template v-else-if="step === 'destination'">
+      <p class="note">
+        <span>
+          Set the drop-off now so it is on the trip before you leave. You can still change it from Home later.
+        </span>
+      </p>
+
+      <div class="searchbar">
+        <span aria-hidden="true">⌕</span>
+        <input
+          v-model="destinationSearch"
+          type="search"
+          placeholder="Search yards, terminals, customers…"
+          aria-label="Search drop-off locations"
+        >
+      </div>
+
+      <div
+        v-if="destinationOptions.length"
+        class="card rowlist"
+      >
+        <button
+          v-for="location in destinationOptions"
+          :key="location.id"
+          type="button"
+          class="row"
+          :aria-pressed="destinationLocationId === location.id"
+          @click="chooseDestination(location)"
+        >
+          <span
+            class="row-ico"
+            aria-hidden="true"
+          >{{ LOCATION_GLYPH[location.type] }}</span>
+          <span class="row-main">
+            <b>{{ location.name }}</b>
+            <small>{{ [location.addressLine1, location.city].filter(Boolean).join(' · ') || '—' }}</small>
+          </span>
+          <span class="row-end">
+            <StatusChip
+              v-if="destinationLocationId === location.id"
+              variant="ok"
+              label="Selected"
+            />
+            <span
+              v-else
+              aria-hidden="true"
+            >›</span>
+          </span>
+        </button>
+      </div>
+
+      <EmptyState
+        v-else
+        glyph="◫"
+        title="No drop-off matches"
+        description="Pick a different yard, terminal, or customer than the pickup. Add new ones from More → Customers & locations."
+      />
+    </template>
+
     <!-- ── Confirm ─────────────────────────────────────────────── -->
     <template v-else-if="step === 'confirm'">
       <TripCard
@@ -803,8 +1155,8 @@ function retakePhoto() {
         :equipment-type="pickupKind === 'CONTAINER' ? equipmentType : null"
         :chassis-number="chassisNumber ? formatChassisNumber(chassisNumber) : undefined"
         :seal-number="pickupKind === 'CONTAINER' ? sealNumber : ''"
-        :origin-name="originLocation?.name"
-        destination-name="Chosen on arrival"
+        :origin-name="originLocation?.name || originName"
+        :destination-name="destinationLocation?.name || destinationName"
         origin-label="Pickup"
       />
 
