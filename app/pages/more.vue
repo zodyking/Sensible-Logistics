@@ -49,6 +49,27 @@ async function signOut() {
         </div>
       </div>
       <NuxtLink
+        to="/locations"
+        class="row"
+      >
+        <div
+          class="row-ico"
+          aria-hidden="true"
+        >
+          ◫
+        </div>
+        <div class="row-main">
+          <b>Customers & locations</b>
+          <small>Company-wide yards, terminals, and customers</small>
+        </div>
+        <div
+          class="row-end"
+          aria-hidden="true"
+        >
+          ›
+        </div>
+      </NuxtLink>
+      <NuxtLink
         to="/documents"
         class="row"
       >

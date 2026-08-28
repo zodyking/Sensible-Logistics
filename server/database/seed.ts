@@ -169,6 +169,9 @@ async function main() {
       capacity: null,
       appointmentRequired: true,
       hours: 'Mon–Fri 06:00–17:00',
+      mainPhone: '+19545550100',
+      contactName: 'Gate 3',
+      contactPhone: '+19545550110',
     },
     {
       name: 'Sensible Yard — Davie',
@@ -183,6 +186,9 @@ async function main() {
       capacity: 240,
       appointmentRequired: false,
       hours: 'Open 24 hours',
+      mainPhone: '+19545550120',
+      contactName: 'Yard office',
+      contactPhone: '+19545550121',
     },
     {
       name: 'Medley Distribution Center',
@@ -197,6 +203,9 @@ async function main() {
       capacity: 60,
       appointmentRequired: true,
       hours: 'Mon–Sat 07:00–19:00',
+      mainPhone: '+13055550130',
+      contactName: 'Receiving',
+      contactPhone: '+13055550131',
     },
     {
       name: 'Coastal Tile Imports',
@@ -211,6 +220,9 @@ async function main() {
       capacity: 12,
       appointmentRequired: true,
       hours: 'Mon–Fri 07:00–16:00',
+      mainPhone: '+13055550140',
+      contactName: 'Warehouse',
+      contactPhone: '+13055550141',
     },
     {
       name: 'FEC Rail Ramp — Hialeah',
@@ -225,6 +237,9 @@ async function main() {
       capacity: null,
       appointmentRequired: true,
       hours: 'Mon–Sat 06:00–18:00',
+      mainPhone: '+13055550150',
+      contactName: 'Ramp desk',
+      contactPhone: '+13055550151',
     },
     {
       name: 'Hialeah Empty Depot',
@@ -239,6 +254,9 @@ async function main() {
       capacity: 400,
       appointmentRequired: false,
       hours: 'Mon–Fri 07:00–16:00',
+      mainPhone: '+13055550160',
+      contactName: 'Depot office',
+      contactPhone: '+13055550161',
     },
   ]
 
@@ -265,6 +283,9 @@ async function main() {
           latitude: seed.latitude.toFixed(7),
           longitude: seed.longitude.toFixed(7),
           boundary,
+          mainPhone: seed.mainPhone,
+          contactName: seed.contactName,
+          contactPhone: seed.contactPhone,
           updatedAt: new Date(),
         })
         .where(eq(locations.id, existing[0].id))
@@ -293,6 +314,9 @@ async function main() {
         capacity: seed.capacity,
         appointmentRequired: seed.appointmentRequired,
         hours: seed.hours,
+        mainPhone: seed.mainPhone,
+        contactName: seed.contactName,
+        contactPhone: seed.contactPhone,
         timezone: 'America/New_York',
         status: 'ACTIVE',
         createdByUserId: admin.id,

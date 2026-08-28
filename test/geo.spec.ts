@@ -5,6 +5,7 @@ import {
   bearingDeg,
   containerCorners,
   haversineMeters,
+  isUnitedStatesCountry,
   longestEdgeBearing,
   normalizeHeading,
   pointInPolygon,
@@ -70,6 +71,24 @@ describe('countContainersByType', () => {
       { containerType: 'CMA' },
     ])
     expect(counts).toEqual({ KING_OCEAN: 2, TROPICAL: 0, CMA: 1, ZIM: 0 })
+  })
+})
+
+describe('isUnitedStatesCountry', () => {
+  it('accepts US codes and names', () => {
+    expect(isUnitedStatesCountry('US')).toBe(true)
+    expect(isUnitedStatesCountry('us')).toBe(true)
+    expect(isUnitedStatesCountry('USA')).toBe(true)
+    expect(isUnitedStatesCountry('United States')).toBe(true)
+    expect(isUnitedStatesCountry('United States of America')).toBe(true)
+  })
+
+  it('rejects other countries', () => {
+    expect(isUnitedStatesCountry('NL')).toBe(false)
+    expect(isUnitedStatesCountry('CA')).toBe(false)
+    expect(isUnitedStatesCountry('Vietnam')).toBe(false)
+    expect(isUnitedStatesCountry('')).toBe(false)
+    expect(isUnitedStatesCountry(null)).toBe(false)
   })
 })
 

@@ -307,6 +307,8 @@ export const locations = pgTable('locations', {
   timezone: text('timezone').notNull().default('America/New_York'),
   hours: text('hours'),
   appointmentRequired: boolean('appointment_required').notNull().default(false),
+  /** Switchboard / main company line for this site. */
+  mainPhone: text('main_phone'),
   contactName: text('contact_name'),
   contactPhone: text('contact_phone'),
   gateInstructions: text('gate_instructions'),

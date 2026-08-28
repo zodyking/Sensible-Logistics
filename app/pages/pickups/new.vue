@@ -583,15 +583,8 @@ async function skipNotes() {
         v-if="!locationData?.items.length"
         glyph="◫"
         title="No locations match"
-        description="Create the yard, terminal or customer you are working from."
+        description="Pick an existing yard, terminal, or customer. Add new ones from More → Customers & locations."
       />
-
-      <NuxtLink
-        :to="{ path: '/locations/new', query: { returnTo: '/pickups/new' } }"
-        class="btn-ghost mt-4 w-full"
-      >
-        Add a location
-      </NuxtLink>
     </template>
 
     <!-- ── Container + chassis (one photo) ──────────────────────── -->

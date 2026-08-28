@@ -2,6 +2,7 @@
 import { LOCATION_GLYPH, LOCATION_TYPE_LABELS, LOCATION_TYPES } from '#shared/utils/domain'
 import type { LocationType } from '#shared/utils/domain'
 import { bboxAround, polygonFromBbox, type BoundingBox } from '#shared/utils/geo'
+import { formatPhoneInput, isValidPhone } from '#shared/utils/phone'
 
 const { user } = useUserSession()
 setPageLayout(user.value?.role === 'ADMIN' ? 'admin' : 'default')
@@ -11,14 +12,15 @@ useHead({ title: 'Add location' })
 const route = useRoute()
 const returnTo = computed(() => {
   const raw = String(route.query.returnTo ?? '')
-  return raw.startsWith('/') ? raw : '/containers'
+  return raw.startsWith('/') ? raw : '/locations'
 })
 
-type Step = 'type' | 'name' | 'address' | 'map'
-const STEPS: Step[] = ['type', 'name', 'address', 'map']
+type Step = 'type' | 'name' | 'phones' | 'address' | 'map'
+const STEPS: Step[] = ['type', 'name', 'phones', 'address', 'map']
 const STEP_TITLES: Record<Step, string> = {
   type: 'What kind of location?',
   name: 'What do you call it?',
+  phones: 'How do we reach them?',
   address: 'Where is it?',
   map: 'Draw the fence',
 }
@@ -40,6 +42,9 @@ const stepIndex = computed(() => STEPS.indexOf(step.value))
 const form = reactive({
   type: 'CUSTOMER' as LocationType,
   name: '',
+  mainPhone: '',
+  contactName: '',
+  contactPhone: '',
   addressQuery: '',
   addressLine1: '',
   city: '',
@@ -66,6 +71,13 @@ watch(() => form.addressQuery, (value) => {
 })
 
 onBeforeUnmount(() => clearTimeout(searchTimer))
+
+function onPhoneInput(field: 'mainPhone' | 'contactPhone', event: Event) {
+  const input = event.target as HTMLInputElement
+  const formatted = formatPhoneInput(input.value)
+  form[field] = formatted
+  if (input.value !== formatted) input.value = formatted
+}
 
 async function lookupAddress(q: string) {
   searching.value = true
@@ -100,6 +112,7 @@ const canAdvance = computed(() => {
   switch (step.value) {
     case 'type': return Boolean(form.type)
     case 'name': return form.name.trim().length >= 2
+    case 'phones': return isValidPhone(form.mainPhone) && isValidPhone(form.contactPhone)
     case 'address': return Boolean(latitude.value && longitude.value && form.addressLine1)
     case 'map': return Boolean(bbox.value)
   }
@@ -152,9 +165,13 @@ async function submit() {
         city: form.city.trim() || null,
         state: form.state.trim() || null,
         postalCode: form.postalCode.trim() || null,
+        country: 'US',
         latitude: latitude.value,
         longitude: longitude.value,
         boundary: polygonFromBbox(bbox.value),
+        mainPhone: form.mainPhone,
+        contactName: form.contactName.trim() || null,
+        contactPhone: form.contactPhone,
         acknowledgeDuplicates: acknowledgeDuplicates.value,
       },
     })
@@ -271,6 +288,49 @@ function createAnyway() {
           >
         </label>
       </div>
+      <p class="mt-3 text-sm text-[var(--color-ink-500)]">
+        Locations are company-wide. Every driver sees this yard, terminal, or customer.
+      </p>
+    </template>
+
+    <template v-else-if="step === 'phones'">
+      <div class="card p-4">
+        <label class="field">
+          <span>Main number</span>
+          <input
+            :value="form.mainPhone"
+            class="input"
+            type="tel"
+            inputmode="tel"
+            autocomplete="tel"
+            placeholder="(954) 555-0100"
+            @input="onPhoneInput('mainPhone', $event)"
+          >
+          <small class="field-hint">Company switchboard for this site.</small>
+        </label>
+        <label class="field">
+          <span>Contact name</span>
+          <input
+            v-model="form.contactName"
+            class="input"
+            autocomplete="name"
+            placeholder="Gate office, dispatcher, receiving…"
+          >
+        </label>
+        <label class="field !mb-0">
+          <span>Contact number</span>
+          <input
+            :value="form.contactPhone"
+            class="input"
+            type="tel"
+            inputmode="tel"
+            autocomplete="tel"
+            placeholder="(954) 555-0142"
+            @input="onPhoneInput('contactPhone', $event)"
+          >
+          <small class="field-hint">Direct line for the person at this location.</small>
+        </label>
+      </div>
     </template>
 
     <template v-else-if="step === 'address'">
@@ -280,12 +340,12 @@ function createAnyway() {
           <input
             v-model="form.addressQuery"
             class="input"
-            placeholder="Start typing a street, terminal or city"
+            placeholder="Start typing a US street, terminal, or city"
             autocomplete="off"
             autocapitalize="words"
           >
           <small class="field-hint">
-            Pick a result to drop the pin. Next you will draw the yard fence on the map.
+            United States addresses only. Pick a result to drop the pin, then draw the yard fence.
           </small>
         </label>
 

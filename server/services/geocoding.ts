@@ -1,5 +1,5 @@
 import { and, eq, isNotNull, sql } from 'drizzle-orm'
-import { bboxFromExtent, type BoundingBox } from '#shared/utils/geo'
+import { bboxFromExtent, isUnitedStatesCountry, type BoundingBox } from '#shared/utils/geo'
 import type { DbExecutor } from '../utils/db'
 import { locations } from '../database/schema'
 
@@ -7,7 +7,8 @@ import { locations } from '../database/schema'
  * Address resolution and duplicate detection (spec 7.1, 31.2).
  *
  * Autocomplete uses Photon (Komoot) — OpenStreetMap data, no API key. A self-hosted
- * Nominatim URL in `NUXT_PUBLIC_GEOCODER_URL` is preferred when set.
+ * Nominatim URL in `NUXT_PUBLIC_GEOCODER_URL` is preferred when set. Results are
+ * restricted to United States addresses.
  */
 
 export interface GeocodeResult {
@@ -28,6 +29,9 @@ export interface Geocoder {
   reverse(latitude: number, longitude: number): Promise<{ available: boolean, result: GeocodeResult | null, message?: string }>
   healthCheck(): Promise<{ healthy: boolean, message: string }>
 }
+
+/** Continental US, Alaska, Hawaii, Puerto Rico, and the US Virgin Islands. */
+export const US_PHOTON_BBOX = '-179.15,17.8,-64.5,71.5'
 
 function userAgent(): string {
   const app = String(useRuntimeConfig().appUrl || 'https://localhost').replace(/\/+$/, '')
@@ -91,15 +95,25 @@ class PhotonGeocoder implements Geocoder {
 
   private searchUrl(query: string, limit: number) {
     const base = this.endpoint.replace(/\/+$/, '')
-    return `${base}/api/?q=${encodeURIComponent(query)}&limit=${limit}&lang=en`
+    const params = new URLSearchParams({
+      q: query,
+      limit: String(limit),
+      lang: 'en',
+      countrycode: 'US',
+      bbox: US_PHOTON_BBOX,
+    })
+    return `${base}/api/?${params.toString()}`
   }
 
   async search(query: string, limit = 6) {
     const q = query.trim()
     if (q.length < 3) return { available: true, results: [] as GeocodeResult[] }
     try {
-      const payload = await fetchJson(this.searchUrl(q, limit)) as { features?: PhotonFeature[] }
-      const results = (payload.features ?? []).map(photonToResult).filter((r): r is GeocodeResult => r !== null)
+      const payload = await fetchJson(this.searchUrl(q, Math.max(limit, 8))) as { features?: PhotonFeature[] }
+      const results = (payload.features ?? [])
+        .map(photonToResult)
+        .filter((r): r is GeocodeResult => r !== null && isUnitedStatesCountry(r.country))
+        .slice(0, limit)
       return { available: true, results }
     }
     catch (error) {

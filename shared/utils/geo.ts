@@ -30,6 +30,13 @@ export function isValidBbox(box: BoundingBox): boolean {
     && box.south >= -90 && box.north <= 90
 }
 
+/** Photon country codes and display names for United States results. */
+export function isUnitedStatesCountry(value: string | null | undefined): boolean {
+  const raw = String(value ?? '').trim().toUpperCase().replace(/\./g, '')
+  if (!raw) return false
+  return raw === 'US' || raw === 'USA' || raw === 'UNITED STATES' || raw === 'UNITED STATES OF AMERICA'
+}
+
 /** Photon/Nominatim extents arrive in mixed corner order — min/max is safer. */
 export function bboxFromExtent(extent: number[]): BoundingBox | null {
   if (extent.length < 4) return null

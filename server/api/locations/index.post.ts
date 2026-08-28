@@ -4,12 +4,17 @@ import { findDuplicateCandidates, normalizeAddress } from '../../services/geocod
 import { requireAuth } from '../../utils/session'
 import { LOCATION_TYPES } from '#shared/utils/domain'
 import { bboxFromPolygon, isValidBbox } from '#shared/utils/geo'
-import { toE164 } from '#shared/utils/phone'
+import { isValidPhone, toE164 } from '#shared/utils/phone'
 
 const polygonSchema = z.object({
   type: z.literal('Polygon'),
   coordinates: z.array(z.array(z.tuple([z.number(), z.number()]))).min(1),
 })
+
+const usPhone = z.string().trim().max(40).nullish().refine(
+  value => !value || isValidPhone(value),
+  'Enter a 10-digit United States phone number.',
+)
 
 const schema = z.object({
   name: z.string().trim().min(1, 'Give the location a name.').max(160),
@@ -27,8 +32,9 @@ const schema = z.object({
   capacity: z.coerce.number().int().min(0).max(100000).nullish(),
   hours: z.string().trim().max(200).nullish(),
   appointmentRequired: z.boolean().default(false),
+  mainPhone: usPhone,
   contactName: z.string().trim().max(120).nullish(),
-  contactPhone: z.string().trim().max(40).nullish(),
+  contactPhone: usPhone,
   gateInstructions: z.string().trim().max(2000).nullish(),
   driverNotes: z.string().trim().max(2000).nullish(),
   acknowledgeDuplicates: z.boolean().default(false),
@@ -72,7 +78,7 @@ export default defineEventHandler(async (event) => {
       city: body.city ?? null,
       state: body.state ?? null,
       postalCode: body.postalCode ?? null,
-      country: body.country,
+      country: 'US',
       normalizedAddress,
       latitude: String(body.latitude),
       longitude: String(body.longitude),
@@ -80,6 +86,7 @@ export default defineEventHandler(async (event) => {
       capacity: body.capacity ?? null,
       hours: body.hours ?? null,
       appointmentRequired: body.appointmentRequired,
+      mainPhone: body.mainPhone ? toE164(body.mainPhone) : null,
       contactName: body.contactName ?? null,
       contactPhone: body.contactPhone ? toE164(body.contactPhone) : null,
       gateInstructions: body.gateInstructions ?? null,
