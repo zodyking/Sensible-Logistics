@@ -10,6 +10,7 @@ const querySchema = z.object({
   q: z.string().trim().max(120).optional(),
   type: z.enum(LOCATION_TYPES).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(100),
+  includeUncategorized: z.enum(['1', 'true']).optional(),
 })
 
 /** Shared location pool with live occupancy, brand counts, and map placements. */
@@ -19,6 +20,7 @@ export default defineEventHandler(async (event) => {
   const db = useDb()
 
   const filters = [eq(locations.companyId, auth.companyId), isNull(locations.deletedAt)]
+  if (!query.includeUncategorized) filters.push(eq(locations.isUncategorized, false))
   if (query.type) filters.push(eq(locations.type, query.type))
   if (query.q) {
     const needle = `%${query.q.toLowerCase()}%`
@@ -42,6 +44,7 @@ export default defineEventHandler(async (event) => {
       contactPhone: locations.contactPhone,
       capacity: locations.capacity,
       status: locations.status,
+      isUncategorized: locations.isUncategorized,
       latitude: locations.latitude,
       longitude: locations.longitude,
       boundary: locations.boundary,
@@ -122,6 +125,7 @@ export default defineEventHandler(async (event) => {
       contactPhone: row.contactPhone,
       capacity: row.capacity,
       status: row.status,
+      isUncategorized: row.isUncategorized,
       latitude: row.latitude ? Number(row.latitude) : null,
       longitude: row.longitude ? Number(row.longitude) : null,
       mapHeading: row.mapHeading ?? 0,

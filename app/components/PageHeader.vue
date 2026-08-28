@@ -24,8 +24,16 @@ defineProps<{
       v-if="eyebrow"
       class="eyebrow block"
     >{{ eyebrow }}</span>
-    <h1 class="d-title">
-      {{ title }}
-    </h1>
+    <div class="d-title-row">
+      <h1 class="d-title">
+        {{ title }}
+      </h1>
+      <div
+        v-if="$slots.actions"
+        class="d-title-actions"
+      >
+        <slot name="actions" />
+      </div>
+    </div>
   </div>
 </template>

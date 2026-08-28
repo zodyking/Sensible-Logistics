@@ -363,10 +363,15 @@ export const locations = pgTable('locations', {
   createdAt: utc('created_at').notNull().defaultNow(),
   updatedAt: utc('updated_at').notNull().defaultNow(),
   deletedAt: utc('deleted_at'),
+  /** Holding yard for equipment whose site was deleted. */
+  isUncategorized: boolean('is_uncategorized').notNull().default(false),
 }, t => [
   index('locations_company_idx').on(t.companyId),
   index('locations_company_name_idx').on(t.companyId, t.name),
   index('locations_normalized_address_idx').on(t.companyId, t.normalizedAddress),
+  uniqueIndex('locations_one_uncategorized_per_company')
+    .on(t.companyId)
+    .where(sql`is_uncategorized = true and deleted_at is null`),
 ])
 
 export const locationZones = pgTable('location_zones', {

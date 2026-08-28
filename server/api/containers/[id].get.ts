@@ -26,6 +26,9 @@ export default defineEventHandler(async (event) => {
 
   const [container] = await db.select().from(containers).where(eq(containers.id, id)).limit(1)
   assertTenant(auth, container, 'Container')
+  if (container!.deletedAt) {
+    throw createError({ statusCode: 404, statusMessage: 'Container not found.' })
+  }
 
   const [currentLocation] = container!.currentLocationId
     ? await db.select().from(locations).where(eq(locations.id, container!.currentLocationId)).limit(1)

@@ -13,13 +13,52 @@ const { data, status, error } = await useFetch(() => `/api/locations/${locationI
 
 useHead({ title: () => data.value?.location.name ?? 'Location' })
 
+const menuOpen = ref(false)
+const confirmOpen = ref(false)
+const deleting = ref(false)
+const actionError = ref('')
+
 const subtitle = computed(() => {
   const loc = data.value?.location
   if (!loc) return ''
+  if (loc.isUncategorized) return 'Holding site for equipment from deleted locations'
   return [LOCATION_TYPE_LABELS[loc.type], loc.addressLine1, [loc.city, loc.state].filter(Boolean).join(', ')]
     .filter(Boolean)
     .join(' · ')
 })
+
+function openEdit() {
+  menuOpen.value = false
+  navigateTo(`/locations/${locationId.value}/edit`)
+}
+
+function requestDelete() {
+  menuOpen.value = false
+  actionError.value = ''
+  confirmOpen.value = true
+}
+
+async function confirmDelete() {
+  if (deleting.value) return
+  deleting.value = true
+  actionError.value = ''
+  try {
+    const result = await $fetch<{
+      uncategorizedLocationId: string
+      movedContainers: number
+      movedChassis: number
+    }>(`/api/locations/${locationId.value}`, { method: 'DELETE' })
+    confirmOpen.value = false
+    const moved = result.movedContainers + result.movedChassis
+    await navigateTo(moved ? `/locations/${result.uncategorizedLocationId}` : '/locations')
+  }
+  catch (err) {
+    actionError.value = apiErrorMessage(err, 'Could not delete this location.')
+  }
+  finally {
+    deleting.value = false
+  }
+}
 </script>
 
 <template>
@@ -47,7 +86,20 @@ const subtitle = computed(() => {
         :title="data.location.name"
         back-to="/locations"
         back-label="Locations"
-      />
+      >
+        <template #actions>
+          <button
+            type="button"
+            class="icon-btn"
+            aria-label="Location actions"
+            aria-haspopup="menu"
+            :aria-expanded="menuOpen"
+            @click="menuOpen = true"
+          >
+            ⋮
+          </button>
+        </template>
+      </PageHeader>
       <p class="mb-4 text-sm text-[var(--color-ink-500)]">
         {{ subtitle }}
       </p>
@@ -134,6 +186,69 @@ const subtitle = computed(() => {
         title="No containers on site"
         description="Drop off from a trip or add a box here."
       />
+
+      <BottomSheet
+        :open="menuOpen"
+        title="Location"
+        @close="menuOpen = false"
+      >
+        <button
+          type="button"
+          class="menu-row"
+          @click="openEdit"
+        >
+          Edit
+        </button>
+        <button
+          v-if="!data.location.isUncategorized"
+          type="button"
+          class="menu-row danger"
+          @click="requestDelete"
+        >
+          Delete
+        </button>
+      </BottomSheet>
+
+      <BottomSheet
+        :open="confirmOpen"
+        title="Delete location?"
+        @close="confirmOpen = false"
+      >
+        <p
+          v-if="actionError"
+          class="banner err"
+          role="alert"
+        >
+          <span aria-hidden="true">✕</span>
+          <span>{{ actionError }}</span>
+        </p>
+        <p class="text-sm text-[var(--color-ink-700)]">
+          <template v-if="data.occupancy">
+            Containers and chassis here will move to Uncategorized. This cannot be undone.
+          </template>
+          <template v-else>
+            This location will be removed from the company pool. This cannot be undone.
+          </template>
+        </p>
+        <div class="sheet-actions">
+          <button
+            type="button"
+            class="btn-cancel"
+            :disabled="deleting"
+            @click="confirmOpen = false"
+          >
+            Keep location
+          </button>
+          <button
+            type="button"
+            class="btn-save danger"
+            :disabled="deleting"
+            @click="confirmDelete"
+          >
+            {{ deleting ? 'Deleting…' : 'Delete' }}
+          </button>
+        </div>
+      </BottomSheet>
     </template>
   </section>
 </template>

@@ -18,6 +18,9 @@ export default defineEventHandler(async (event) => {
 
   const [location] = await db.select().from(locations).where(eq(locations.id, id)).limit(1)
   assertTenant(auth, location, 'Location')
+  if (location!.deletedAt) {
+    throw createError({ statusCode: 404, statusMessage: 'Location not found.' })
+  }
 
   const items = await db
     .select({
@@ -85,6 +88,7 @@ export default defineEventHandler(async (event) => {
       contactPhone: location!.contactPhone,
       gateInstructions: location!.gateInstructions,
       driverNotes: location!.driverNotes,
+      isUncategorized: location!.isUncategorized,
     },
     typeCounts: mapped.length ? countContainersByType(mapped) : emptyTypeCounts(),
     occupancy: mapped.length,

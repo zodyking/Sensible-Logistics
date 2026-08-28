@@ -12,10 +12,38 @@ const { data, status, error } = await useFetch(() => `/api/containers/${route.pa
 
 useHead({ title: () => data.value?.container.number ?? 'Container' })
 
+const menuOpen = ref(false)
+const confirmOpen = ref(false)
+const deleting = ref(false)
+const actionError = ref('')
+
 const backTo = computed(() => {
   const locationId = data.value?.currentLocation?.id
   return locationId ? `/locations/${locationId}` : '/containers'
 })
+
+function requestDelete() {
+  menuOpen.value = false
+  actionError.value = ''
+  confirmOpen.value = true
+}
+
+async function confirmDelete() {
+  if (deleting.value) return
+  deleting.value = true
+  actionError.value = ''
+  try {
+    await $fetch(`/api/containers/${route.params.id}`, { method: 'DELETE' })
+    confirmOpen.value = false
+    await navigateTo(backTo.value)
+  }
+  catch (err) {
+    actionError.value = apiErrorMessage(err, 'Could not delete this container.')
+  }
+  finally {
+    deleting.value = false
+  }
+}
 
 const flags = computed(() => {
   const c = data.value?.container
@@ -75,7 +103,19 @@ const serviceCaption = computed(() => {
 
       <div class="card">
         <div class="cd-head">
-          <span class="eyebrow">Container Record</span>
+          <div class="cd-head-top">
+            <span class="eyebrow">Container Record</span>
+            <button
+              type="button"
+              class="icon-btn"
+              aria-label="Container actions"
+              aria-haspopup="menu"
+              :aria-expanded="menuOpen"
+              @click="menuOpen = true"
+            >
+              ⋮
+            </button>
+          </div>
           <div class="container-no mono">
             {{ formatContainerNumber(data.container.number) || data.container.number }}
           </div>
@@ -156,6 +196,56 @@ const serviceCaption = computed(() => {
           </div>
         </div>
       </div>
+
+      <BottomSheet
+        :open="menuOpen"
+        title="Container"
+        @close="menuOpen = false"
+      >
+        <button
+          type="button"
+          class="menu-row danger"
+          @click="requestDelete"
+        >
+          Delete
+        </button>
+      </BottomSheet>
+
+      <BottomSheet
+        :open="confirmOpen"
+        title="Delete container?"
+        @close="confirmOpen = false"
+      >
+        <p
+          v-if="actionError"
+          class="banner err"
+          role="alert"
+        >
+          <span aria-hidden="true">✕</span>
+          <span>{{ actionError }}</span>
+        </p>
+        <p class="text-sm text-[var(--color-ink-700)]">
+          This container will be removed from the company pool. Trip history stays. This cannot be undone.
+        </p>
+        <div class="sheet-actions">
+          <button
+            type="button"
+            class="btn-cancel"
+            :disabled="deleting"
+            @click="confirmOpen = false"
+          >
+            Keep container
+          </button>
+          <button
+            type="button"
+            class="btn-save danger"
+            :disabled="deleting"
+            @click="confirmDelete"
+          >
+            {{ deleting ? 'Deleting…' : 'Delete' }}
+          </button>
+        </div>
+      </BottomSheet>
     </template>
   </section>
 </template>

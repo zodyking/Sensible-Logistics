@@ -16,14 +16,20 @@ watch(search, (value) => {
 })
 
 const { data, status, error } = await useFetch('/api/locations', {
-  query: computed(() => ({ q: debounced.value || undefined, limit: 100 })),
+  query: computed(() => ({
+    q: debounced.value || undefined,
+    limit: 100,
+    includeUncategorized: '1',
+  })),
 })
 
 function addressLine(item: {
   type: keyof typeof LOCATION_TYPE_LABELS
   addressLine1: string | null
   city: string | null
+  isUncategorized?: boolean
 }) {
+  if (item.isUncategorized) return 'Holding site for equipment from deleted locations'
   const bits = [LOCATION_TYPE_LABELS[item.type]]
   if (item.addressLine1) bits.push(item.addressLine1)
   if (item.city) bits.push(item.city)

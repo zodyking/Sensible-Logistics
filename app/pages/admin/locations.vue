@@ -41,6 +41,7 @@ const { data, status, error, refresh } = await useFetch('/api/locations', {
   query: computed(() => ({
     q: q.value || undefined,
     type: type.value || undefined,
+    includeUncategorized: '1',
   })),
 })
 
