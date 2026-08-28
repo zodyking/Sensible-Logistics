@@ -1743,6 +1743,39 @@
     border-radius: 50%;
   }
 
+  .addr-pin {
+    width: 18px !important;
+    height: 18px !important;
+    margin-left: -9px !important;
+    margin-top: -9px !important;
+    border-radius: 50%;
+    background: var(--color-navy-950);
+    border: 3px solid var(--color-amber-500);
+    box-shadow: 0 1px 4px rgb(0 0 0 / 0.45);
+  }
+
+  .map-rotate-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s2);
+    align-items: center;
+  }
+
+  .map-rotate-bar .ybtn {
+    width: auto;
+    min-width: 44px;
+    height: 44px;
+    padding: 0 12px;
+    font-size: var(--text-sm);
+    font-weight: 700;
+  }
+
+  .map-rotate-bar .btn-ghost {
+    width: auto;
+    min-height: 44px;
+    padding: 0 14px;
+  }
+
   .place-tools {
     display: flex;
     flex-wrap: wrap;

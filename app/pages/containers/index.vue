@@ -81,6 +81,7 @@ function addressLine(item: { type: keyof typeof LOCATION_TYPE_LABELS, addressLin
             :boundary="(item.boundary as GeoJsonPolygon | null) ?? null"
             :latitude="item.latitude"
             :longitude="item.longitude"
+            :heading="item.mapHeading ?? 0"
             :containers="item.containers"
           />
           <template #fallback>

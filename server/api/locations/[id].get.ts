@@ -1,6 +1,6 @@
 import { and, eq, isNull, sql } from 'drizzle-orm'
 import { containerPlacements, containers, locations } from '../../database/schema'
-import { mapContainerFromRow } from '../../services/placements'
+import { displayContainers, mapContainerFromRow } from '../../services/placements'
 import { assertTenant, requireAuth } from '../../utils/session'
 import { countContainersByType, emptyTypeCounts } from '#shared/utils/domain'
 import type { GeoJsonPolygon } from '#shared/utils/geo'
@@ -48,13 +48,22 @@ export default defineEventHandler(async (event) => {
       eq(containers.currentLocationId, id),
       sql`${containers.activePoolState} <> 'INACTIVE'`,
     ))
+    .orderBy(containers.numberNormalized)
 
-  const mapped = items.map(item => mapContainerFromRow({
-    ...item,
-    boundary: location!.boundary as GeoJsonPolygon | null,
-    locationLatitude: location!.latitude,
-    locationLongitude: location!.longitude,
-  }))
+  const mapped = displayContainers(
+    items.map(item => mapContainerFromRow({
+      ...item,
+      boundary: location!.boundary as GeoJsonPolygon | null,
+      locationLatitude: location!.latitude,
+      locationLongitude: location!.longitude,
+    })),
+    {
+      latitude: location!.latitude ? Number(location!.latitude) : null,
+      longitude: location!.longitude ? Number(location!.longitude) : null,
+      mapHeading: location!.mapHeading ?? 0,
+      boundary: location!.boundary as GeoJsonPolygon | null,
+    },
+  )
 
   return {
     location: {
@@ -68,6 +77,7 @@ export default defineEventHandler(async (event) => {
       capacity: location!.capacity,
       latitude: location!.latitude ? Number(location!.latitude) : null,
       longitude: location!.longitude ? Number(location!.longitude) : null,
+      mapHeading: location!.mapHeading ?? 0,
       boundary: location!.boundary,
       hours: location!.hours,
       mainPhone: location!.mainPhone,
