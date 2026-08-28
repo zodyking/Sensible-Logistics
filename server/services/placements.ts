@@ -18,6 +18,13 @@ import {
   pointInPolygon,
   type GeoJsonPolygon,
 } from '#shared/utils/geo'
+import {
+  hydrateUnplaced,
+  isPlacedPin,
+  locationOrigin,
+  nextOpenSlot,
+  type OccupiedSlot,
+} from '#shared/utils/yard-slots'
 
 export interface GeoPlacementInput {
   latitude: number
@@ -35,6 +42,7 @@ export interface MapContainer {
   latitude: number | null
   longitude: number | null
   rotation: number
+  suggested?: boolean
 }
 
 function asNumber(value: string | number | null | undefined): number | null {
@@ -170,7 +178,7 @@ export interface AddContainerAtLocationInput {
   containerType: ContainerType
   equipmentType: EquipmentType
   isLoaded: boolean
-  placement: GeoPlacementInput
+  placement?: GeoPlacementInput | null
 }
 
 /**
@@ -203,6 +211,32 @@ export async function addContainerAtLocation(
     }
 
     const location = await loadLocation(tx, auth, input.locationId)
+    const occupied = await tx
+      .select({
+        latitude: containerPlacements.latitude,
+        longitude: containerPlacements.longitude,
+      })
+      .from(containerPlacements)
+      .where(and(
+        eq(containerPlacements.locationId, location.id),
+        eq(containerPlacements.companyId, auth.companyId),
+        sql`${containerPlacements.supersededAt} is null`,
+      ))
+    const placement = resolvePlacement(
+      location,
+      occupied.map(row => ({
+        latitude: asNumber(row.latitude),
+        longitude: asNumber(row.longitude),
+      })),
+      input.equipmentType,
+      input.placement,
+    )
+    if (!placement) {
+      throw createError({
+        statusCode: 422,
+        statusMessage: 'This location has no map pin yet. Edit the address before adding a container.',
+      })
+    }
     const now = new Date()
 
     const [existing] = await tx
@@ -263,9 +297,9 @@ export async function addContainerAtLocation(
         locationId: location.id,
         source: auth.role === 'ADMIN' ? 'ADMIN_EDIT' : 'MANUAL',
         yardPosition: {
-          latitude: input.placement.latitude,
-          longitude: input.placement.longitude,
-          rotation: input.placement.rotation,
+          latitude: placement.latitude,
+          longitude: placement.longitude,
+          rotation: placement.rotation,
         },
         payload: { outcome },
       },
@@ -296,7 +330,7 @@ export async function addContainerAtLocation(
     await writePlacement(tx, auth, {
       containerId: container.id,
       location,
-      placement: input.placement,
+      placement,
       eventId: input.eventId,
     })
 
@@ -352,5 +386,37 @@ export function mapContainerFromRow(row: {
     latitude,
     longitude,
     rotation: row.rotation ?? 0,
+    suggested: false,
   }
+}
+
+export function displayContainers(
+  containers: MapContainer[],
+  location: {
+    latitude?: number | null
+    longitude?: number | null
+    mapHeading?: number | null
+    boundary?: GeoJsonPolygon | null
+  },
+): MapContainer[] {
+  return hydrateUnplaced(containers, location)
+}
+
+export function resolvePlacement(
+  location: Location,
+  occupied: OccupiedSlot[],
+  equipmentType: EquipmentType,
+  requested?: GeoPlacementInput | null,
+): GeoPlacementInput | null {
+  if (requested && isPlacedPin(requested.latitude, requested.longitude)) {
+    return requested
+  }
+  const origin = locationOrigin({
+    latitude: asNumber(location.latitude),
+    longitude: asNumber(location.longitude),
+    mapHeading: location.mapHeading ?? 0,
+    boundary: location.boundary,
+  })
+  if (!origin) return null
+  return nextOpenSlot(origin, occupied, equipmentType)
 }

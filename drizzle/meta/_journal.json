@@ -43,6 +43,13 @@
       "when": 1787903000000,
       "tag": "0005_location_main_phone",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1787904000000,
+      "tag": "0006_location_map_heading",
+      "breakpoints": true
     }
   ]
 }

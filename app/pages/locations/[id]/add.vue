@@ -6,9 +6,11 @@ import {
   normalizeContainerNumber,
   validateContainerNumber,
 } from '#shared/utils/iso6346'
-import { bboxCenter, bboxFromPolygon, normalizeHeading, snapHeadingToStreet } from '#shared/utils/geo'
+import { bboxFromPolygon, normalizeHeading, snapHeadingToStreet } from '#shared/utils/geo'
 import type { GeoJsonPolygon } from '#shared/utils/geo'
+import { isPlacedPin, locationOrigin, nextOpenSlot, streetHeadingFromMapBearing } from '#shared/utils/yard-slots'
 import type { YardMapBox } from '~/components/LocationYardMap.vue'
+import { fetchMapBearing } from '~/utils/leaflet-map'
 
 const { user } = useUserSession()
 setPageLayout(user.value?.role === 'ADMIN' ? 'admin' : 'default')
@@ -36,8 +38,15 @@ const equipmentType = ref<EquipmentType>('HC_40')
 const isLoaded = ref(true)
 const pending = ref<YardMapBox | null>(null)
 const aligning = ref(false)
+const aligningMap = ref(false)
 const submitting = ref(false)
 const errorMessage = ref('')
+const heading = ref(0)
+const mapRef = ref<{ recenter: () => void } | null>(null)
+
+watch(() => locationData.value?.location.mapHeading, (value) => {
+  if (value != null) heading.value = value
+}, { immediate: true })
 
 const normalized = computed(() => normalizeContainerNumber(rawNumber.value))
 const validation = computed(() => validateContainerNumber(rawNumber.value))
@@ -100,7 +109,7 @@ const canAdvance = computed(() => {
     case 'load':
       return true
     case 'place':
-      return Boolean(pending.value?.latitude != null && pending.value?.longitude != null)
+      return Boolean(pending.value && isPlacedPin(pending.value.latitude, pending.value.longitude))
     case 'confirm':
       return true
   }
@@ -109,19 +118,26 @@ const canAdvance = computed(() => {
 
 function seedPending() {
   const loc = locationData.value?.location
-  const box = bboxFromPolygon(loc?.boundary as GeoJsonPolygon | null)
-  const center = box
-    ? bboxCenter(box)
-    : { latitude: loc?.latitude ?? 0, longitude: loc?.longitude ?? 0 }
+  const origin = locationOrigin({
+    latitude: loc?.latitude,
+    longitude: loc?.longitude,
+    mapHeading: heading.value,
+    boundary: loc?.boundary as GeoJsonPolygon | null,
+  })
+  const occupied = (locationData.value?.containers ?? []).map(item => ({
+    latitude: item.latitude,
+    longitude: item.longitude,
+  }))
+  const slot = origin ? nextOpenSlot(origin, occupied, equipmentType.value) : null
   pending.value = {
     id: 'pending',
     number: formatContainerNumber(normalized.value) || normalized.value,
     containerType: containerType.value,
     equipmentType: equipmentType.value,
     isLoaded: isLoaded.value,
-    latitude: center.latitude,
-    longitude: center.longitude,
-    rotation: 0,
+    latitude: slot?.latitude ?? loc?.latitude ?? null,
+    longitude: slot?.longitude ?? loc?.longitude ?? null,
+    rotation: slot?.rotation ?? streetHeadingFromMapBearing(heading.value),
   }
 }
 
@@ -175,6 +191,13 @@ async function alignToStreet() {
   }
 }
 
+const confirmBoxes = computed(() => {
+  const existing = locationData.value?.containers ?? []
+  return pending.value
+    ? [...existing.filter(item => item.id !== pending.value!.id), pending.value]
+    : existing
+})
+
 watch([containerType, equipmentType, isLoaded, normalized], () => {
   if (!pending.value) return
   pending.value = {
@@ -186,8 +209,31 @@ watch([containerType, equipmentType, isLoaded, normalized], () => {
   }
 })
 
+function rotateMap(delta: number) {
+  heading.value = normalizeHeading(heading.value + delta)
+}
+
+async function alignMapToRoad() {
+  const loc = locationData.value?.location
+  if (!loc || !isPlacedPin(loc.latitude, loc.longitude)) return
+  aligningMap.value = true
+  try {
+    heading.value = await fetchMapBearing(
+      loc.latitude,
+      loc.longitude,
+      bboxFromPolygon(loc.boundary as GeoJsonPolygon | null),
+    )
+  }
+  catch (error) {
+    errorMessage.value = apiErrorMessage(error, 'Could not read the nearby street.')
+  }
+  finally {
+    aligningMap.value = false
+  }
+}
+
 async function confirm() {
-  if (!pending.value || pending.value.latitude == null || pending.value.longitude == null || submitting.value) return
+  if (!pending.value || !isPlacedPin(pending.value.latitude, pending.value.longitude) || submitting.value) return
   submitting.value = true
   errorMessage.value = ''
   try {
@@ -362,15 +408,26 @@ async function confirm() {
     <template v-else-if="step === 'place'">
       <ClientOnly>
         <LocationYardMap
+          ref="mapRef"
           mode="place"
           :boundary="(locationData?.location.boundary as GeoJsonPolygon | null) ?? null"
           :latitude="locationData?.location.latitude"
           :longitude="locationData?.location.longitude"
+          :heading="heading"
           :containers="locationData?.containers ?? []"
           :pending="pending"
           @update:pending="onPending"
+          @update:heading="heading = $event"
         />
       </ClientOnly>
+      <MapRotateBar
+        class="mt-3"
+        :heading="heading"
+        :aligning="aligningMap"
+        @rotate="rotateMap"
+        @align="alignMapToRoad"
+        @recenter="mapRef?.recenter()"
+      />
       <ContainerPlaceControls
         v-if="pending"
         class="mt-3"
@@ -382,7 +439,18 @@ async function confirm() {
     </template>
 
     <template v-else>
-      <div class="card p-4">
+      <ClientOnly>
+        <LocationYardMap
+          mode="view"
+          :boundary="(locationData?.location.boundary as GeoJsonPolygon | null) ?? null"
+          :latitude="locationData?.location.latitude"
+          :longitude="locationData?.location.longitude"
+          :heading="heading"
+          :containers="confirmBoxes"
+          :selected-id="'pending'"
+        />
+      </ClientOnly>
+      <div class="card mt-3 p-4">
         <span class="eyebrow">On the map</span>
         <b class="mt-2 block font-mono text-lg">{{ formatContainerNumber(normalized) }}</b>
         <p class="mt-2 text-sm text-[var(--color-ink-500)]">

@@ -1,7 +1,7 @@
 import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { containerPlacements, containers, locations } from '../../database/schema'
-import { mapContainerFromRow } from '../../services/placements'
+import { displayContainers, mapContainerFromRow } from '../../services/placements'
 import { requireAuth } from '../../utils/session'
 import { countContainersByType, LOCATION_TYPES } from '#shared/utils/domain'
 import type { GeoJsonPolygon } from '#shared/utils/geo'
@@ -45,6 +45,7 @@ export default defineEventHandler(async (event) => {
       latitude: locations.latitude,
       longitude: locations.longitude,
       boundary: locations.boundary,
+      mapHeading: locations.mapHeading,
       hasBoundary: sql<boolean>`${locations.boundary} is not null`,
     })
     .from(locations)
@@ -96,12 +97,20 @@ export default defineEventHandler(async (event) => {
 
   const items = rows.map((row) => {
     const siteContainers = byLocation.get(row.id) ?? []
-    const mapped = siteContainers.map(item => mapContainerFromRow({
-      ...item,
-      boundary: row.boundary as GeoJsonPolygon | null,
-      locationLatitude: row.latitude,
-      locationLongitude: row.longitude,
-    }))
+    const mapped = displayContainers(
+      siteContainers.map(item => mapContainerFromRow({
+        ...item,
+        boundary: row.boundary as GeoJsonPolygon | null,
+        locationLatitude: row.latitude,
+        locationLongitude: row.longitude,
+      })),
+      {
+        latitude: row.latitude ? Number(row.latitude) : null,
+        longitude: row.longitude ? Number(row.longitude) : null,
+        mapHeading: row.mapHeading ?? 0,
+        boundary: row.boundary as GeoJsonPolygon | null,
+      },
+    )
     return {
       id: row.id,
       name: row.name,
@@ -115,6 +124,7 @@ export default defineEventHandler(async (event) => {
       status: row.status,
       latitude: row.latitude ? Number(row.latitude) : null,
       longitude: row.longitude ? Number(row.longitude) : null,
+      mapHeading: row.mapHeading ?? 0,
       boundary: row.boundary,
       hasBoundary: row.hasBoundary,
       occupancy: mapped.length,

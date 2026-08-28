@@ -1,16 +1,22 @@
 <script setup lang="ts">
 import type { BoundingBox } from '#shared/utils/geo'
-import { isValidBbox } from '#shared/utils/geo'
+import { headingDelta, isValidBbox, normalizeHeading } from '#shared/utils/geo'
+import { isPlacedPin } from '#shared/utils/yard-slots'
+import { loadLeaflet, observeMapSize, waitForMapSize } from '~/utils/leaflet-map'
 import { OSM_ATTRIBUTION, osmTileUrl } from '~/utils/map-tiles'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   latitude: number | null
   longitude: number | null
   bbox: BoundingBox | null
-}>()
+  heading?: number
+}>(), {
+  heading: 0,
+})
 
 const emit = defineEmits<{
   'update:bbox': [BoundingBox]
+  'update:heading': [value: number]
 }>()
 
 const mapEl = ref<HTMLElement | null>(null)
@@ -21,14 +27,51 @@ type LeafletModule = typeof import('leaflet')
 let L: LeafletModule | null = null
 let map: import('leaflet').Map | null = null
 let rectangle: import('leaflet').Rectangle | null = null
+let pinMarker: import('leaflet').Marker | null = null
 const corners: import('leaflet').Marker[] = []
 let cancelled = false
+let stopSizeWatch: (() => void) | null = null
+let applyingHeading = false
+
+function hasStart() {
+  return Boolean(props.bbox) || isPlacedPin(props.latitude, props.longitude)
+}
+
+function startBox(): BoundingBox | null {
+  if (props.bbox && isValidBbox(props.bbox)) return props.bbox
+  if (isPlacedPin(props.latitude, props.longitude)) {
+    return {
+      west: props.longitude! - 0.0008,
+      east: props.longitude! + 0.0008,
+      south: props.latitude! - 0.0008,
+      north: props.latitude! + 0.0008,
+    }
+  }
+  return null
+}
 
 function asLatLngBounds(box: BoundingBox) {
   return L!.latLngBounds(
     L!.latLng(box.south, box.west),
     L!.latLng(box.north, box.east),
   )
+}
+
+function paintPin() {
+  if (!map || !L) return
+  pinMarker?.remove()
+  pinMarker = null
+  if (!isPlacedPin(props.latitude, props.longitude)) return
+  pinMarker = L.marker([props.latitude!, props.longitude!], {
+    icon: L.divIcon({
+      className: 'addr-pin',
+      iconSize: [18, 18],
+      iconAnchor: [9, 9],
+    }),
+    interactive: false,
+    keyboard: false,
+    zIndexOffset: 400,
+  }).addTo(map)
 }
 
 function paintCorners(box: BoundingBox) {
@@ -81,6 +124,7 @@ function applyBox(box: BoundingBox, fit: boolean) {
     rectangle.setBounds(bounds)
   }
   paintCorners(box)
+  paintPin()
   if (fit) {
     map.fitBounds(
       [[box.south, box.west], [box.north, box.east]],
@@ -89,32 +133,60 @@ function applyBox(box: BoundingBox, fit: boolean) {
   }
 }
 
+function applyHeading(value: number) {
+  if (!map) return
+  applyingHeading = true
+  map.setBearing(normalizeHeading(value))
+  applyingHeading = false
+}
+
+function onRotate() {
+  if (!map || applyingHeading) return
+  const next = normalizeHeading(map.getBearing())
+  if (headingDelta(next, props.heading) < 0.4) return
+  emit('update:heading', next)
+}
+
 async function boot() {
-  if (!import.meta.client || !mapEl.value) return
+  if (!import.meta.client || !mapEl.value || !hasStart()) return
   try {
-    const mod = await import('leaflet')
+    const sized = await waitForMapSize(mapEl.value, () => cancelled)
+    if (cancelled || !mapEl.value || !sized) {
+      if (!cancelled && mapEl.value) {
+        errorMessage.value = 'Map did not get a size. Go back one step and open it again.'
+      }
+      return
+    }
+    L = await loadLeaflet()
     if (cancelled || !mapEl.value) return
-    L = (mod.default ?? mod) as LeafletModule
     map = L.map(mapEl.value, {
       zoomControl: true,
       attributionControl: true,
+      rotate: true,
+      bearing: normalizeHeading(props.heading),
+      touchRotate: true,
+      rotateControl: false,
+      shiftKeyRotate: true,
     })
     L.tileLayer(osmTileUrl(), {
       maxZoom: 22,
       attribution: OSM_ATTRIBUTION,
     }).addTo(map)
+    map.on('rotate', onRotate)
 
-    const start = props.bbox
-      ?? (props.latitude != null && props.longitude != null
-        ? { west: props.longitude - 0.002, east: props.longitude + 0.002, south: props.latitude - 0.002, north: props.latitude + 0.002 }
-        : { west: -80.16, east: -80.08, south: 26.05, north: 26.12 })
-    map.setView([(start.north + start.south) / 2, (start.west + start.east) / 2], 15)
-    applyBox(start, false)
+    const start = startBox()
+    if (start) {
+      map.setView([(start.north + start.south) / 2, (start.west + start.east) / 2], 17)
+      applyBox(start, false)
+      if (!props.bbox) emit('update:bbox', start)
+    }
     ready.value = true
-    requestAnimationFrame(() => {
+    map.invalidateSize()
+    applyHeading(props.heading)
+    if (start) applyBox(start, true)
+    stopSizeWatch = observeMapSize(mapEl.value, () => {
       if (cancelled || !map) return
       map.invalidateSize()
-      applyBox(start, true)
     })
   }
   catch (error) {
@@ -140,11 +212,22 @@ function useVisibleMap() {
 
 watch(
   () => [props.latitude, props.longitude, props.bbox] as const,
-  () => {
-    if (!ready.value || !props.bbox) return
-    applyBox(props.bbox, true)
+  async () => {
+    if (!hasStart()) return
+    if (!ready.value) {
+      await boot()
+      return
+    }
+    const box = startBox()
+    if (box) applyBox(box, true)
   },
 )
+
+watch(() => props.heading, (value) => {
+  if (!ready.value || !map) return
+  if (headingDelta(map.getBearing(), value) < 0.4) return
+  applyHeading(value)
+})
 
 onMounted(() => {
   cancelled = false
@@ -152,9 +235,12 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   cancelled = true
+  stopSizeWatch?.()
+  stopSizeWatch = null
   try {
     map?.off()
     for (const marker of corners) marker.remove()
+    pinMarker?.remove()
     rectangle?.remove()
     map?.remove()
   }
@@ -163,14 +249,30 @@ onBeforeUnmount(() => {
   }
   map = null
   rectangle = null
+  pinMarker = null
   corners.length = 0
   L = null
+})
+
+defineExpose({
+  recenter() {
+    const box = startBox()
+    if (box) applyBox(box, true)
+  },
 })
 </script>
 
 <template>
   <div>
     <div
+      v-if="!hasStart()"
+      class="location-map flex items-center justify-center p-6 text-center text-sm text-[var(--color-ink-500)]"
+      role="status"
+    >
+      Pick a United States address first. The map opens on that pin, not a default city.
+    </div>
+    <div
+      v-else
       ref="mapEl"
       class="location-map"
       role="application"
@@ -194,8 +296,8 @@ onBeforeUnmount(() => {
       </button>
     </div>
     <p class="field-hint mt-2">
-      Drag the gold handles to draw the operational fence. Pan and zoom the OpenStreetMap
-      underlay to match the real yard.
+      Drag the gold handles to draw the operational fence. Rotate the map so the road
+      runs straight, then pan until the fence matches the real yard.
     </p>
   </div>
 </template>

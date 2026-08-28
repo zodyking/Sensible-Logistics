@@ -13,7 +13,7 @@ const schema = z.object({
     latitude: z.number().min(-90).max(90),
     longitude: z.number().min(-180).max(180),
     rotation: z.number(),
-  }),
+  }).nullish(),
 })
 
 /** Record a container on this location's OpenStreetMap fence. */

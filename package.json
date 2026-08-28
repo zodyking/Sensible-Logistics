@@ -24,6 +24,7 @@
   "dependencies": {
     "drizzle-orm": "0.45.2",
     "leaflet": "^1.9.4",
+    "leaflet-rotate": "^0.2.8",
     "nodemailer": "^9.0.5",
     "nuxt": "4.5.2",
     "nuxt-auth-utils": "0.5.30",
