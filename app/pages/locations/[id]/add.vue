@@ -3,9 +3,11 @@ import { CONTAINER_TYPES, CONTAINER_TYPE_LABELS, PICKUP_EQUIPMENT_SIZES, PICKUP_
 import type { ContainerType, EquipmentType } from '#shared/utils/domain'
 import {
   formatContainerNumber,
+  maskContainerInput,
   normalizeContainerNumber,
   validateContainerNumber,
 } from '#shared/utils/iso6346'
+import { driverOcrMessage } from '#shared/utils/ocr-parse'
 
 const { user } = useUserSession()
 setPageLayout(user.value?.role === 'ADMIN' ? 'admin' : 'default')
@@ -32,6 +34,11 @@ const equipmentType = ref<EquipmentType>('DRY_40')
 const isLoaded = ref(true)
 const submitting = ref(false)
 const errorMessage = ref('')
+const cameraOpen = ref(false)
+const capturedPhoto = ref('')
+const readingPhoto = ref(false)
+const ocrMessage = ref('')
+const cameraAutoOpened = ref(false)
 
 const normalized = computed(() => normalizeContainerNumber(rawNumber.value))
 const validation = computed(() => validateContainerNumber(rawNumber.value))
@@ -88,7 +95,12 @@ const blocked = computed(() => {
 const canAdvance = computed(() => {
   switch (step.value) {
     case 'number':
-      return validation.value.structureValid && !blocked.value && !resolving.value && Boolean(resolution.value)
+      return validation.value.structureValid
+        && !blocked.value
+        && !resolving.value
+        && Boolean(resolution.value)
+        && !readingPhoto.value
+        && !cameraOpen.value
     case 'containerType':
     case 'equipmentType':
     case 'load':
@@ -133,6 +145,50 @@ async function confirm() {
     submitting.value = false
   }
 }
+
+watch(step, (current) => {
+  if (current !== 'number') return
+  if (cameraAutoOpened.value || rawNumber.value || cameraOpen.value) return
+  cameraAutoOpened.value = true
+  cameraOpen.value = true
+}, { immediate: true })
+
+async function onPhoto(dataUrl: string) {
+  capturedPhoto.value = dataUrl
+  readingPhoto.value = true
+  cameraOpen.value = false
+  ocrMessage.value = ''
+  errorMessage.value = ''
+  await nextTick()
+  const startedAt = Date.now()
+  try {
+    const result = await $fetch('/api/scan/recognize', {
+      method: 'POST',
+      timeout: 180_000,
+      headers: { 'Cache-Control': 'no-store' },
+      body: { image: dataUrl },
+    })
+    if (result.container) rawNumber.value = maskContainerInput(result.container)
+    if (!result.container) {
+      ocrMessage.value = result.message || 'No container number could be read. Edit the field or retake.'
+    }
+  }
+  catch (error) {
+    ocrMessage.value = driverOcrMessage(
+      apiErrorMessage(error, 'Could not read the photo. Edit the field or retake.'),
+      'Could not read the photo. Edit the field or retake.',
+    )
+  }
+  finally {
+    await waitAtLeast(startedAt, PHOTO_READ_MIN_MS)
+    readingPhoto.value = false
+  }
+}
+
+function retakePhoto() {
+  ocrMessage.value = ''
+  cameraOpen.value = true
+}
 </script>
 
 <template>
@@ -170,58 +226,85 @@ async function confirm() {
     </p>
 
     <template v-if="step === 'number'">
-      <div class="card p-4">
-        <label class="field !mb-0">
-          <span>Container number</span>
-          <ContainerNumberInput
-            v-model="rawNumber"
-            :invalid="showValidation && !validation.structureValid"
-            describedby="add-container-validation"
-          />
-        </label>
-        <div
-          id="add-container-validation"
-          aria-live="polite"
-        >
-          <p
-            v-if="showValidation && validation.valid"
-            class="banner ok mt-3 mb-0"
-          >
-            <span aria-hidden="true">✓</span>
-            <span><b>{{ formatContainerNumber(normalized) }}</b> ISO 6346 check digit is valid.</span>
+      <ScanReadingLoader
+        v-if="readingPhoto"
+        label="Reading the photo…"
+      />
+      <template v-else>
+        <ScanPhotoPeek
+          v-if="capturedPhoto && !cameraOpen"
+          :src="capturedPhoto"
+        />
+        <div class="card p-4">
+          <p class="mb-4 text-sm text-[var(--color-ink-500)]">
+            Scan the box number, or type it if the photo cannot be read.
           </p>
-          <p
-            v-else-if="showValidation"
-            class="banner warn mt-3 mb-0"
+          <label class="field !mb-0">
+            <span>Container number</span>
+            <ContainerNumberInput
+              v-model="rawNumber"
+              :invalid="showValidation && !validation.structureValid"
+              describedby="add-container-validation"
+            />
+          </label>
+          <div
+            id="add-container-validation"
+            aria-live="polite"
           >
-            <span aria-hidden="true">!</span>
-            <span>{{ validation.errors[0] }}</span>
-          </p>
+            <p
+              v-if="showValidation && validation.valid"
+              class="banner ok mt-3 mb-0"
+            >
+              <span aria-hidden="true">✓</span>
+              <span><b>{{ formatContainerNumber(normalized) }}</b> ISO 6346 check digit is valid.</span>
+            </p>
+            <p
+              v-else-if="showValidation"
+              class="banner warn mt-3 mb-0"
+            >
+              <span aria-hidden="true">!</span>
+              <span>{{ validation.errors[0] }}</span>
+            </p>
+          </div>
         </div>
-      </div>
-      <p
-        v-if="resolving"
-        class="banner info mt-4"
-        role="status"
-      >
-        <span aria-hidden="true">▸</span>
-        <span>Checking the active pool…</span>
-      </p>
-      <p
-        v-else-if="resolution"
-        class="banner mt-4"
-        :class="blocked ? 'err' : 'info'"
-        role="status"
-      >
-        <span aria-hidden="true">▸</span>
-        <span>
-          {{
-            blocked && resolution.outcome !== 'CONFLICT'
-              ? 'A driver currently holds this container. Finish or cancel that movement first.'
-              : resolution.message
-          }}
-        </span>
-      </p>
+        <p
+          v-if="ocrMessage && !readingPhoto"
+          class="note warn mt-4"
+        >
+          <span>{{ ocrMessage }}</span>
+        </p>
+        <p
+          v-if="resolving"
+          class="banner info mt-4"
+          role="status"
+        >
+          <span aria-hidden="true">▸</span>
+          <span>Checking the active pool…</span>
+        </p>
+        <p
+          v-else-if="resolution"
+          class="banner mt-4"
+          :class="blocked ? 'err' : 'info'"
+          role="status"
+        >
+          <span aria-hidden="true">▸</span>
+          <span>
+            {{
+              blocked && resolution.outcome !== 'CONFLICT'
+                ? 'A driver currently holds this container. Finish or cancel that movement first.'
+                : resolution.message
+            }}
+          </span>
+        </p>
+        <button
+          type="button"
+          class="btn-ghost mt-4 w-full"
+          :disabled="readingPhoto"
+          @click="retakePhoto"
+        >
+          {{ capturedPhoto ? 'Retake photo' : 'Open camera' }}
+        </button>
+      </template>
     </template>
 
     <template v-else-if="step === 'containerType'">
@@ -319,5 +402,13 @@ async function confirm() {
         Continue
       </button>
     </div>
+
+    <CaptureCamera
+      v-if="cameraOpen"
+      title="Container number"
+      reading-label="Reading the container number…"
+      @close="cameraOpen = false"
+      @photo="onPhoto"
+    />
   </section>
 </template>
