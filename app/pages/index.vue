@@ -109,6 +109,7 @@ async function confirmCancelTrip() {
         :seal-number="active.trip.sealNumber"
         :origin-name="active.origin?.name"
         :destination-name="active.destination?.name"
+        :status="active.trip.status"
         can-change-dropoff
         @change-dropoff="navigateTo(`/trips/${active.trip.id}/dropoff`)"
       />
@@ -125,7 +126,7 @@ async function confirmCancelTrip() {
           <div class="trip-cno">
             No active trip
           </div>
-          <p class="text-center text-sm text-[var(--color-ink-500)]">
+          <p class="mb-0 text-sm text-[var(--color-ink-500)]">
             Start a pickup to put a container on this card.
           </p>
         </div>

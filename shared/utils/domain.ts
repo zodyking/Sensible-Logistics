@@ -164,7 +164,7 @@ export const TRIP_STATUS_CHIP: Record<TripStatus, 'ok' | 'warn' | 'err' | 'trans
   DROPOFF_IN_PROGRESS: 'warn',
   DROPPED_OFF: 'ok',
   COMPLETED: 'ok',
-  CANCELLED: 'idle',
+  CANCELLED: 'err',
   EXCEPTION: 'err',
 }
 

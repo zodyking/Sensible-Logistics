@@ -1,8 +1,4 @@
 <script setup lang="ts">
-import { TRIP_STATUS_CHIP, TRIP_STATUS_GLYPH, TRIP_STATUS_LABELS } from '#shared/utils/domain'
-import type { TripStatus } from '#shared/utils/domain'
-import { formatChassisNumber, formatContainerNumber } from '#shared/utils/iso6346'
-
 useHead({ title: 'My Trips' })
 
 const view = ref<'list' | 'calendar'>('list')
@@ -106,20 +102,6 @@ function shiftMonth(delta: number) {
   cursor.value = next
 }
 
-function rowIconStyle(statusKey: TripStatus) {
-  const variant = TRIP_STATUS_CHIP[statusKey]
-  if (variant === 'ok') return { background: 'var(--color-ok-100)', color: 'var(--color-ok-600)' }
-  if (variant === 'err') return { background: 'var(--color-err-100)', color: 'var(--color-err-600)' }
-  if (variant === 'warn') return { background: 'var(--color-warn-100)', color: 'var(--color-warn-600)' }
-  if (variant === 'transit') return { background: 'var(--color-info-100)', color: 'var(--color-info-600)' }
-  return { background: 'var(--color-paper-100)', color: 'var(--color-ink-500)' }
-}
-
-function tripSubtitle(trip: { originName?: string | null, destinationName?: string | null, createdAt: string, pickedUpAt?: string | null, reference: string }) {
-  const route = [trip.originName ?? 'No origin', trip.destinationName ?? 'Open dest'].join(' → ')
-  return `${route} · ${formatTime(trip.pickedUpAt ?? trip.createdAt)} · ${trip.reference}`
-}
-
 function selectDay(iso: string) {
   dayFilter.value = iso === todayIso.value ? 'today' : 'all'
   view.value = 'list'
@@ -212,30 +194,23 @@ function selectDay(iso: string) {
               <div class="day-label">
                 {{ day.label }}
               </div>
-              <NuxtLink
+              <TripListCard
                 v-for="trip in day.items"
+                :id="trip.id"
                 :key="trip.id"
-                :to="`/trips/${trip.id}`"
-                class="trip-row"
-              >
-                <div
-                  class="row-ico"
-                  :style="rowIconStyle(trip.status)"
-                  aria-hidden="true"
-                >
-                  {{ TRIP_STATUS_GLYPH[trip.status] }}
-                </div>
-                <div class="row-main">
-                  <b class="mono">{{ trip.containerNumber ? (formatContainerNumber(trip.containerNumber) || trip.containerNumber) : (trip.chassisNumber ? (formatChassisNumber(trip.chassisNumber) || trip.chassisNumber) : trip.reference) }}</b>
-                  <small>{{ tripSubtitle(trip) }}</small>
-                </div>
-                <div class="row-end">
-                  <StatusChip
-                    :variant="TRIP_STATUS_CHIP[trip.status]"
-                    :label="TRIP_STATUS_LABELS[trip.status]"
-                  />
-                </div>
-              </NuxtLink>
+                :status="trip.status"
+                :kind="trip.kind"
+                :container-number="trip.containerNumber"
+                :container-type="trip.containerType"
+                :chassis-number="trip.chassisNumber"
+                :reference="trip.reference"
+                :origin-name="trip.originName"
+                :destination-name="trip.destinationName"
+                :picked-up-at="trip.pickedUpAt"
+                :dropped-off-at="trip.droppedOffAt"
+                :is-loaded="trip.isLoaded"
+                :created-at="trip.createdAt"
+              />
             </div>
           </div>
         </div>

@@ -1,6 +1,12 @@
 <script setup lang="ts">
-import { CONTAINER_TYPE_LABELS, EQUIPMENT_TYPE_SHORT, TRIP_KIND_LABELS } from '#shared/utils/domain'
-import type { ContainerType, EquipmentType, TripKind } from '#shared/utils/domain'
+import {
+  CONTAINER_TYPE_LABELS,
+  EQUIPMENT_TYPE_SHORT,
+  TRIP_KIND_LABELS,
+  TRIP_STATUS_CHIP,
+  TRIP_STATUS_LABELS,
+} from '#shared/utils/domain'
+import type { ContainerType, EquipmentType, TripKind, TripStatus } from '#shared/utils/domain'
 import { formatChassisNumber, formatContainerNumber } from '#shared/utils/iso6346'
 
 const props = defineProps<{
@@ -16,6 +22,7 @@ const props = defineProps<{
   originLabel?: string
   destinationLabel?: string
   canChangeDropoff?: boolean
+  status?: TripStatus | null
 }>()
 
 const emit = defineEmits<{ changeDropoff: [] }>()
@@ -40,21 +47,31 @@ const typeLabel = computed(() => {
   if (isBareChassis.value) return TRIP_KIND_LABELS.BARE_CHASSIS
   return props.containerType ? CONTAINER_TYPE_LABELS[props.containerType] : '—'
 })
+
+const originDisplay = computed(() => props.originName?.trim() || 'Not set')
+const destinationDisplay = computed(() => props.destinationName?.trim() || 'Choose at drop-off')
 </script>
 
 <template>
-  <div class="trip-card">
+  <article class="trip-card">
     <div class="trip-card-head">
       <div class="trip-card-meta">
-        <span class="trip-flag line">
-          {{ typeLabel }}
-        </span>
-        <span
-          class="trip-flag"
-          :class="!isBareChassis && isLoaded ? 'loaded' : 'empty'"
-        >
-          {{ !isBareChassis && isLoaded ? 'Loaded' : 'Empty' }}
-        </span>
+        <div class="trip-card-flags">
+          <span class="trip-flag line">
+            {{ typeLabel }}
+          </span>
+          <span
+            class="trip-flag"
+            :class="!isBareChassis && isLoaded ? 'loaded' : 'empty'"
+          >
+            {{ !isBareChassis && isLoaded ? 'Loaded' : 'Empty' }}
+          </span>
+        </div>
+        <StatusChip
+          v-if="status"
+          :variant="TRIP_STATUS_CHIP[status]"
+          :label="TRIP_STATUS_LABELS[status]"
+        />
       </div>
 
       <div class="trip-cno">
@@ -81,18 +98,25 @@ const typeLabel = computed(() => {
 
     <div class="route-strip">
       <div class="route-point">
-        <small>{{ originLabel ?? 'Origin' }}</small>
-        <strong>{{ originName ?? 'Not set' }}</strong>
+        <strong>{{ originDisplay }}</strong>
+        <small>{{ originLabel ?? 'Pickup' }}</small>
       </div>
       <div
-        class="route-arrow"
+        class="route-track"
         aria-hidden="true"
       >
-        →
+        <i class="route-dot on" />
+        <span class="route-line" />
+        <span class="route-chevr">›</span>
+        <span class="route-line" />
+        <i
+          class="route-dot"
+          :class="{ on: Boolean(destinationName) }"
+        />
       </div>
       <div class="route-point dest">
+        <strong>{{ destinationDisplay }}</strong>
         <small>{{ destinationLabel ?? 'Drop-off' }}</small>
-        <strong>{{ destinationName ?? 'Choose at drop-off' }}</strong>
         <button
           v-if="canChangeDropoff"
           type="button"
@@ -103,5 +127,5 @@ const typeLabel = computed(() => {
         </button>
       </div>
     </div>
-  </div>
+  </article>
 </template>

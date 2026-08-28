@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { TRIP_STATUS_CHIP, TRIP_STATUS_LABELS } from '#shared/utils/domain'
 import { formatContainerNumber } from '#shared/utils/iso6346'
 
 const route = useRoute()
@@ -40,13 +39,6 @@ const isLive = computed(() =>
         back-label="Trips"
       />
 
-      <div class="mb-4 flex flex-wrap gap-2">
-        <StatusChip
-          :variant="TRIP_STATUS_CHIP[data.trip.status]"
-          :label="TRIP_STATUS_LABELS[data.trip.status]"
-        />
-      </div>
-
       <TripCard
         :trip-kind="data.trip.kind === 'BARE_CHASSIS' ? 'BARE_CHASSIS' : 'CONTAINER'"
         :container-type="data.container?.containerType"
@@ -57,6 +49,7 @@ const isLive = computed(() =>
         :seal-number="data.trip.sealNumber"
         :origin-name="data.origin?.name"
         :destination-name="data.destination?.name"
+        :status="data.trip.status"
         :can-change-dropoff="isLive"
         @change-dropoff="navigateTo(`/trips/${tripId}/dropoff`)"
       >
