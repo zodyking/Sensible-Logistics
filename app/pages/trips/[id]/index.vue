@@ -148,6 +148,7 @@ const canSendSms = computed(() => Boolean(tripSmsAction(data.value?.trip.status)
         :kind="task.kind"
         :status="task.status"
         :trip-id="task.tripId"
+        :steps="task.steps"
         compact
       />
       <EmptyState

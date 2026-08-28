@@ -14,6 +14,15 @@ import {
   taskFingerprintSource,
 } from '#shared/utils/sms-task'
 import type { DispatchTaskKind, DispatchTaskStatus } from '#shared/utils/domain'
+import {
+  allStepsDone,
+  firstLineTitle,
+  normalizeSteps,
+  someStepsDone,
+  stepsFromBlob,
+  stepsOrBlob,
+} from '#shared/utils/task-steps'
+import type { TaskStep } from '#shared/utils/task-steps'
 
 export const DEFAULT_TASK_TIMEZONE = 'America/New_York'
 
@@ -36,7 +45,9 @@ export interface DispatchTaskView {
   workDate: string
   kind: DispatchTaskKind
   status: DispatchTaskStatus
+  source: 'SMS' | 'MANUAL'
   tripId: string | null
+  steps: TaskStep[]
   parsed: Record<string, unknown>
 }
 
@@ -49,6 +60,7 @@ function newToken(): string {
 }
 
 function toView(row: DispatchTask): DispatchTaskView {
+  const parsed = row.parsed ?? {}
   return {
     id: row.id,
     title: row.title,
@@ -58,8 +70,10 @@ function toView(row: DispatchTask): DispatchTaskView {
     workDate: row.workDate,
     kind: row.kind,
     status: row.status,
+    source: row.source,
     tripId: row.tripId,
-    parsed: row.parsed ?? {},
+    steps: stepsOrBlob(parsed, row.rawText),
+    parsed,
   }
 }
 
@@ -261,11 +275,61 @@ export async function attachOpenTasksToTrip(
     ))
 }
 
+export async function createManualTask(
+  db: Database,
+  auth: AuthContext & { driverId: string },
+  text: string,
+): Promise<DispatchTaskView> {
+  const blob = text.trim()
+  if (!blob) {
+    throw createError({ statusCode: 422, statusMessage: 'Paste the work first.' })
+  }
+
+  const timezone = await companyTimezone(db, auth.companyId)
+  const todayIso = calendarDateInZone(new Date(), timezone)
+  const parsedSms = parseDispatchSms(blob, todayIso)
+  const workDate = parsedSms?.workDate ?? todayIso
+  const kind = parsedSms?.kind ?? 'NOTE'
+  const title = parsedSms?.title ?? firstLineTitle(blob)
+  const steps = stepsFromBlob(blob)
+  if (!steps.length) {
+    throw createError({ statusCode: 422, statusMessage: 'Paste the work first.' })
+  }
+
+  const now = new Date()
+  const [inserted] = await db
+    .insert(dispatchTasks)
+    .values({
+      companyId: auth.companyId,
+      driverId: auth.driverId,
+      source: 'MANUAL',
+      rawText: blob,
+      sender: null,
+      receivedAt: now,
+      workDate,
+      kind,
+      title,
+      parsed: {
+        origin: 'manual',
+        containerNumbers: parsedSms?.containerNumbers ?? [],
+        steps,
+      },
+      status: 'OPEN',
+      fingerprint: `manual:${randomBytes(16).toString('hex')}`,
+    })
+    .returning()
+
+  if (!inserted) {
+    throw createError({ statusCode: 500, statusMessage: 'Could not save the task.' })
+  }
+  return toView(inserted)
+}
+
 export async function updateDriverTask(
   db: Database,
   auth: AuthContext & { driverId: string },
   taskId: string,
-  patch: { status?: DispatchTaskStatus, tripId?: string | null },
+  patch: { status?: DispatchTaskStatus, tripId?: string | null, steps?: TaskStep[] },
 ): Promise<DispatchTaskView> {
   const [row] = await db
     .select()
@@ -296,11 +360,30 @@ export async function updateDriverTask(
     }
   }
 
+  const nextParsed = { ...(row.parsed ?? {}) }
+  let nextStatus = patch.status ?? row.status
+  let nextTitle = row.title
+  let nextRaw = row.rawText
+
+  if (patch.steps) {
+    const steps = normalizeSteps(patch.steps)
+    nextParsed.steps = steps
+    nextRaw = steps.map(step => step.text).filter(Boolean).join('\n') || row.rawText
+    const firstOpen = steps.find(step => !step.done)?.text
+    nextTitle = firstOpen || steps[0]?.text || row.title
+    if (allStepsDone(steps)) nextStatus = 'DONE'
+    else if (someStepsDone(steps)) nextStatus = 'IN_PROGRESS'
+    else if (!patch.status) nextStatus = 'OPEN'
+  }
+
   const [updated] = await db
     .update(dispatchTasks)
     .set({
-      status: patch.status ?? row.status,
+      status: nextStatus,
       tripId: patch.tripId === undefined ? row.tripId : patch.tripId,
+      parsed: nextParsed,
+      title: nextTitle,
+      rawText: nextRaw,
       updatedAt: new Date(),
     })
     .where(eq(dispatchTasks.id, row.id))
@@ -377,6 +460,7 @@ export async function ingestInboundSms(
       title: parsed.title,
       parsed: {
         containerNumbers: parsed.containerNumbers,
+        steps: stepsFromBlob(text),
       },
       status: 'OPEN',
       fingerprint: print,

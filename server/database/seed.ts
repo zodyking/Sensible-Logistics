@@ -18,6 +18,7 @@ import { Pool } from 'pg'
 import { computeCheckDigit, normalizeContainerNumber, validateContainerNumber } from '../../shared/utils/iso6346'
 import { bboxAround, localMetersFromLatLng, offsetLatLng, polygonFromBbox } from '../../shared/utils/geo'
 import { addIsoDays, calendarDateInZone, parseDispatchSms, taskFingerprintSource } from '../../shared/utils/sms-task'
+import { stepsFromBlob } from '../../shared/utils/task-steps'
 import * as schema from './schema'
 
 const {
@@ -855,7 +856,10 @@ async function main() {
         workDate: parsed.workDate,
         kind: parsed.kind,
         title: parsed.title,
-        parsed: { containerNumbers: parsed.containerNumbers },
+        parsed: {
+          containerNumbers: parsed.containerNumbers,
+          steps: stepsFromBlob(sample.text),
+        },
         status: sample.status,
         tripId: sample.tripId,
         fingerprint,
