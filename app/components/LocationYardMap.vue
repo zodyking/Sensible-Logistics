@@ -10,6 +10,8 @@ import {
 } from '#shared/utils/geo'
 import { OSM_ATTRIBUTION, osmTileUrl } from '~/utils/map-tiles'
 
+type LeafletModule = typeof import('leaflet')
+
 export interface YardMapBox {
   id: string
   number: string
@@ -46,7 +48,6 @@ const mapEl = ref<HTMLElement | null>(null)
 const ready = ref(false)
 const errorMessage = ref('')
 
-type LeafletModule = typeof import('leaflet')
 let L: LeafletModule | null = null
 let map: import('leaflet').Map | null = null
 let boundaryLayer: import('leaflet').Polygon | null = null
@@ -54,6 +55,12 @@ let boxesLayer: import('leaflet').LayerGroup | null = null
 let pendingLayer: import('leaflet').LayerGroup | null = null
 let dragHandle: import('leaflet').Marker | null = null
 let fitted = false
+let cancelled = false
+
+function leaflet(): LeafletModule {
+  if (!L) throw new Error('Map is not ready.')
+  return L
+}
 
 function paintBox(box: YardMapBox, interactive: boolean) {
   if (!L) return null
@@ -174,14 +181,26 @@ function paintBoundary() {
 
 function fit() {
   if (!map || !L) return
+  const size = map.getSize()
+  if (!size.x || !size.y) {
+    map.invalidateSize()
+  }
   const box = bboxFromPolygon(props.boundary)
-  if (box) {
-    map.fitBounds(L.latLngBounds(L.latLng(box.south, box.west), L.latLng(box.north, box.east)).pad(0.12), { animate: false })
-    fitted = true
-    return
+  try {
+    if (box) {
+      map.fitBounds(
+        [[box.south, box.west], [box.north, box.east]],
+        { animate: false, padding: [12, 12], maxZoom: 19 },
+      )
+      fitted = true
+      return
+    }
+  }
+  catch {
+    // Fall through to a centre pin when Leaflet cannot fit a tiny container.
   }
   if (props.latitude != null && props.longitude != null) {
-    map.setView([props.latitude, props.longitude], 18)
+    map.setView([props.latitude, props.longitude], 18, { animate: false })
     fitted = true
   }
 }
@@ -199,49 +218,71 @@ function onMapClick(event: import('leaflet').LeafletMouseEvent) {
 async function boot() {
   if (!import.meta.client || !mapEl.value) return
   try {
-    L = await import('leaflet')
+    const mod = await import('leaflet')
+    if (cancelled || !mapEl.value) return
+    L = (mod.default ?? mod) as LeafletModule
     const preview = props.mode === 'preview'
-    map = L.map(mapEl.value, {
+    map = leaflet().map(mapEl.value, {
       zoomControl: !preview,
-      attributionControl: true,
+      attributionControl: !preview,
       dragging: !preview,
       scrollWheelZoom: !preview,
       doubleClickZoom: !preview,
       boxZoom: !preview,
       keyboard: !preview,
     })
-    L.tileLayer(osmTileUrl(), {
+    leaflet().tileLayer(osmTileUrl(), {
       maxZoom: 22,
       attribution: OSM_ATTRIBUTION,
     }).addTo(map)
-    boxesLayer = L.layerGroup().addTo(map)
-    pendingLayer = L.layerGroup().addTo(map)
+    boxesLayer = leaflet().layerGroup().addTo(map)
+    pendingLayer = leaflet().layerGroup().addTo(map)
     paintBoundary()
     redrawBoxes()
     redrawPending()
-    fit()
     map.on('click', onMapClick)
     ready.value = true
-    setTimeout(() => map?.invalidateSize(), 80)
+    requestAnimationFrame(() => {
+      if (cancelled || !map) return
+      map.invalidateSize()
+      fit()
+    })
   }
   catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : 'Map failed to load.'
+    if (!cancelled) {
+      errorMessage.value = error instanceof Error ? error.message : 'Map failed to load.'
+    }
   }
 }
 
 watch(() => props.boundary, () => {
+  if (!ready.value) return
   paintBoundary()
   if (!fitted) fit()
 })
-watch(() => props.containers, redrawBoxes, { deep: true })
+watch(() => props.containers, () => {
+  if (!ready.value) return
+  redrawBoxes()
+}, { deep: true })
 watch(() => [props.pending, props.selectedId] as const, () => {
+  if (!ready.value) return
   redrawBoxes()
   redrawPending()
 }, { deep: true })
 
-onMounted(boot)
+onMounted(() => {
+  cancelled = false
+  boot()
+})
 onBeforeUnmount(() => {
-  map?.remove()
+  cancelled = true
+  try {
+    map?.off()
+    map?.remove()
+  }
+  catch {
+    // Leaflet throws if the pane was already detached during a route change.
+  }
   map = null
   boundaryLayer = null
   boxesLayer = null

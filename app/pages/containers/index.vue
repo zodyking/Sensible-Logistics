@@ -68,11 +68,12 @@ function addressLine(item: { type: keyof typeof LOCATION_TYPE_LABELS, addressLin
     </p>
 
     <template v-else-if="data?.items.length">
-      <NuxtLink
+      <button
         v-for="item in data.items"
         :key="item.id"
-        :to="`/locations/${item.id}`"
+        type="button"
         class="loc-card"
+        @click="navigateTo(`/locations/${item.id}`)"
       >
         <ClientOnly>
           <LocationYardMap
@@ -102,7 +103,7 @@ function addressLine(item: { type: keyof typeof LOCATION_TYPE_LABELS, addressLin
             :occupancy="item.occupancy"
           />
         </div>
-      </NuxtLink>
+      </button>
     </template>
 
     <EmptyState

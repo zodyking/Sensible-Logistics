@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { containerPlacements, containers, locations } from '../../database/schema'
 import { mapContainerFromRow } from '../../services/placements'
 import { requireAuth } from '../../utils/session'
-import { countContainersByType, emptyTypeCounts, LOCATION_TYPES } from '#shared/utils/domain'
+import { countContainersByType, LOCATION_TYPES } from '#shared/utils/domain'
 import type { GeoJsonPolygon } from '#shared/utils/geo'
 
 const querySchema = z.object({
@@ -44,11 +44,6 @@ export default defineEventHandler(async (event) => {
       longitude: locations.longitude,
       boundary: locations.boundary,
       hasBoundary: sql<boolean>`${locations.boundary} is not null`,
-      occupancy: sql<number>`(
-        select count(*)::int from ${containers} c
-        where c.current_location_id = ${locations.id}
-          and c.active_pool_state <> 'INACTIVE'
-      )`,
     })
     .from(locations)
     .where(and(...filters))
@@ -118,8 +113,8 @@ export default defineEventHandler(async (event) => {
       longitude: row.longitude ? Number(row.longitude) : null,
       boundary: row.boundary,
       hasBoundary: row.hasBoundary,
-      occupancy: row.occupancy,
-      typeCounts: siteContainers.length ? countContainersByType(siteContainers) : emptyTypeCounts(),
+      occupancy: mapped.length,
+      typeCounts: countContainersByType(mapped),
       containers: mapped,
     }
   })

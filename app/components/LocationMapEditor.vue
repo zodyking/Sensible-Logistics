@@ -22,6 +22,7 @@ let L: LeafletModule | null = null
 let map: import('leaflet').Map | null = null
 let rectangle: import('leaflet').Rectangle | null = null
 const corners: import('leaflet').Marker[] = []
+let cancelled = false
 
 function asLatLngBounds(box: BoundingBox) {
   return L!.latLngBounds(
@@ -80,14 +81,20 @@ function applyBox(box: BoundingBox, fit: boolean) {
     rectangle.setBounds(bounds)
   }
   paintCorners(box)
-  if (fit) map.fitBounds(bounds.pad(0.18))
+  if (fit) {
+    map.fitBounds(
+      [[box.south, box.west], [box.north, box.east]],
+      { animate: false, padding: [28, 28], maxZoom: 19 },
+    )
+  }
 }
 
 async function boot() {
   if (!import.meta.client || !mapEl.value) return
   try {
-    L = await import('leaflet')
-    await import('leaflet/dist/leaflet.css')
+    const mod = await import('leaflet')
+    if (cancelled || !mapEl.value) return
+    L = (mod.default ?? mod) as LeafletModule
     map = L.map(mapEl.value, {
       zoomControl: true,
       attributionControl: true,
@@ -102,12 +109,18 @@ async function boot() {
         ? { west: props.longitude - 0.002, east: props.longitude + 0.002, south: props.latitude - 0.002, north: props.latitude + 0.002 }
         : { west: -80.16, east: -80.08, south: 26.05, north: 26.12 })
     map.setView([(start.north + start.south) / 2, (start.west + start.east) / 2], 15)
-    applyBox(start, true)
+    applyBox(start, false)
     ready.value = true
-    setTimeout(() => map?.invalidateSize(), 80)
+    requestAnimationFrame(() => {
+      if (cancelled || !map) return
+      map.invalidateSize()
+      applyBox(start, true)
+    })
   }
   catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : 'Map failed to load.'
+    if (!cancelled) {
+      errorMessage.value = error instanceof Error ? error.message : 'Map failed to load.'
+    }
   }
 }
 
@@ -126,19 +139,32 @@ function useVisibleMap() {
 }
 
 watch(
-  () => [props.latitude, props.longitude] as const,
+  () => [props.latitude, props.longitude, props.bbox] as const,
   () => {
     if (!ready.value || !props.bbox) return
     applyBox(props.bbox, true)
   },
 )
 
-onMounted(boot)
+onMounted(() => {
+  cancelled = false
+  boot()
+})
 onBeforeUnmount(() => {
-  map?.remove()
+  cancelled = true
+  try {
+    map?.off()
+    for (const marker of corners) marker.remove()
+    rectangle?.remove()
+    map?.remove()
+  }
+  catch {
+    // Leaflet throws if the pane was already detached during a route change.
+  }
   map = null
   rectangle = null
   corners.length = 0
+  L = null
 })
 </script>
 
