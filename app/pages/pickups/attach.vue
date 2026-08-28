@@ -215,8 +215,10 @@ watch([tripId, capturedPhoto], ([id, photo]) => {
 async function onPhoto(dataUrl: string) {
   capturedPhoto.value = dataUrl
   readingPhoto.value = true
+  cameraOpen.value = false
   ocrMessage.value = ''
   errorMessage.value = ''
+  await nextTick()
   const startedAt = Date.now()
   try {
     const result = await $fetch('/api/scan/recognize', {
@@ -237,9 +239,8 @@ async function onPhoto(dataUrl: string) {
     )
   }
   finally {
-    await waitAtLeast(startedAt, 1000)
+    await waitAtLeast(startedAt, PHOTO_READ_MIN_MS)
     readingPhoto.value = false
-    cameraOpen.value = false
   }
 }
 
@@ -303,90 +304,96 @@ function retakePhoto() {
       </p>
 
       <template v-if="step === 'equipment'">
-        <ScanPhotoPeek
-          v-if="capturedPhoto && !cameraOpen"
-          :src="capturedPhoto"
+        <ScanReadingLoader
+          v-if="readingPhoto"
+          label="Reading the photo…"
         />
-        <div class="card p-4">
-          <p class="mb-4 text-sm text-[var(--color-ink-500)]">
-            Chassis {{ chassisNumber || 'on this trip' }} is live. Scan or type the container you are hanging on it.
-          </p>
-          <label
-            class="field !mb-0"
-            for="attach-container"
-          >
-            <span>Container number</span>
-            <div class="field-row">
-              <ContainerNumberInput
-                id="attach-container"
-                v-model="rawNumber"
-                :invalid="containerState === 'error'"
-              />
-              <FieldStatus
-                :state="containerState"
-                :detail="containerDetail"
-                label="container number"
-              />
-            </div>
-            <small class="field-hint">Four letters, six digits, then the boxed check digit.</small>
-          </label>
-        </div>
+        <template v-else>
+          <ScanPhotoPeek
+            v-if="capturedPhoto && !cameraOpen"
+            :src="capturedPhoto"
+          />
+          <div class="card p-4">
+            <p class="mb-4 text-sm text-[var(--color-ink-500)]">
+              Chassis {{ chassisNumber || 'on this trip' }} is live. Scan or type the container you are hanging on it.
+            </p>
+            <label
+              class="field !mb-0"
+              for="attach-container"
+            >
+              <span>Container number</span>
+              <div class="field-row">
+                <ContainerNumberInput
+                  id="attach-container"
+                  v-model="rawNumber"
+                  :invalid="containerState === 'error'"
+                />
+                <FieldStatus
+                  :state="containerState"
+                  :detail="containerDetail"
+                  label="container number"
+                />
+              </div>
+              <small class="field-hint">Four letters, six digits, then the boxed check digit.</small>
+            </label>
+          </div>
 
-        <div aria-live="polite">
-          <p
-            v-if="ocrMessage && !readingPhoto"
-            class="note warn"
-          >
-            <span>{{ ocrMessage }}</span>
-          </p>
+          <div aria-live="polite">
+            <p
+              v-if="ocrMessage && !readingPhoto"
+              class="note warn"
+            >
+              <span>{{ ocrMessage }}</span>
+            </p>
 
-          <p
-            v-if="resolving"
-            class="note"
-          >
-            <span>Checking the active container pool…</span>
-          </p>
-          <p
-            v-else-if="resolution"
-            class="note"
-            :class="RESOLUTION_COPY[resolution.outcome]?.variant"
-          >
-            <span>
-              <b>{{ RESOLUTION_COPY[resolution.outcome]?.title }}.</b>
-              {{ resolution.message }}
-            </span>
-          </p>
-        </div>
+            <p
+              v-if="resolving"
+              class="note"
+            >
+              <span>Checking the active container pool…</span>
+            </p>
+            <p
+              v-else-if="resolution"
+              class="note"
+              :class="RESOLUTION_COPY[resolution.outcome]?.variant"
+            >
+              <span>
+                <b>{{ RESOLUTION_COPY[resolution.outcome]?.title }}.</b>
+                {{ resolution.message }}
+              </span>
+            </p>
+          </div>
 
-        <div
-          v-if="resolution?.outcome === 'CONFLICT' && resolution.holder"
-          class="card mt-4 p-4"
-        >
-          <span class="eyebrow">Current holder</span>
-          <div class="trip-facts mt-3 !border-t-0 !pt-0">
-            <div class="trip-fact">
-              <small>Driver</small>
-              <b>{{ resolution.holder.driverName }}</b>
-            </div>
-            <div class="trip-fact">
-              <small>State</small>
-              <b>{{ ACTIVE_POOL_LABELS[resolution.holder.activePoolState as keyof typeof ACTIVE_POOL_LABELS] }}</b>
+          <div
+            v-if="resolution?.outcome === 'CONFLICT' && resolution.holder"
+            class="card mt-4 p-4"
+          >
+            <span class="eyebrow">Current holder</span>
+            <div class="trip-facts mt-3 !border-t-0 !pt-0">
+              <div class="trip-fact">
+                <small>Driver</small>
+                <b>{{ resolution.holder.driverName }}</b>
+              </div>
+              <div class="trip-fact">
+                <small>State</small>
+                <b>{{ ACTIVE_POOL_LABELS[resolution.holder.activePoolState as keyof typeof ACTIVE_POOL_LABELS] }}</b>
+              </div>
             </div>
           </div>
-        </div>
 
-        <button
-          type="button"
-          class="btn-ghost mt-4 w-full"
-          :disabled="readingPhoto"
-          @click="retakePhoto"
-        >
-          {{ capturedPhoto ? 'Retake photo' : 'Open camera' }}
-        </button>
+          <button
+            type="button"
+            class="btn-ghost mt-4 w-full"
+            :disabled="readingPhoto"
+            @click="retakePhoto"
+          >
+            {{ capturedPhoto ? 'Retake photo' : 'Open camera' }}
+          </button>
+        </template>
       </template>
 
       <template v-else-if="step === 'containerType'">
-        <div class="choice-grid single-row compact">
+        <div class="choice-grid">
           <button
             v-for="type in CONTAINER_TYPES"
             :key="type"
@@ -401,7 +408,7 @@ function retakePhoto() {
       </template>
 
       <template v-else-if="step === 'equipmentType'">
-        <div class="choice-grid single-row">
+        <div class="choice-grid">
           <button
             v-for="type in PICKUP_EQUIPMENT_SIZES"
             :key="type"
@@ -482,7 +489,10 @@ function retakePhoto() {
         </button>
       </template>
 
-      <div class="mt-6 flex gap-3">
+      <div
+        v-if="!(step === 'equipment' && readingPhoto)"
+        class="mt-6 flex gap-3"
+      >
         <button
           v-if="stepIndex > 0"
           type="button"
