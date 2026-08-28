@@ -627,7 +627,6 @@
     font-size: var(--text-2xl);
     font-weight: 700;
     letter-spacing: 0.04em;
-    text-align: left;
     line-height: 1.15;
     margin: 10px 0 12px;
     color: var(--color-ink-900);
@@ -636,6 +635,11 @@
   .trip-cno a {
     color: inherit;
     text-decoration: none;
+  }
+
+  .trip-card-head-idle .trip-cno,
+  .trip-card-head-idle > p {
+    text-align: center;
   }
 
   .trip-facts {

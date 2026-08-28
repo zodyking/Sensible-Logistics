@@ -118,17 +118,17 @@ async function confirmCancelTrip() {
         v-else
         class="trip-card"
       >
-        <div class="trip-card-head">
+        <div class="trip-card-head trip-card-head-idle">
           <div class="trip-card-meta">
             <div class="trip-card-flags">
               <span class="trip-flag line">None</span>
               <span class="trip-flag empty">Bob tail</span>
             </div>
           </div>
-          <div class="trip-cno">
+          <div class="trip-cno text-center">
             No active trip
           </div>
-          <p class="mb-0 text-sm text-[var(--color-ink-500)]">
+          <p class="mb-0 text-center text-sm text-[var(--color-ink-500)]">
             Start a pickup to put a container on this card.
           </p>
         </div>
