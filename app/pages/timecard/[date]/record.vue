@@ -21,7 +21,7 @@ const { data, status, error } = await useFetch(() => `/api/timecard/${workDate.v
 
 useHead({ title: () => `Time record — ${workDate.value}` })
 
-const backTo = computed(() => (driverId.value ? '/admin/drivers' : '/timecard'))
+const backTo = computed(() => (driverId.value ? '/admin/drivers' : '/tasks'))
 
 function printRecord() {
   if (import.meta.client) window.print()

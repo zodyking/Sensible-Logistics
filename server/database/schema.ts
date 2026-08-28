@@ -169,6 +169,22 @@ export const damageSeverityEnum = pgEnum('damage_severity', ['MINOR', 'MODERATE'
 
 export const notificationStatusEnum = pgEnum('notification_status', ['PENDING', 'DELIVERED', 'READ', 'DISMISSED'])
 
+export const dispatchTaskKindEnum = pgEnum('dispatch_task_kind', [
+  'PICKUP',
+  'DROPOFF',
+  'LOAD',
+  'EMPTY',
+  'WORK',
+  'NOTE',
+])
+export const dispatchTaskStatusEnum = pgEnum('dispatch_task_status', [
+  'OPEN',
+  'IN_PROGRESS',
+  'DONE',
+  'DISMISSED',
+])
+export const dispatchTaskSourceEnum = pgEnum('dispatch_task_source', ['SMS'])
+
 export const timecardStatusEnum = pgEnum('timecard_status', ['OPEN', 'COMPLETED', 'LOCKED'])
 export const shortHaulStatusEnum = pgEnum('short_haul_status', ['QUALIFIED', 'AT_RISK', 'NOT_AVAILABLE', 'UNKNOWN'])
 export const cycleTypeEnum = pgEnum('cycle_type', ['SIXTY_SEVEN', 'SEVENTY_EIGHT'])
@@ -733,6 +749,49 @@ export const auditLogs = pgTable('audit_logs', {
 }, t => [index('audit_logs_company_idx').on(t.companyId, t.createdAt)])
 
 /* ============================================================
+   Dispatch SMS → driver tasks
+   One inbound webhook token per driver. Messages that look like work
+   become dated tasks and can be attached to a trip.
+   ============================================================ */
+
+export const smsInboundEndpoints = pgTable('sms_inbound_endpoints', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  companyId: uuid('company_id').notNull().references(() => companies.id, { onDelete: 'cascade' }),
+  driverId: uuid('driver_id').notNull().references(() => drivers.id, { onDelete: 'cascade' }),
+  token: text('token').notNull(),
+  lastReceivedAt: utc('last_received_at'),
+  lastTestAt: utc('last_test_at'),
+  createdAt: utc('created_at').notNull().defaultNow(),
+  updatedAt: utc('updated_at').notNull().defaultNow(),
+}, t => [
+  uniqueIndex('sms_inbound_endpoints_token_key').on(t.token),
+  uniqueIndex('sms_inbound_endpoints_driver_key').on(t.driverId),
+])
+
+export const dispatchTasks = pgTable('dispatch_tasks', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  companyId: uuid('company_id').notNull().references(() => companies.id, { onDelete: 'cascade' }),
+  driverId: uuid('driver_id').notNull().references(() => drivers.id, { onDelete: 'cascade' }),
+  source: dispatchTaskSourceEnum('source').notNull().default('SMS'),
+  rawText: text('raw_text').notNull(),
+  sender: text('sender'),
+  receivedAt: utc('received_at').notNull().defaultNow(),
+  workDate: date('work_date').notNull(),
+  kind: dispatchTaskKindEnum('kind').notNull().default('NOTE'),
+  title: text('title').notNull(),
+  parsed: jsonb('parsed').$type<Record<string, unknown>>().notNull().default({}),
+  status: dispatchTaskStatusEnum('status').notNull().default('OPEN'),
+  tripId: uuid('trip_id').references(() => trips.id, { onDelete: 'set null' }),
+  fingerprint: text('fingerprint').notNull(),
+  createdAt: utc('created_at').notNull().defaultNow(),
+  updatedAt: utc('updated_at').notNull().defaultNow(),
+}, t => [
+  uniqueIndex('dispatch_tasks_driver_fingerprint_key').on(t.driverId, t.fingerprint),
+  index('dispatch_tasks_driver_work_date_idx').on(t.driverId, t.workDate),
+  index('dispatch_tasks_trip_idx').on(t.tripId),
+])
+
+/* ============================================================
    FMCSA 150 air-mile short-haul time records (spec 14.6)
    Retention: 6 months minimum; deletion is blocked inside that window.
    ============================================================ */
@@ -833,6 +892,8 @@ export type ContainerEvent = typeof containerEvents.$inferSelect
 export type ContainerPlacement = typeof containerPlacements.$inferSelect
 export type DocumentRecord = typeof documents.$inferSelect
 export type OcrResult = typeof ocrResults.$inferSelect
+export type SmsInboundEndpoint = typeof smsInboundEndpoints.$inferSelect
+export type DispatchTask = typeof dispatchTasks.$inferSelect
 export type DriverTimecard = typeof driverTimecards.$inferSelect
 export type TimecardBreak = typeof timecardBreaks.$inferSelect
 export type TimecardCorrection = typeof timecardCorrections.$inferSelect

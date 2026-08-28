@@ -9,6 +9,7 @@ watchEffect(() => {
 })
 
 const active = computed(() => data.value?.active)
+const todayTasks = computed(() => data.value?.todayTasks ?? [])
 
 const sheet = ref<'documents' | 'sms' | 'contacts' | 'cancel' | null>(null)
 const cancelling = ref(false)
@@ -227,6 +228,32 @@ async function confirmCancelTrip() {
         >
           Cancel Trip
         </button>
+      </div>
+
+      <div
+        v-if="todayTasks.length"
+        class="home-dispatch"
+      >
+        <div class="section-label">
+          <span>Dispatch</span>
+          <NuxtLink to="/tasks">
+            All tasks
+          </NuxtLink>
+        </div>
+        <DispatchTaskCard
+          v-for="task in todayTasks"
+          :id="task.id"
+          :key="task.id"
+          :title="task.title"
+          :raw-text="task.rawText"
+          :sender="task.sender"
+          :received-at="task.receivedAt"
+          :work-date="task.workDate"
+          :kind="task.kind"
+          :status="task.status"
+          :trip-id="task.tripId"
+          compact
+        />
       </div>
     </template>
 

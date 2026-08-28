@@ -127,6 +127,30 @@ const durationLabel = computed(() => formatDurationBetween(pickupStamp.value, dr
       </NuxtLink>
 
       <div class="section-label">
+        <span>Dispatch</span>
+      </div>
+      <DispatchTaskCard
+        v-for="task in data.tasks"
+        :id="task.id"
+        :key="task.id"
+        :title="task.title"
+        :raw-text="task.rawText"
+        :sender="task.sender"
+        :received-at="task.receivedAt"
+        :work-date="task.workDate"
+        :kind="task.kind"
+        :status="task.status"
+        :trip-id="task.tripId"
+        compact
+      />
+      <EmptyState
+        v-if="!data.tasks?.length"
+        glyph="☰"
+        title="No dispatch for this trip"
+        description="Dispatcher texts for this work date will attach here."
+      />
+
+      <div class="section-label">
         <span>Movement timeline</span>
       </div>
 

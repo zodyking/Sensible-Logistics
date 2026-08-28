@@ -50,6 +50,13 @@
       "when": 1787904000000,
       "tag": "0006_location_map_heading",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1787905000000,
+      "tag": "0007_dispatch_tasks",
+      "breakpoints": true
     }
   ]
 }

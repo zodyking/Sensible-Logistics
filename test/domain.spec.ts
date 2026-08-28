@@ -13,6 +13,11 @@ import {
   CYCLE_TYPES,
   DOCUMENT_CATEGORIES,
   DOCUMENT_CATEGORY_LABELS,
+  DISPATCH_TASK_KIND_LABELS,
+  DISPATCH_TASK_KINDS,
+  DISPATCH_TASK_STATUS_CHIP,
+  DISPATCH_TASK_STATUS_LABELS,
+  DISPATCH_TASK_STATUSES,
   EQUIPMENT_LENGTH_FT,
   EQUIPMENT_TYPE_LABELS,
   EQUIPMENT_TYPE_SHORT,
@@ -88,6 +93,14 @@ describe('domain vocabulary integrity', () => {
 
   it('keeps DOCUMENT_CATEGORIES in lockstep with labels', () => {
     expectUnionKeysMatch(DOCUMENT_CATEGORIES, DOCUMENT_CATEGORY_LABELS)
+  })
+
+  it('keeps DISPATCH_TASK_KINDS in lockstep with labels', () => {
+    expectUnionKeysMatch(DISPATCH_TASK_KINDS, DISPATCH_TASK_KIND_LABELS)
+  })
+
+  it('keeps DISPATCH_TASK_STATUSES in lockstep with labels and chips', () => {
+    expectUnionKeysMatch(DISPATCH_TASK_STATUSES, DISPATCH_TASK_STATUS_LABELS, DISPATCH_TASK_STATUS_CHIP)
   })
 
   it('keeps CYCLE_TYPES in lockstep with CYCLE_LIMITS', () => {

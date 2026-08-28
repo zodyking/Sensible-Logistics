@@ -25,14 +25,16 @@ export default defineNuxtRouteMiddleware((to) => {
 
   const isAdminRoute = to.path.startsWith('/admin')
   const locationPool = to.path === '/locations' || to.path.startsWith('/locations/')
+  const roadsideRecord = /^\/timecard\/[^/]+\/record/.test(to.path)
 
   if (isAdminRoute && user.value?.role !== 'ADMIN') {
     return navigateTo('/')
   }
 
   // Location records are a shared company asset — admins create them, drivers
-  // pick them. Pickup/scan remain driver-only.
-  if (!isAdminRoute && user.value?.role === 'ADMIN' && !locationPool) {
+  // pick them. Pickup/scan remain driver-only. Roadside time records stay
+  // reachable from Drivers & timecards.
+  if (!isAdminRoute && user.value?.role === 'ADMIN' && !locationPool && !roadsideRecord) {
     return navigateTo('/admin/containers')
   }
 })

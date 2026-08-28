@@ -11,10 +11,23 @@ const selectedIso = ref(toLocalIsoDate(new Date()) ?? '')
 const { data, status, error } = await useFetch('/api/trips', {
   query: { scope: 'mine', limit: 200 },
 })
+const { data: taskData } = await useFetch('/api/tasks')
 
 const todayIso = computed(() => toLocalIsoDate(new Date()) ?? '')
 
 const trips = computed(() => data.value?.items ?? [])
+const historyTasks = computed(() =>
+  (taskData.value?.tasks ?? []).filter(task => task.status !== 'DISMISSED'),
+)
+const tasksByDate = computed(() => {
+  const map = new Map<string, typeof historyTasks.value>()
+  for (const task of historyTasks.value) {
+    const bucket = map.get(task.workDate) ?? []
+    bucket.push(task)
+    map.set(task.workDate, bucket)
+  }
+  return map
+})
 
 const visibleTrips = computed(() => {
   if (dayFilter.value !== 'today') return trips.value
@@ -25,14 +38,25 @@ const visibleTrips = computed(() => {
 const grouped = computed(() => {
   const weeks = new Map<string, Map<string, typeof visibleTrips.value>>()
 
-  for (const trip of visibleTrips.value) {
-    const iso = tripPickupDay(trip) ?? todayIso.value
+  function ensureDay(iso: string) {
     const weekKey = startOfWeekMonday(iso).toISOString().slice(0, 10)
     const days = weeks.get(weekKey) ?? new Map()
+    if (!days.has(iso)) days.set(iso, [])
+    weeks.set(weekKey, days)
+    return days
+  }
+
+  for (const trip of visibleTrips.value) {
+    const iso = tripPickupDay(trip) ?? todayIso.value
+    const days = ensureDay(iso)
     const bucket = days.get(iso) ?? []
     bucket.push(trip)
     days.set(iso, bucket)
-    weeks.set(weekKey, days)
+  }
+
+  for (const iso of tasksByDate.value.keys()) {
+    if (dayFilter.value === 'today' && iso !== todayIso.value) continue
+    ensureDay(iso)
   }
 
   return [...weeks.entries()]
@@ -42,7 +66,12 @@ const grouped = computed(() => {
       label: formatWeekRange(week),
       days: [...days.entries()]
         .sort((a, b) => b[0].localeCompare(a[0]))
-        .map(([iso, items]) => ({ iso, label: formatDayHeading(iso, todayIso.value), items })),
+        .map(([iso, items]) => ({
+          iso,
+          label: formatDayHeading(iso, todayIso.value),
+          items,
+          tasks: tasksByDate.value.get(iso) ?? [],
+        })),
     }))
 })
 
@@ -53,6 +82,7 @@ const tripDays = computed(() => {
       if (iso) set.add(iso)
     }
   }
+  for (const iso of tasksByDate.value.keys()) set.add(iso)
   return set
 })
 
@@ -124,6 +154,8 @@ const selectedDayTrips = computed(() =>
     }),
 )
 
+const selectedDayTasks = computed(() => tasksByDate.value.get(selectedIso.value) ?? [])
+
 function shiftMonth(delta: number) {
   const next = new Date(cursor.value)
   next.setMonth(next.getMonth() + delta)
@@ -146,7 +178,7 @@ function calendarDayLabel(cell: { iso: string, hasTrip: boolean, selected: boole
   const parts = [date]
   if (cell.today) parts.push('today')
   if (cell.selected) parts.push('selected')
-  if (cell.hasTrip) parts.push('has trips')
+  if (cell.hasTrip) parts.push('has trips or tasks')
   return parts.join(', ')
 }
 </script>
@@ -269,6 +301,20 @@ function calendarDayLabel(cell: { iso: string, hasTrip: boolean, selected: boole
                 :is-loaded="trip.isLoaded"
                 :created-at="trip.createdAt"
               />
+              <DispatchTaskCard
+                v-for="task in day.tasks"
+                :id="task.id"
+                :key="task.id"
+                :title="task.title"
+                :raw-text="task.rawText"
+                :sender="task.sender"
+                :received-at="task.receivedAt"
+                :work-date="task.workDate"
+                :kind="task.kind"
+                :status="task.status"
+                :trip-id="task.tripId"
+                compact
+              />
             </div>
           </div>
         </div>
@@ -277,7 +323,7 @@ function calendarDayLabel(cell: { iso: string, hasTrip: boolean, selected: boole
           v-else
           glyph="⇄"
           title="No trips yet"
-          :description="dayFilter === 'today' ? 'Nothing picked up or dropped off today.' : 'Completed pickups and drop-offs will appear here.'"
+          :description="dayFilter === 'today' ? 'Nothing picked up, dropped off, or dispatched today.' : 'Completed pickups, drop-offs, and dispatcher texts will appear here.'"
         />
       </div>
 
@@ -336,7 +382,9 @@ function calendarDayLabel(cell: { iso: string, hasTrip: boolean, selected: boole
         <div class="cal-day-panel">
           <div class="section-label">
             <span>{{ selectedDayLabel }}</span>
-            <span v-if="selectedDayTrips.length">{{ selectedDayTrips.length }}</span>
+            <span v-if="selectedDayTrips.length || selectedDayTasks.length">
+              {{ selectedDayTrips.length + selectedDayTasks.length }}
+            </span>
           </div>
 
           <TripListCard
@@ -357,11 +405,26 @@ function calendarDayLabel(cell: { iso: string, hasTrip: boolean, selected: boole
             :created-at="trip.createdAt"
           />
 
+          <DispatchTaskCard
+            v-for="task in selectedDayTasks"
+            :id="task.id"
+            :key="task.id"
+            :title="task.title"
+            :raw-text="task.rawText"
+            :sender="task.sender"
+            :received-at="task.receivedAt"
+            :work-date="task.workDate"
+            :kind="task.kind"
+            :status="task.status"
+            :trip-id="task.tripId"
+            compact
+          />
+
           <EmptyState
-            v-if="!selectedDayTrips.length"
+            v-if="!selectedDayTrips.length && !selectedDayTasks.length"
             glyph="⇄"
             title="No trips this day"
-            description="Nothing was picked up or dropped off on this date."
+            description="Nothing was picked up, dropped off, or dispatched on this date."
           />
         </div>
       </div>

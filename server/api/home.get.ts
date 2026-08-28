@@ -1,20 +1,25 @@
 import { and, desc, eq, inArray, ne } from 'drizzle-orm'
 import { chassis, containers, locations, trips } from '../database/schema'
 import { findActiveTrip } from '../services/movements'
-import { getTodayView } from '../services/timecards'
+import { calendarDateInZone } from '#shared/utils/sms-task'
+import { companyTimezone, listOpenTasksForHome } from '../services/tasks'
 import { requireDriver } from '../utils/session'
 
 /**
- * Everything the driver home screen needs in one round trip — duty status,
- * the active movement, and the recent lists that let a driver avoid typing.
+ * Everything the driver home screen needs in one round trip — the active
+ * movement, open dispatch tasks, and the recent lists that let a driver
+ * avoid typing.
  */
 export default defineEventHandler(async (event) => {
   const auth = await requireDriver(event)
   const db = useDb()
 
-  const [duty, activeTrip] = await Promise.all([
-    getTodayView(db, auth.companyId, auth.driverId),
+  const timezone = await companyTimezone(db, auth.companyId)
+  const todayIso = calendarDateInZone(new Date(), timezone)
+
+  const [activeTrip, todayTasks] = await Promise.all([
     findActiveTrip(db, auth.companyId, auth.driverId),
+    listOpenTasksForHome(db, auth, todayIso),
   ])
 
   let active = null
@@ -93,16 +98,16 @@ export default defineEventHandler(async (event) => {
     driver: { name: auth.fullName, firstName: auth.firstName, company: auth.companyName },
     /** Bridge crossings are a later increment. Swaps stay 0 until that flow is recorded. */
     stats: { bridgeCrosses: 0, swaps: 0 },
-    duty: duty
-      ? {
-          workDate: duty.card.workDate,
-          isOnDuty: duty.isOnDuty,
-          reportedForDutyAt: duty.card.reportedForDutyAt,
-          releasedFromDutyAt: duty.card.releasedFromDutyAt,
-          onDutyMinutes: duty.onDutyMinutes,
-          shortHaulStatus: duty.shortHaul.status,
-        }
-      : { workDate: null, isOnDuty: false, reportedForDutyAt: null, releasedFromDutyAt: null, onDutyMinutes: 0, shortHaulStatus: 'UNKNOWN' as const },
+    todayIso,
+    todayTasks,
+    duty: {
+      workDate: todayIso,
+      isOnDuty: Boolean(activeTrip),
+      reportedForDutyAt: null,
+      releasedFromDutyAt: null,
+      onDutyMinutes: 0,
+      shortHaulStatus: 'UNKNOWN' as const,
+    },
     active,
     recentContainers,
     recentLocations,
