@@ -327,7 +327,16 @@ async function confirmCancelTrip() {
       </div>
 
       <div class="home-ctas">
+        <button
+          v-if="canClearDashboard"
+          type="button"
+          class="btn-primary-action home-cta"
+          @click="clearDashboard"
+        >
+          Clear Trip
+        </button>
         <NuxtLink
+          v-else
           :to="primaryAction.to"
           class="btn-primary-action home-cta"
         >
@@ -347,14 +356,6 @@ async function confirmCancelTrip() {
           @click="sheet = 'cancel'"
         >
           Cancel Trip
-        </button>
-        <button
-          v-else-if="canClearDashboard"
-          type="button"
-          class="btn-clear-dash"
-          @click="clearDashboard"
-        >
-          Clear dashboard
         </button>
       </div>
 
