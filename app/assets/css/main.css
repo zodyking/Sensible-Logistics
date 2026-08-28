@@ -944,6 +944,130 @@
     display: block;
   }
 
+  /* --- Field status: one mark, reasons on request --- */
+  .field-row {
+    display: flex;
+    align-items: center;
+    gap: var(--s2);
+  }
+
+  .field-row > .input {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .fstatus {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+  }
+
+  .fstatus-mark,
+  .fstatus-info {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 999px;
+  }
+
+  .fstatus-mark svg,
+  .fstatus-info svg {
+    width: 20px;
+    height: 20px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .fstatus-mark.ok {
+    color: var(--color-ok-600);
+    background: var(--color-ok-100);
+  }
+
+  .fstatus-mark.error {
+    color: var(--color-err-600);
+    background: var(--color-err-100);
+  }
+
+  .fstatus-info {
+    color: var(--color-ink-500);
+    background: transparent;
+    border: none;
+  }
+
+  .fstatus-info svg .dot {
+    fill: currentColor;
+    stroke: none;
+  }
+
+  .fstatus-info:hover,
+  .fstatus-info[aria-expanded='true'] {
+    color: var(--color-ink-900);
+    background: var(--color-paper-100);
+  }
+
+  .fstatus-pop {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 20;
+    width: max-content;
+    max-width: min(280px, 70vw);
+    padding: 10px 12px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-line-200);
+    background: #fff;
+    box-shadow: var(--shadow-2);
+    font-size: var(--text-xs);
+    line-height: 1.45;
+    color: var(--color-ink-700);
+    text-transform: none;
+    letter-spacing: normal;
+    font-weight: 500;
+  }
+
+  /* --- Note: a quiet one-line status, no box --- */
+  .note {
+    display: flex;
+    align-items: baseline;
+    gap: var(--s2);
+    font-size: var(--text-sm);
+    color: var(--color-ink-700);
+    margin-top: var(--s3);
+  }
+
+  .note::before {
+    content: '';
+    flex-shrink: 0;
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--color-ink-400);
+    transform: translateY(-1px);
+  }
+
+  .note.ok::before {
+    background: var(--color-ok-600);
+  }
+
+  .note.warn::before {
+    background: var(--color-amber-500);
+  }
+
+  .note.err::before {
+    background: var(--color-err-600);
+  }
+
+  .note b {
+    font-weight: 700;
+    color: var(--color-ink-900);
+  }
+
   .searchbar {
     display: flex;
     align-items: center;

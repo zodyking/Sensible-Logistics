@@ -143,9 +143,72 @@ describe('classifyEquipmentReadings', () => {
       'U835260',
       '二I',
     ])
+    expect(classified.container).toBeNull()
+    expect(classified.chassis).toBe('METZ435303')
+  })
+
+  it('never splices a sticker into an identifier', () => {
+    const classified = classifyEquipmentReadings([
+      'METZ435303',
+      'ONLY',
+      'METRO-POOL',
+      'BS',
+      '0835260',
+    ])
+    expect(classified.container).toBeNull()
+    expect(classified.chassis).toBe('METZ435303')
+  })
+
+  it('reads the rib the worker rotated into one line', () => {
+    const classified = classifyEquipmentReadings(['METZ435303', 'BSIU835260'])
     expect(classified.container).toBe('BSIU8352601')
     expect(classified.chassis).toBe('METZ435303')
-    expect(classified.container).not.toBe('LBSU8352609')
+  })
+
+  it('does not turn a category Z chassis plate into a container', () => {
+    const classified = classifyEquipmentReadings(['METZ435303'])
+    expect(classified.container).toBeNull()
+    expect(classified.chassis).toBe('METZ435303')
+  })
+
+  it('restores the category letter a sideways rib read as I', () => {
+    const classified = classifyEquipmentReadings([
+      'METZ435303',
+      'BSII835260',
+      'U835260',
+    ])
+    expect(classified.container).toBe('BSIU8352601')
+    expect(classified.chassis).toBe('METZ435303')
+  })
+
+  it('leaves the category alone when nothing corroborates a U', () => {
+    const classified = classifyEquipmentReadings(['BSII835260'])
+    expect(classified.container).toBeNull()
+  })
+
+  it('does not read a chassis plate plus a stray digit as a container', () => {
+    const classified = classifyEquipmentReadings([
+      'METZ435303',
+      '7.25',
+      'METZ4353037.25',
+    ])
+    expect(classified.container).toBeNull()
+    expect(classified.chassis).toBe('METZ435303')
+  })
+
+  it('keeps the door serial out of the chassis field', () => {
+    const classified = classifyEquipmentReadings([
+      'BSII835260',
+      'U835260',
+      'METZ435303',
+    ])
+    expect(classified.chassis).toBe('METZ435303')
+  })
+
+  it('reads two markings from one transcript', () => {
+    const ranked = parseEquipmentReadings(['MSCU4521894 and CSQU3054383'], 'container')
+    expect(ranked.map(c => c.value)).toContain('MSCU4521894')
+    expect(ranked.map(c => c.value)).toContain('CSQU3054383')
   })
 
   it('does not glue the chassis serial onto the door owner code', () => {

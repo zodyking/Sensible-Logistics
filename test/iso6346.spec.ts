@@ -298,14 +298,14 @@ describe('isValidContainerNumber', () => {
 })
 
 describe('formatContainerNumber', () => {
-  it('groups a valid number as AAAA NNNNNN-C', () => {
-    expect(formatContainerNumber('CSQU3054383')).toBe('CSQU 305438-3')
-    expect(formatContainerNumber('mscu4521894')).toBe('MSCU 452189-4')
+  it('groups a valid number as AAAANNNNNN-C', () => {
+    expect(formatContainerNumber('CSQU3054383')).toBe('CSQU305438-3')
+    expect(formatContainerNumber('mscu4521894')).toBe('MSCU452189-4')
   })
 
   it('groups partial values the same way, inserting the dash once the check digit is typed', () => {
     expect(formatContainerNumber('CSQU')).toBe('CSQU')
-    expect(formatContainerNumber('CSQU305438')).toBe('CSQU 305438')
+    expect(formatContainerNumber('CSQU305438')).toBe('CSQU305438')
     expect(formatContainerNumber('ms-cu')).toBe('MSCU')
     expect(formatContainerNumber('---')).toBe('')
   })
@@ -321,8 +321,8 @@ describe('maskContainerInput', () => {
 describe('chassis number format', () => {
   it('masks to four letters then six digits with no check dash', () => {
     expect(maskChassisInput('aimz-481345')).toBe('AIMZ481345')
-    expect(formatChassisNumber('AIMZ481345')).toBe('AIMZ 481345')
-    expect(formatChassisNumber('aimz 481')).toBe('AIMZ 481')
+    expect(formatChassisNumber('AIMZ481345')).toBe('AIMZ481345')
+    expect(formatChassisNumber('aimz 481')).toBe('AIMZ481')
     expect(isCompleteChassisNumber('AIMZ 481345')).toBe(true)
     expect(isCompleteChassisNumber('AIMZ48134')).toBe(false)
   })
