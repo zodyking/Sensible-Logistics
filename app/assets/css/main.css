@@ -1369,7 +1369,10 @@
 
   .choice-grid {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-auto-flow: row;
     gap: var(--s3);
+    width: 100%;
   }
 
   .choice-grid.cols-2 {
