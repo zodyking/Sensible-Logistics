@@ -1,6 +1,6 @@
 import { z } from 'zod'
-import { requireDriver } from '../utils/session'
-import { createManualTask } from '../services/tasks'
+import { requireDriver } from '../../utils/session'
+import { createManualTask } from '../../services/tasks'
 
 const schema = z.object({
   text: z.string().trim().min(1, 'Paste the work first.').max(8000),
