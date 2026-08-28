@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CONTAINER_TYPES, CONTAINER_TYPE_LABELS, EQUIPMENT_TYPES, EQUIPMENT_TYPE_LABELS } from '#shared/utils/domain'
+import { CONTAINER_TYPES, CONTAINER_TYPE_LABELS, PICKUP_EQUIPMENT_SIZES, PICKUP_EQUIPMENT_SIZE_LABELS, pickupEquipmentSizeLabel } from '#shared/utils/domain'
 import type { ContainerType, EquipmentType } from '#shared/utils/domain'
 import {
   formatContainerNumber,
@@ -26,7 +26,7 @@ type Step = 'number' | 'containerType' | 'equipmentType' | 'load' | 'place' | 'c
 const STEP_TITLES: Record<Step, string> = {
   number: 'Container number',
   containerType: 'Container type',
-  equipmentType: 'Equipment size',
+  equipmentType: 'Container size',
   load: 'Loaded or empty?',
   place: 'Place on the map',
   confirm: 'Confirm placement',
@@ -34,7 +34,7 @@ const STEP_TITLES: Record<Step, string> = {
 
 const rawNumber = ref('')
 const containerType = ref<ContainerType>('TROPICAL')
-const equipmentType = ref<EquipmentType>('HC_40')
+const equipmentType = ref<EquipmentType>('DRY_40')
 const isLoaded = ref(true)
 const pending = ref<YardMapBox | null>(null)
 const boxCross = ref(false)
@@ -329,7 +329,7 @@ async function confirm() {
     </template>
 
     <template v-else-if="step === 'containerType'">
-      <div class="choice-grid cols-2">
+      <div class="choice-grid single-row compact">
         <button
           v-for="type in CONTAINER_TYPES"
           :key="type"
@@ -344,16 +344,16 @@ async function confirm() {
     </template>
 
     <template v-else-if="step === 'equipmentType'">
-      <div class="choice-grid cols-2">
+      <div class="choice-grid single-row">
         <button
-          v-for="type in EQUIPMENT_TYPES"
+          v-for="type in PICKUP_EQUIPMENT_SIZES"
           :key="type"
           type="button"
           class="choice-card"
           :aria-pressed="equipmentType === type"
           @click="equipmentType = type"
         >
-          {{ EQUIPMENT_TYPE_LABELS[type] }}
+          {{ PICKUP_EQUIPMENT_SIZE_LABELS[type] }}
         </button>
       </div>
     </template>
@@ -432,7 +432,7 @@ async function confirm() {
         <b class="mt-2 block font-mono text-lg">{{ formatContainerNumber(normalized) }}</b>
         <p class="mt-2 text-sm text-[var(--color-ink-500)]">
           {{ CONTAINER_TYPE_LABELS[containerType] }}
-          · {{ EQUIPMENT_TYPE_LABELS[equipmentType] }}
+          · {{ pickupEquipmentSizeLabel(equipmentType) }}
           · {{ isLoaded ? 'Loaded' : 'Empty' }}
         </p>
         <p class="mt-2 text-sm">

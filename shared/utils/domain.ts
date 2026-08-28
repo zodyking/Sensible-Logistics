@@ -106,6 +106,18 @@ export const EQUIPMENT_TYPES = [
 ] as const
 export type EquipmentType = (typeof EQUIPMENT_TYPES)[number]
 
+/**
+ * Lengths a driver can pick when classifying a new container.
+ * Stored as DRY_20 / DRY_40; older records may still use HC_40, reefer, etc.
+ */
+export const PICKUP_EQUIPMENT_SIZES = ['DRY_20', 'DRY_40'] as const
+export type PickupEquipmentSize = (typeof PICKUP_EQUIPMENT_SIZES)[number]
+
+export const PICKUP_EQUIPMENT_SIZE_LABELS: Record<PickupEquipmentSize, string> = {
+  DRY_20: '20ft',
+  DRY_40: '40ft',
+}
+
 export const EQUIPMENT_TYPE_LABELS: Record<EquipmentType, string> = {
   DRY_20: `20' Dry`,
   DRY_40: `40' Dry`,
@@ -146,6 +158,11 @@ export const EQUIPMENT_LENGTH_FT: Record<EquipmentType, number> = {
 
 const FT_TO_M = 0.3048
 const CONTAINER_WIDTH_FT = 8
+
+export function pickupEquipmentSizeLabel(type: EquipmentType): string {
+  if (type === 'DRY_20' || type === 'DRY_40') return PICKUP_EQUIPMENT_SIZE_LABELS[type]
+  return EQUIPMENT_LENGTH_FT[type] <= 20 ? '20ft' : '40ft'
+}
 
 /** ISO footprint in metres for drawing a box on OpenStreetMap. */
 export function equipmentFootprintMeters(type: EquipmentType): { length: number, width: number } {

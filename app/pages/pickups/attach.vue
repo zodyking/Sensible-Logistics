@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ACTIVE_POOL_LABELS, CONTAINER_TYPES, CONTAINER_TYPE_LABELS, EQUIPMENT_TYPES, EQUIPMENT_TYPE_LABELS } from '#shared/utils/domain'
+import { ACTIVE_POOL_LABELS, CONTAINER_TYPES, CONTAINER_TYPE_LABELS, PICKUP_EQUIPMENT_SIZES, PICKUP_EQUIPMENT_SIZE_LABELS } from '#shared/utils/domain'
 import type { ContainerType, EquipmentType } from '#shared/utils/domain'
 import {
   formatContainerNumber,
@@ -16,7 +16,7 @@ type Step = 'equipment' | 'containerType' | 'equipmentType' | 'load' | 'seal' | 
 const STEP_TITLES: Record<Step, string> = {
   equipment: 'Container number',
   containerType: 'Container type',
-  equipmentType: 'Equipment size',
+  equipmentType: 'Container size',
   load: 'Loaded or empty?',
   seal: 'Seal number',
   confirm: 'Hang the container',
@@ -39,7 +39,7 @@ const canAttach = computed(() =>
 
 const rawNumber = ref('')
 const containerType = ref<ContainerType>('TROPICAL')
-const equipmentType = ref<EquipmentType>('HC_40')
+const equipmentType = ref<EquipmentType>('DRY_40')
 const isLoaded = ref(true)
 const sealNumber = ref('')
 
@@ -144,6 +144,7 @@ const canAdvance = computed(() => {
         && !resolving.value
         && Boolean(resolution.value)
         && !readingPhoto.value
+        && !cameraOpen.value
     case 'containerType':
     case 'equipmentType':
     case 'load':
@@ -206,11 +207,11 @@ watch(step, (current) => {
 }, { immediate: true })
 
 async function onPhoto(dataUrl: string) {
-  cameraOpen.value = false
   capturedPhoto.value = dataUrl
   readingPhoto.value = true
   ocrMessage.value = ''
   errorMessage.value = ''
+  const startedAt = Date.now()
   try {
     const result = await $fetch('/api/scan/recognize', {
       method: 'POST',
@@ -230,7 +231,9 @@ async function onPhoto(dataUrl: string) {
     )
   }
   finally {
+    await waitAtLeast(startedAt, 1000)
     readingPhoto.value = false
+    cameraOpen.value = false
   }
 }
 
@@ -294,6 +297,10 @@ function retakePhoto() {
       </p>
 
       <template v-if="step === 'equipment'">
+        <ScanPhotoPeek
+          v-if="capturedPhoto && !cameraOpen"
+          :src="capturedPhoto"
+        />
         <div class="card p-4">
           <p class="mb-4 text-sm text-[var(--color-ink-500)]">
             Chassis {{ chassisNumber || 'on this trip' }} is live. Scan or type the container you are hanging on it.
@@ -321,13 +328,7 @@ function retakePhoto() {
 
         <div aria-live="polite">
           <p
-            v-if="readingPhoto"
-            class="note"
-          >
-            <span>Reading the photo…</span>
-          </p>
-          <p
-            v-else-if="ocrMessage"
+            v-if="ocrMessage && !readingPhoto"
             class="note warn"
           >
             <span>{{ ocrMessage }}</span>
@@ -379,7 +380,7 @@ function retakePhoto() {
       </template>
 
       <template v-else-if="step === 'containerType'">
-        <div class="choice-grid cols-2">
+        <div class="choice-grid single-row compact">
           <button
             v-for="type in CONTAINER_TYPES"
             :key="type"
@@ -394,16 +395,16 @@ function retakePhoto() {
       </template>
 
       <template v-else-if="step === 'equipmentType'">
-        <div class="choice-grid cols-2">
+        <div class="choice-grid single-row">
           <button
-            v-for="type in EQUIPMENT_TYPES"
+            v-for="type in PICKUP_EQUIPMENT_SIZES"
             :key="type"
             type="button"
             class="choice-card"
             :aria-pressed="equipmentType === type"
             @click="equipmentType = type"
           >
-            {{ EQUIPMENT_TYPE_LABELS[type] }}
+            {{ PICKUP_EQUIPMENT_SIZE_LABELS[type] }}
           </button>
         </div>
       </template>
@@ -499,6 +500,7 @@ function retakePhoto() {
     <CaptureCamera
       v-if="cameraOpen"
       title="Container"
+      reading-label="Reading the container number…"
       @close="cameraOpen = false"
       @photo="onPhoto"
     />
