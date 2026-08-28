@@ -25,6 +25,7 @@ export default defineNuxtRouteMiddleware((to) => {
 
   const isAdminRoute = to.path.startsWith('/admin')
   const locationPool = to.path === '/locations' || to.path.startsWith('/locations/')
+  const containerRecord = to.path.startsWith('/containers')
   const moreArea = to.path === '/more' || to.path.startsWith('/connections') || to.path.startsWith('/reset')
   const roadsideRecord = /^\/timecard\/[^/]+\/record/.test(to.path)
 
@@ -36,7 +37,7 @@ export default defineNuxtRouteMiddleware((to) => {
   // pick them. Pickup/scan remain driver-only. Roadside time records stay
   // reachable from Drivers & timecards. The More cheat-code box and hidden
   // operator pages (API connections, clear records) stay reachable for admins.
-  if (!isAdminRoute && user.value?.role === 'ADMIN' && !locationPool && !moreArea && !roadsideRecord) {
+  if (!isAdminRoute && user.value?.role === 'ADMIN' && !locationPool && !containerRecord && !moreArea && !roadsideRecord) {
     return navigateTo('/admin/containers')
   }
 })
