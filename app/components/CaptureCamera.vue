@@ -13,6 +13,7 @@ const emit = defineEmits<{
 }>()
 
 type CameraState = 'starting' | 'live' | 'denied' | 'unsupported'
+type TorchCaps = MediaTrackCapabilities & { torch?: boolean }
 
 const videoEl = ref<HTMLVideoElement | null>(null)
 const libraryInput = ref<HTMLInputElement | null>(null)
@@ -20,12 +21,44 @@ const cameraState = ref<CameraState>('starting')
 const cameraMessage = ref('')
 const capturing = ref(false)
 const previewUrl = ref('')
+const torchAvailable = ref(false)
+const torchOn = ref(false)
 
 let stream: MediaStream | null = null
 
+function videoTrack(): MediaStreamTrack | null {
+  return stream?.getVideoTracks()[0] ?? null
+}
+
 function stopCamera() {
+  torchOn.value = false
+  torchAvailable.value = false
   stream?.getTracks().forEach(track => track.stop())
   stream = null
+}
+
+function probeTorch() {
+  const caps = videoTrack()?.getCapabilities?.() as TorchCaps | undefined
+  torchAvailable.value = Boolean(caps?.torch)
+}
+
+async function setTorch(on: boolean) {
+  const track = videoTrack()
+  if (!track || !torchAvailable.value) return
+  try {
+    await track.applyConstraints({
+      advanced: [{ torch: on } as MediaTrackConstraintSet],
+    })
+    torchOn.value = on
+  }
+  catch {
+    torchOn.value = false
+    torchAvailable.value = false
+  }
+}
+
+async function toggleTorch() {
+  await setTorch(!torchOn.value)
 }
 
 async function startCamera() {
@@ -37,13 +70,14 @@ async function startCamera() {
 
   cameraState.value = 'starting'
   cameraMessage.value = ''
+  torchOn.value = false
+  torchAvailable.value = false
   try {
     stream = await navigator.mediaDevices.getUserMedia({
       video: {
         facingMode: { ideal: 'environment' },
-        width: { ideal: 1080 },
-        height: { ideal: 1920 },
-        aspectRatio: { ideal: 0.75 },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
       },
       audio: false,
     })
@@ -51,6 +85,7 @@ async function startCamera() {
       videoEl.value.srcObject = stream
       await videoEl.value.play()
     }
+    probeTorch()
     cameraState.value = 'live'
   }
   catch {
@@ -109,6 +144,7 @@ async function takePhoto() {
   try {
     const image = captureShutter()
     previewUrl.value = image
+    await setTorch(false)
     stopCamera()
     emit('photo', image)
   }
@@ -157,24 +193,6 @@ async function onLibrary(event: Event) {
       :aria-busy="Boolean(previewUrl)"
       :aria-label="previewUrl ? 'Reading photo' : title"
     >
-      <div class="capture-bar">
-        <button
-          v-if="!previewUrl"
-          type="button"
-          class="capture-iconbtn"
-          aria-label="Close camera"
-          @click="emit('close')"
-        >
-          ✕
-        </button>
-        <span
-          v-else
-          aria-hidden="true"
-        />
-        <b>{{ previewUrl ? 'Reading photo' : title }}</b>
-        <span aria-hidden="true" />
-      </div>
-
       <div class="capture-stage">
         <div class="capture-viewport">
           <img
@@ -203,6 +221,39 @@ async function onLibrary(event: Event) {
             <p>{{ previewUrl ? readingLabel : (cameraMessage || 'Starting camera…') }}</p>
           </div>
         </div>
+      </div>
+
+      <div class="capture-bar">
+        <button
+          v-if="!previewUrl"
+          type="button"
+          class="capture-iconbtn"
+          aria-label="Close camera"
+          @click="emit('close')"
+        >
+          ✕
+        </button>
+        <span
+          v-else
+          aria-hidden="true"
+        />
+        <b>{{ previewUrl ? 'Reading photo' : title }}</b>
+        <button
+          v-if="!previewUrl"
+          type="button"
+          class="capture-iconbtn capture-flash"
+          :class="{ on: torchOn }"
+          :disabled="!torchAvailable"
+          :aria-pressed="torchOn"
+          :aria-label="torchOn ? 'Turn flash off' : (torchAvailable ? 'Turn flash on' : 'Flash is not available on this camera')"
+          @click="toggleTorch"
+        >
+          Flash
+        </button>
+        <span
+          v-else
+          aria-hidden="true"
+        />
       </div>
 
       <div
