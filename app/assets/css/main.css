@@ -506,7 +506,9 @@
   }
 
   .btn-primary-action:disabled {
-    opacity: 0.5;
+    opacity: 1;
+    background: var(--color-paper-100);
+    color: var(--color-ink-400);
     box-shadow: none;
     cursor: not-allowed;
     pointer-events: none;
@@ -628,6 +630,8 @@
   }
 
   .trip-cno {
+    display: block;
+    width: 100%;
     font-family: var(--font-mono);
     font-size: var(--text-2xl);
     font-weight: 700;
@@ -639,8 +643,10 @@
   }
 
   .trip-cno a {
+    display: block;
     color: inherit;
     text-decoration: none;
+    text-align: center;
   }
 
   .trip-facts {
