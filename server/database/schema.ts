@@ -183,7 +183,7 @@ export const dispatchTaskStatusEnum = pgEnum('dispatch_task_status', [
   'DONE',
   'DISMISSED',
 ])
-export const dispatchTaskSourceEnum = pgEnum('dispatch_task_source', ['SMS'])
+export const dispatchTaskSourceEnum = pgEnum('dispatch_task_source', ['SMS', 'MANUAL'])
 
 export const timecardStatusEnum = pgEnum('timecard_status', ['OPEN', 'COMPLETED', 'LOCKED'])
 export const shortHaulStatusEnum = pgEnum('short_haul_status', ['QUALIFIED', 'AT_RISK', 'NOT_AVAILABLE', 'UNKNOWN'])

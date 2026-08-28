@@ -313,6 +313,7 @@ function calendarDayLabel(cell: { iso: string, hasTrip: boolean, selected: boole
                 :kind="task.kind"
                 :status="task.status"
                 :trip-id="task.tripId"
+                :steps="task.steps"
                 compact
               />
             </div>
@@ -417,6 +418,7 @@ function calendarDayLabel(cell: { iso: string, hasTrip: boolean, selected: boole
             :kind="task.kind"
             :status="task.status"
             :trip-id="task.tripId"
+            :steps="task.steps"
             compact
           />
 

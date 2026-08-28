@@ -22,7 +22,7 @@ export const RESET_TARGETS: Array<{
   { id: 'trips', label: 'Trips', hint: 'Pickups, drop-offs, and movement history' },
   { id: 'chassis', label: 'Chassis', hint: 'Company chassis records' },
   { id: 'documents', label: 'Documents', hint: 'EIRs, PODs, and uploads' },
-  { id: 'tasks', label: 'Tasks', hint: 'SMS dispatch tasks' },
+  { id: 'tasks', label: 'Tasks', hint: 'SMS and pasted dispatch tasks' },
   { id: 'trucks', label: 'Trucks', hint: 'Company trucks' },
   { id: 'users', label: 'Users', hint: 'Other accounts. Yours stays.' },
 ]

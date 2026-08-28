@@ -1,28 +1,21 @@
 <script setup lang="ts">
 import { LOCATION_TYPE_LABELS } from '#shared/utils/domain'
-import { describeDropoffEffect } from '#shared/utils/service-life'
+import { describeArrival, isSwapEmptyArrival } from '#shared/utils/trip-arrive'
 
 const route = useRoute()
 const tripId = computed(() => String(route.params.id))
 
 const { data, error, status } = await useFetch(() => `/api/trips/${tripId.value}`)
 
-useHead({ title: 'Drop off' })
-
-type Step = 'location' | 'options' | 'confirm'
-const STEP_TITLES: Record<Step, string> = {
-  location: 'Where are you dropping off?',
-  options: 'Drop-off details',
-  confirm: 'Confirm drop-off',
-}
+useHead({ title: 'Arrive' })
 
 const destinationLocationId = ref<string | null>(null)
 const retainChassis = ref(false)
 const notes = ref('')
 const locationSearch = ref('')
+const pickingLocation = ref(false)
 const submitting = ref(false)
 const errorMessage = ref('')
-const step = ref<Step>('location')
 
 watch(data, (value) => {
   if (value?.destination?.id && !destinationLocationId.value) {
@@ -34,65 +27,47 @@ const { data: locationList } = await useFetch('/api/locations', {
   query: computed(() => ({ q: locationSearch.value || undefined, limit: 50 })),
 })
 
-const { data: destination } = await useAsyncData(
-  'dropoff-location',
-  () => destinationLocationId.value
-    ? $fetch(`/api/locations/${destinationLocationId.value}`)
-    : Promise.resolve(null),
-  { watch: [destinationLocationId] },
-)
-
-const hasContainer = computed(() => Boolean(data.value?.container))
-
-const STEPS = computed<Step[]>(() => ['location', 'options', 'confirm'])
-
-const stepIndex = computed(() => Math.max(0, STEPS.value.indexOf(step.value)))
-
-const selectedLocation = computed(() =>
-  locationList.value?.items.find(item => item.id === destinationLocationId.value)
-  ?? destination.value?.location
-  ?? null,
-)
-
-const isSwapEmpty = computed(() =>
-  Boolean(data.value?.trip.swapPairTripId && !data.value.trip.isLoaded && data.value.trip.kind !== 'BARE_CHASSIS'),
-)
-
-const dropoffHint = computed(() => {
-  if (isSwapEmpty.value) {
-    return 'This completes the empty. The load stays on Home as your active trip.'
-  }
-  return selectedLocation.value ? describeDropoffEffect(selectedLocation.value.type) : null
+const selectedLocation = computed(() => {
+  const fromList = locationList.value?.items.find(item => item.id === destinationLocationId.value)
+  if (fromList) return fromList
+  const dest = data.value?.destination
+  if (dest?.id && dest.id === destinationLocationId.value) return dest
+  return null
 })
 
-const canAdvance = computed(() => {
-  switch (step.value) {
-    case 'location':
-      return Boolean(destinationLocationId.value)
-    case 'options':
-    case 'confirm':
-      return true
-  }
-  return false
-})
+const hasChassis = computed(() => Boolean(data.value?.trip.chassisId))
 
-function next() {
-  errorMessage.value = ''
-  const index = stepIndex.value
-  if (index < STEPS.value.length - 1) step.value = STEPS.value[index + 1]!
+const swapEmpty = computed(() => isSwapEmptyArrival({
+  kind: data.value?.trip.kind,
+  isLoaded: data.value?.trip.isLoaded,
+  swapPairTripId: data.value?.trip.swapPairTripId,
+}))
+
+const outcome = computed(() => describeArrival({
+  kind: data.value?.trip.kind,
+  isLoaded: data.value?.trip.isLoaded,
+  swapPairTripId: data.value?.trip.swapPairTripId,
+  locationType: selectedLocation.value && 'type' in selectedLocation.value
+    ? selectedLocation.value.type
+    : null,
+  hasChassis: hasChassis.value,
+  retainChassis: retainChassis.value,
+}))
+
+const canArrive = computed(() => Boolean(destinationLocationId.value) && !submitting.value)
+
+function chooseLocation(id: string) {
+  destinationLocationId.value = id
+  pickingLocation.value = false
+  locationSearch.value = ''
 }
 
-function back() {
-  const index = stepIndex.value
-  if (index > 0) step.value = STEPS.value[index - 1]!
-}
-
-async function confirm() {
-  if (!destinationLocationId.value || submitting.value) return
+async function arrive() {
+  if (!canArrive.value || !destinationLocationId.value) return
   submitting.value = true
   errorMessage.value = ''
   try {
-    const result = await $fetch(`/api/trips/${tripId.value}/dropoff`, {
+    await $fetch(`/api/trips/${tripId.value}/dropoff`, {
       method: 'POST',
       body: {
         eventId: crypto.randomUUID(),
@@ -101,14 +76,10 @@ async function confirm() {
         notes: notes.value || null,
       },
     })
-    if (result.swapCompleted) {
-      await navigateTo('/')
-      return
-    }
-    await navigateTo(`/locations/${destinationLocationId.value}`)
+    await navigateTo('/')
   }
   catch (err) {
-    errorMessage.value = apiErrorMessage(err, 'Could not complete the drop-off.')
+    errorMessage.value = apiErrorMessage(err, 'Could not record the arrival.')
   }
   finally {
     submitting.value = false
@@ -137,27 +108,11 @@ async function confirm() {
 
     <template v-else-if="data">
       <PageHeader
-        eyebrow="Drop off"
-        :title="STEP_TITLES[step]"
-        :back-to="`/trips/${tripId}`"
-        back-label="Trip"
+        eyebrow="Arrive"
+        :title="swapEmpty ? 'Drop the empty' : 'Drop off here'"
+        back-to="/"
+        back-label="Home"
       />
-
-      <div
-        class="stepper"
-        role="progressbar"
-        :aria-valuenow="stepIndex + 1"
-        aria-valuemin="1"
-        :aria-valuemax="STEPS.length"
-        :aria-label="`Step ${stepIndex + 1} of ${STEPS.length}`"
-      >
-        <span
-          v-for="(name, index) in STEPS"
-          :key="name"
-          class="stepper-step"
-          :class="{ done: index < stepIndex, on: index === stepIndex }"
-        />
-      </div>
 
       <p
         v-if="errorMessage"
@@ -168,136 +123,152 @@ async function confirm() {
         <span>{{ errorMessage }}</span>
       </p>
 
-      <template v-if="step === 'location'">
-        <div class="searchbar">
-          <span aria-hidden="true">⌕</span>
-          <input
-            v-model="locationSearch"
-            type="search"
-            placeholder="Search yards, customers, terminals…"
-            aria-label="Search drop-off locations"
-          >
-        </div>
+      <TripCard
+        :trip-kind="data.trip.kind === 'BARE_CHASSIS' ? 'BARE_CHASSIS' : 'CONTAINER'"
+        :container-type="data.container?.containerType"
+        :is-loaded="data.trip.isLoaded"
+        :container-number="data.container?.number"
+        :equipment-type="data.container?.equipmentType"
+        :chassis-number="data.chassis?.number"
+        :seal-number="data.trip.sealNumber"
+        :origin-name="data.origin?.name"
+        :destination-name="selectedLocation?.name"
+        :status="data.trip.status"
+      />
 
-        <div
-          v-if="locationList?.items.length"
-          class="card rowlist"
-        >
-          <button
-            v-for="location in locationList.items"
-            :key="location.id"
-            type="button"
-            class="row"
-            :aria-pressed="destinationLocationId === location.id"
-            @click="destinationLocationId = location.id"
+      <div class="arrive-block">
+        <span class="field-label">Where</span>
+
+        <template v-if="selectedLocation && !pickingLocation">
+          <div class="card arrive-where">
+            <div>
+              <b>{{ selectedLocation.name }}</b>
+              <small>{{ 'type' in selectedLocation ? LOCATION_TYPE_LABELS[selectedLocation.type] : 'Drop-off' }}</small>
+            </div>
+            <button
+              type="button"
+              class="route-change"
+              @click="pickingLocation = true"
+            >
+              Change
+            </button>
+          </div>
+        </template>
+
+        <template v-else>
+          <p
+            v-if="!selectedLocation"
+            class="note"
           >
-            <span class="row-main">
-              <b>{{ location.name }}</b>
-              <small>
-                {{ LOCATION_TYPE_LABELS[location.type] }}
-                <template v-if="location.addressLine1"> · {{ location.addressLine1 }}</template>
-              </small>
-            </span>
-            <span class="row-end">
-              <StatusChip
-                v-if="destinationLocationId === location.id"
-                variant="ok"
-                label="Selected"
-              />
-              <span
-                v-else
-                aria-hidden="true"
-              >›</span>
-            </span>
+            <span>Pick where this is coming off. Pickup already asked for this — it is missing on the trip.</span>
+          </p>
+          <div class="searchbar">
+            <span aria-hidden="true">⌕</span>
+            <input
+              v-model="locationSearch"
+              type="search"
+              placeholder="Search yards, customers, terminals…"
+              aria-label="Search drop-off locations"
+            >
+          </div>
+          <div
+            v-if="locationList?.items.length"
+            class="card rowlist"
+          >
+            <button
+              v-for="location in locationList.items"
+              :key="location.id"
+              type="button"
+              class="row"
+              :aria-pressed="destinationLocationId === location.id"
+              @click="chooseLocation(location.id)"
+            >
+              <span class="row-main">
+                <b>{{ location.name }}</b>
+                <small>
+                  {{ LOCATION_TYPE_LABELS[location.type] }}
+                  <template v-if="location.addressLine1"> · {{ location.addressLine1 }}</template>
+                </small>
+              </span>
+              <span class="row-end">
+                <StatusChip
+                  v-if="destinationLocationId === location.id"
+                  variant="ok"
+                  label="Selected"
+                />
+                <span
+                  v-else
+                  aria-hidden="true"
+                >›</span>
+              </span>
+            </button>
+          </div>
+          <EmptyState
+            v-else
+            glyph="◫"
+            title="No locations match"
+            description="Pick an existing location. Add new ones from More → Customers & locations."
+          />
+          <button
+            v-if="selectedLocation"
+            type="button"
+            class="btn-ghost mt-3 w-full"
+            @click="pickingLocation = false"
+          >
+            Keep {{ selectedLocation.name }}
+          </button>
+        </template>
+      </div>
+
+      <div
+        v-if="hasChassis"
+        class="arrive-block"
+      >
+        <span class="field-label">Chassis</span>
+        <div class="choice-grid cols-2">
+          <button
+            type="button"
+            class="choice-card"
+            :aria-pressed="!retainChassis"
+            @click="retainChassis = false"
+          >
+            {{ data.trip.kind === 'BARE_CHASSIS' ? 'Park here' : 'Unhook' }}
+            <small>{{ data.trip.kind === 'BARE_CHASSIS' ? 'Available at this stop' : 'Leave it here' }}</small>
+          </button>
+          <button
+            type="button"
+            class="choice-card"
+            :aria-pressed="retainChassis"
+            @click="retainChassis = true"
+          >
+            {{ data.trip.kind === 'BARE_CHASSIS' ? 'Keep it' : 'Keep attached' }}
+            <small>{{ data.trip.kind === 'BARE_CHASSIS' ? 'Stays on this trip' : 'Stays on the box' }}</small>
           </button>
         </div>
-
-        <EmptyState
-          v-else
-          glyph="◫"
-          title="No locations match"
-          description="Pick an existing location. Add new ones from More → Customers & locations."
-        />
-      </template>
-
-      <template v-else-if="step === 'options'">
-        <label class="flex min-h-11 items-center gap-3 text-sm font-semibold">
-          <input
-            v-model="retainChassis"
-            type="checkbox"
-            class="size-5"
-            :disabled="!data.trip.chassisId"
-          >
-          Keep the chassis attached
-        </label>
-        <p
-          v-if="dropoffHint"
-          class="mt-3 text-sm text-[var(--color-ink-500)]"
-        >
-          {{ dropoffHint }}
-        </p>
-        <label class="field mt-4 !mb-0">
-          <span>Notes</span>
-          <textarea
-            v-model="notes"
-            class="textarea"
-            placeholder="Receiving contact, gate ticket number, exceptions…"
-          />
-        </label>
-      </template>
-
-      <template v-else>
-        <TripCard
-          :trip-kind="data.trip.kind === 'BARE_CHASSIS' ? 'BARE_CHASSIS' : 'CONTAINER'"
-          :container-type="data.container?.containerType"
-          :is-loaded="data.trip.isLoaded"
-          :container-number="data.container?.number"
-          :equipment-type="data.container?.equipmentType"
-          :chassis-number="data.chassis?.number"
-          :seal-number="data.trip.sealNumber"
-          :origin-name="data.origin?.name"
-          :destination-name="selectedLocation && 'name' in selectedLocation ? selectedLocation.name : undefined"
-        />
-        <p class="banner info">
-          <span aria-hidden="true">▸</span>
-          <span>
-            {{
-              dropoffHint
-                || (hasContainer
-                  ? 'Confirming records the drop-off and closes the movement.'
-                  : 'Confirming closes the chassis movement at this location.')
-            }}
-          </span>
-        </p>
-        <button
-          type="button"
-          class="btn-primary-action"
-          :disabled="submitting"
-          @click="confirm"
-        >
-          {{ submitting ? 'Saving…' : 'Complete drop-off' }}
-        </button>
-      </template>
-
-      <div class="mt-6 flex gap-3">
-        <button
-          v-if="stepIndex > 0"
-          type="button"
-          class="btn-ghost flex-1"
-          @click="back"
-        >
-          Back
-        </button>
-        <button
-          v-if="step !== 'confirm'"
-          type="button"
-          class="btn-dark flex-1"
-          :disabled="!canAdvance || submitting"
-          @click="next"
-        >
-          Continue
-        </button>
       </div>
+
+      <p class="banner info arrive-outcome">
+        <span aria-hidden="true">▸</span>
+        <span>{{ outcome }}</span>
+      </p>
+
+      <label class="field arrive-block">
+        <span>Notes</span>
+        <textarea
+          v-model="notes"
+          class="textarea"
+          placeholder="Optional — gate ticket, receiver, damage…"
+        />
+      </label>
+
+      <button
+        type="button"
+        class="btn-primary-action"
+        :disabled="!canArrive"
+        @click="arrive"
+      >
+        {{ submitting ? 'Saving…' : (swapEmpty ? 'Arrive · finish empty' : 'Arrive') }}
+      </button>
     </template>
   </section>
 </template>
