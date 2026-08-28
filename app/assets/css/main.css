@@ -107,10 +107,13 @@
     color: inherit;
   }
 
+  /* iOS Safari zooms focused fields whose computed size is < 16px.
+     Do not inherit body (--text-base is 0.95rem ≈ 15.2px). */
   input,
   select,
   textarea {
-    font: inherit;
+    font-family: inherit;
+    font-size: 16px;
   }
 
   ::placeholder {
@@ -1029,7 +1032,7 @@
     border-radius: var(--radius-md);
     padding: 0 var(--s3);
     background: #fff;
-    font-size: var(--text-base);
+    font-size: 16px;
     color: var(--color-ink-900);
   }
 
@@ -1053,7 +1056,7 @@
     font-family: var(--font-mono);
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    font-size: var(--text-lg);
+    font-size: max(16px, var(--text-lg));
     font-weight: 600;
   }
 
@@ -1261,7 +1264,7 @@
     border: none;
     outline: none;
     background: transparent;
-    font-size: var(--text-base);
+    font-size: 16px;
     min-width: 0;
   }
 
@@ -2381,7 +2384,7 @@
     border: none;
     outline: none;
     background: transparent;
-    font-size: var(--text-sm);
+    font-size: 16px;
     min-width: 0;
   }
 
@@ -3497,7 +3500,7 @@
     padding: 0 var(--s3);
     margin-bottom: var(--s3);
     background: var(--color-paper-50);
-    font-size: var(--text-sm);
+    font-size: 16px;
   }
 
   .tc-form textarea {
@@ -4328,7 +4331,7 @@
   border-radius: var(--radius-md);
   padding: var(--s3);
   font: inherit;
-  font-size: var(--text-base);
+  font-size: 16px;
   color: var(--color-ink-900);
   background: var(--color-paper-50);
   resize: vertical;
@@ -4436,7 +4439,7 @@
   border-bottom: 1px solid transparent;
   background: transparent;
   font: inherit;
-  font-size: var(--text-base);
+  font-size: 16px;
   line-height: 1.35;
   color: var(--color-ink-900);
   padding: 8px 0;
@@ -4854,6 +4857,19 @@
   word-break: break-all;
   text-align: right;
   color: var(--color-ink-700);
+}
+
+/* iOS Safari zooms the page when a focused text field’s computed
+   font-size is below 16px. Unlayered so this beats component tokens
+   and Tailwind utilities. Checkbox/radio/range/color do not zoom. */
+input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not([type='hidden']):not([type='button']):not([type='submit']):not([type='reset']):not([type='image']),
+select,
+textarea {
+  font-size: 16px;
+}
+
+.input.mono {
+  font-size: max(16px, var(--text-lg));
 }
 
 @media (prefers-reduced-motion: reduce) {
