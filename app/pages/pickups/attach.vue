@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ACTIVE_POOL_LABELS, CONTAINER_TYPES, CONTAINER_TYPE_LABELS, EQUIPMENT_TYPES, EQUIPMENT_TYPE_LABELS } from '#shared/utils/domain'
+import { ACTIVE_POOL_LABELS, CONTAINER_TYPES, CONTAINER_TYPE_LABELS, PICKUP_EQUIPMENT_SIZES, PICKUP_EQUIPMENT_SIZE_LABELS } from '#shared/utils/domain'
 import type { ContainerType, EquipmentType } from '#shared/utils/domain'
 import {
   formatContainerNumber,
@@ -16,7 +16,7 @@ type Step = 'equipment' | 'containerType' | 'equipmentType' | 'load' | 'seal' | 
 const STEP_TITLES: Record<Step, string> = {
   equipment: 'Container number',
   containerType: 'Container type',
-  equipmentType: 'Equipment size',
+  equipmentType: 'Container size',
   load: 'Loaded or empty?',
   seal: 'Seal number',
   confirm: 'Hang the container',
@@ -39,7 +39,7 @@ const canAttach = computed(() =>
 
 const rawNumber = ref('')
 const containerType = ref<ContainerType>('TROPICAL')
-const equipmentType = ref<EquipmentType>('HC_40')
+const equipmentType = ref<EquipmentType>('DRY_40')
 const isLoaded = ref(true)
 const sealNumber = ref('')
 
@@ -372,7 +372,7 @@ function retakePhoto() {
       </template>
 
       <template v-else-if="step === 'containerType'">
-        <div class="choice-grid cols-2">
+        <div class="choice-grid single-row compact">
           <button
             v-for="type in CONTAINER_TYPES"
             :key="type"
@@ -387,16 +387,16 @@ function retakePhoto() {
       </template>
 
       <template v-else-if="step === 'equipmentType'">
-        <div class="choice-grid cols-2">
+        <div class="choice-grid single-row">
           <button
-            v-for="type in EQUIPMENT_TYPES"
+            v-for="type in PICKUP_EQUIPMENT_SIZES"
             :key="type"
             type="button"
             class="choice-card"
             :aria-pressed="equipmentType === type"
             @click="equipmentType = type"
           >
-            {{ EQUIPMENT_TYPE_LABELS[type] }}
+            {{ PICKUP_EQUIPMENT_SIZE_LABELS[type] }}
           </button>
         </div>
       </template>

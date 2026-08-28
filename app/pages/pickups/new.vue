@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ACTIVE_POOL_LABELS, CONTAINER_TYPES, CONTAINER_TYPE_LABELS, EQUIPMENT_TYPES, EQUIPMENT_TYPE_LABELS, LOCATION_GLYPH, TRIP_KIND_LABELS } from '#shared/utils/domain'
+import { ACTIVE_POOL_LABELS, CONTAINER_TYPES, CONTAINER_TYPE_LABELS, LOCATION_GLYPH, PICKUP_EQUIPMENT_SIZES, PICKUP_EQUIPMENT_SIZE_LABELS, TRIP_KIND_LABELS } from '#shared/utils/domain'
 import type { ContainerType, EquipmentType, TripKind } from '#shared/utils/domain'
 import {
   formatChassisNumber,
@@ -21,7 +21,7 @@ const STEP_TITLES: Record<Step, string> = {
   location: 'Where are you picking up?',
   equipment: 'Container and chassis',
   containerType: 'Container type',
-  equipmentType: 'Equipment size',
+  equipmentType: 'Container size',
   load: 'Loaded or empty?',
   seal: 'Seal number',
   notes: 'Notes',
@@ -32,7 +32,7 @@ const originLocationId = ref<string | null>(null)
 const pickupKind = ref<TripKind>('CONTAINER')
 const rawNumber = ref('')
 const containerType = ref<ContainerType>('TROPICAL')
-const equipmentType = ref<EquipmentType>('HC_40')
+const equipmentType = ref<EquipmentType>('DRY_40')
 const chassisId = ref<string | null>(null)
 const chassisNumber = ref('')
 const isLoaded = ref(true)
@@ -703,7 +703,7 @@ async function skipNotes() {
 
     <!-- ── Container type (new records only) ───────────────────── -->
     <template v-else-if="step === 'containerType'">
-      <div class="choice-grid cols-2">
+      <div class="choice-grid single-row compact">
         <button
           v-for="type in CONTAINER_TYPES"
           :key="type"
@@ -720,9 +720,9 @@ async function skipNotes() {
 
     <!-- ── Equipment type (new records only) ───────────────────── -->
     <template v-else-if="step === 'equipmentType'">
-      <div class="choice-grid cols-2">
+      <div class="choice-grid single-row">
         <button
-          v-for="type in EQUIPMENT_TYPES"
+          v-for="type in PICKUP_EQUIPMENT_SIZES"
           :key="type"
           type="button"
           class="choice-card"
@@ -730,7 +730,7 @@ async function skipNotes() {
           :disabled="Boolean(tripId)"
           @click="equipmentType = type"
         >
-          {{ EQUIPMENT_TYPE_LABELS[type] }}
+          {{ PICKUP_EQUIPMENT_SIZE_LABELS[type] }}
         </button>
       </div>
     </template>

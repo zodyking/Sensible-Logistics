@@ -1391,6 +1391,23 @@
     grid-template-columns: 1fr 1fr;
   }
 
+  .choice-grid.single-row {
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    grid-template-columns: none;
+  }
+
+  .choice-grid.single-row .choice-card {
+    min-height: 52px;
+    padding: var(--s3) 8px;
+    line-height: 1.2;
+  }
+
+  .choice-grid.single-row.compact .choice-card {
+    font-size: var(--text-sm);
+    overflow-wrap: anywhere;
+  }
+
   .choice-card {
     min-height: 56px;
     border-radius: var(--radius-md);
