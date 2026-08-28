@@ -4,3 +4,6 @@ export function waitAtLeast(startedAt: number, minMs: number) {
   if (remaining <= 0) return Promise.resolve()
   return new Promise<void>(resolve => setTimeout(resolve, remaining))
 }
+
+/** Minimum time the photo-reading wheel stays on the pickup/scan page. */
+export const PHOTO_READ_MIN_MS = 2200

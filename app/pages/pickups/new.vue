@@ -621,6 +621,7 @@ async function onPhoto(dataUrl: string) {
   cameraOpen.value = false
   ocrMessage.value = ''
   errorMessage.value = ''
+  await nextTick()
   const startedAt = Date.now()
   try {
     const result = await $fetch('/api/scan/recognize', {
@@ -649,7 +650,7 @@ async function onPhoto(dataUrl: string) {
     )
   }
   finally {
-    await waitAtLeast(startedAt, 1000)
+    await waitAtLeast(startedAt, PHOTO_READ_MIN_MS)
     readingPhoto.value = false
   }
 }

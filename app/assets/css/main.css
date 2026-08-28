@@ -1522,6 +1522,11 @@
     text-align: center;
   }
 
+  .scan-page-loader .scan-spinner {
+    width: 52px;
+    height: 52px;
+  }
+
   .scan-page-loader p {
     margin: 0;
     max-width: 16rem;
