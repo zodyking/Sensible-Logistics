@@ -1321,6 +1321,9 @@
     left: 0;
     right: 0;
     z-index: 200;
+    width: 100%;
+    max-width: 520px;
+    margin: 0 auto;
     height: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
     padding-bottom: env(safe-area-inset-bottom);
     background: #fff;
@@ -1345,8 +1348,15 @@
   }
 
   .tab .t-ico {
-    font-size: 1.25rem;
-    line-height: 1;
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    line-height: 0;
+  }
+
+  .tab .t-ico svg {
+    display: block;
   }
 
   .tab.on {

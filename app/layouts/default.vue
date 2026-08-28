@@ -9,12 +9,18 @@ const { appName } = useRuntimeConfig().public
 
 const pendingSync = useState('pending-sync', () => 0)
 
-const tabs = [
-  { to: '/', label: 'Home', icon: '⌂', match: (p: string) => p === '/' },
-  { to: '/pickups', label: 'Trips', icon: '⇄', match: (p: string) => p.startsWith('/pickups') || p.startsWith('/trips') },
-  { to: '/timecard', label: 'Time', icon: 'time', match: (p: string) => p.startsWith('/timecard'), fab: true },
-  { to: '/containers', label: 'Containers', icon: '▦', match: (p: string) => p.startsWith('/containers') || (/^\/locations\/[^/]+/.test(p) && !p.startsWith('/locations/new')) },
-  { to: '/more', label: 'More', icon: '≡', match: (p: string) => p.startsWith('/more') || p.startsWith('/scan') || p === '/locations' || p.startsWith('/locations/new') || p === '/settings' || p.startsWith('/documents') },
+const tabs: Array<{
+  to: string
+  label: string
+  match: (p: string) => boolean
+  fab?: boolean
+  icon?: 'home' | 'trips' | 'containers' | 'more'
+}> = [
+  { to: '/', label: 'Home', icon: 'home', match: p => p === '/' },
+  { to: '/pickups', label: 'Trips', icon: 'trips', match: p => p.startsWith('/pickups') || p.startsWith('/trips') },
+  { to: '/timecard', label: 'Time', fab: true, match: p => p.startsWith('/timecard') },
+  { to: '/containers', label: 'Containers', icon: 'containers', match: p => p.startsWith('/containers') || (/^\/locations\/[^/]+/.test(p) && !p.startsWith('/locations/new')) },
+  { to: '/more', label: 'More', icon: 'more', match: p => p.startsWith('/more') || p.startsWith('/scan') || p === '/locations' || p.startsWith('/locations/new') || p === '/settings' || p.startsWith('/documents') },
 ]
 </script>
 
@@ -86,7 +92,12 @@ const tabs = [
           v-else
           class="t-ico"
           aria-hidden="true"
-        >{{ tab.icon }}</span>
+        >
+          <TabIcon
+            v-if="tab.icon"
+            :name="tab.icon"
+          />
+        </span>
         {{ tab.label }}
       </NuxtLink>
     </nav>
