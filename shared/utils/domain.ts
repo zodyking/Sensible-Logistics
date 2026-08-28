@@ -32,6 +32,35 @@ export const ACTIVE_POOL_CHIP: Record<ActivePoolState, 'ok' | 'warn' | 'err' | '
   EXCEPTION: 'err',
 }
 
+/**
+ * Operational container status for the current service life — where the box
+ * sits in the marine/rail → yard/customer → marine/rail cycle.
+ */
+export const CONTAINER_STATUSES = [
+  'AVAILABLE',
+  'IN_TRANSIT',
+  'AT_YARD',
+  'LOADING',
+  'RETURNED',
+] as const
+export type ContainerStatus = (typeof CONTAINER_STATUSES)[number]
+
+export const CONTAINER_STATUS_LABELS: Record<ContainerStatus, string> = {
+  AVAILABLE: 'Available',
+  IN_TRANSIT: 'In transit',
+  AT_YARD: 'At yard',
+  LOADING: 'Loading',
+  RETURNED: 'Returned',
+}
+
+export const CONTAINER_STATUS_CHIP: Record<ContainerStatus, 'ok' | 'warn' | 'err' | 'transit' | 'idle'> = {
+  AVAILABLE: 'idle',
+  IN_TRANSIT: 'transit',
+  AT_YARD: 'ok',
+  LOADING: 'warn',
+  RETURNED: 'idle',
+}
+
 /** Business classification required on every container (spec 5.1). */
 export const CONTAINER_TYPES = ['TROPICAL', 'ZIM', 'CMA', 'KING_OCEAN'] as const
 export type ContainerType = (typeof CONTAINER_TYPES)[number]

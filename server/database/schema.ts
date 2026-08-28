@@ -60,6 +60,14 @@ export const activePoolStateEnum = pgEnum('active_pool_state', [
 
 export const containerTypeEnum = pgEnum('container_type', ['TROPICAL', 'ZIM', 'CMA', 'KING_OCEAN'])
 
+export const containerStatusEnum = pgEnum('container_status', [
+  'AVAILABLE',
+  'IN_TRANSIT',
+  'AT_YARD',
+  'LOADING',
+  'RETURNED',
+])
+
 export const equipmentTypeEnum = pgEnum('equipment_type', [
   'DRY_20',
   'DRY_40',
@@ -412,6 +420,11 @@ export const containers = pgTable('containers', {
   containerType: containerTypeEnum('container_type').notNull(),
   equipmentType: equipmentTypeEnum('equipment_type').notNull().default('DRY_40'),
   isLoaded: boolean('is_loaded').notNull().default(false),
+  /**
+   * Where the box sits in the current service life (customer drop-off →
+   * Loading). Distinct from cargo loaded/empty and from active-pool state.
+   */
+  containerStatus: containerStatusEnum('container_status').notNull().default('AVAILABLE'),
 
   sealNumber: text('seal_number'),
   bookingNumber: text('booking_number'),
@@ -460,6 +473,7 @@ export const containers = pgTable('containers', {
 }, t => [
   uniqueIndex('containers_company_number_key').on(t.companyId, t.numberNormalized),
   index('containers_company_state_idx').on(t.companyId, t.activePoolState),
+  index('containers_company_status_idx').on(t.companyId, t.containerStatus),
   index('containers_current_location_idx').on(t.currentLocationId),
   index('containers_current_driver_idx').on(t.currentDriverId),
 ])

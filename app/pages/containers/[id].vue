@@ -1,6 +1,11 @@
 <script setup lang="ts">
-import { CONTAINER_TYPE_LABELS, EQUIPMENT_TYPE_SHORT } from '#shared/utils/domain'
-import { formatContainerNumber } from '#shared/utils/iso6346'
+import {
+  CONTAINER_STATUS_CHIP,
+  CONTAINER_STATUS_LABELS,
+  CONTAINER_TYPE_LABELS,
+  EQUIPMENT_TYPE_SHORT,
+} from '#shared/utils/domain'
+import { formatChassisNumber, formatContainerNumber } from '#shared/utils/iso6346'
 
 const route = useRoute()
 const { data, status, error } = await useFetch(() => `/api/containers/${route.params.id}`)
@@ -24,6 +29,18 @@ const flags = computed(() => {
     c.isUrgent && { label: 'Urgent', variant: 'warn' as const },
     c.doNotMove && { label: 'Do not move', variant: 'err' as const },
   ].filter(Boolean) as Array<{ label: string, variant: 'transit' | 'err' | 'warn' }>
+})
+
+const serviceCaption = computed(() => {
+  const life = data.value?.serviceLife
+  if (!life) return 'Pickups and drop-offs for the current service life.'
+  if (life.status === 'COMPLETE' && life.completedAt) {
+    return `Service life complete · returned ${formatDateTime(life.completedAt)}`
+  }
+  if (life.startedAt) {
+    return `Open service life · started ${formatDateTime(life.startedAt)}`
+  }
+  return 'Pickups and drop-offs for the current service life.'
 })
 </script>
 
@@ -73,6 +90,10 @@ const flags = computed(() => {
               :label="data.container.isLoaded ? 'Loaded' : 'Empty'"
             />
             <StatusChip
+              :variant="CONTAINER_STATUS_CHIP[data.container.containerStatus]"
+              :label="CONTAINER_STATUS_LABELS[data.container.containerStatus]"
+            />
+            <StatusChip
               plain
               variant="idle"
               :label="CONTAINER_TYPE_LABELS[data.container.containerType]"
@@ -88,23 +109,35 @@ const flags = computed(() => {
               :label="flag.label"
             />
           </div>
+          <NuxtLink
+            v-if="data.currentChassis"
+            :to="`/chassis/${data.currentChassis.id}`"
+            class="mt-3 inline-flex min-h-11 items-center text-sm font-semibold text-[var(--color-ink-700)]"
+          >
+            Chassis {{ formatChassisNumber(data.currentChassis.number) || data.currentChassis.number }} →
+          </NuxtLink>
         </div>
 
         <div
           class="section-label"
           style="margin: 0; padding: var(--s2) var(--s4)"
         >
-          Custody History
+          Service history
         </div>
+        <p class="px-4 pb-2 text-xs text-[var(--color-ink-500)]">
+          {{ serviceCaption }}
+        </p>
 
         <EventTimeline
           v-if="data.timeline.length"
+          kind="service"
           :entries="data.timeline"
         />
         <EmptyState
           v-else
           glyph="⇄"
-          title="No events recorded"
+          title="No pickups or drop-offs yet"
+          description="This record only lists pickups and drop-offs for the current service life — from a marine or rail origin until return to a terminal."
         />
 
         <div
