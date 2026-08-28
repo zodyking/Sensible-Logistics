@@ -5,6 +5,7 @@ import {
   formatPhoneInput,
   isValidPhone,
   phoneDigits,
+  phonesEqual,
   toE164,
 } from '../shared/utils/phone'
 
@@ -101,5 +102,13 @@ describe('toE164', () => {
 
   it('preserves values it cannot canonicalise', () => {
     expect(toE164('+44 20 7946 0958')).toBe('+44 20 7946 0958')
+  })
+})
+
+describe('phonesEqual', () => {
+  it('treats formatted and E.164 forms as the same number', () => {
+    expect(phonesEqual('(954) 555-0142', '+19545550142')).toBe(true)
+    expect(phonesEqual('+1 954 555 0142', '9545550142')).toBe(true)
+    expect(phonesEqual('+19545550142', '+19545550999')).toBe(false)
   })
 })

@@ -25,14 +25,16 @@ export default defineNuxtRouteMiddleware((to) => {
 
   const isAdminRoute = to.path.startsWith('/admin')
   const locationPool = to.path === '/locations' || to.path.startsWith('/locations/')
+  const moreArea = to.path === '/more' || to.path.startsWith('/connections')
 
   if (isAdminRoute && user.value?.role !== 'ADMIN') {
     return navigateTo('/')
   }
 
   // Location records are a shared company asset — admins create them, drivers
-  // pick them. Pickup/scan remain driver-only.
-  if (!isAdminRoute && user.value?.role === 'ADMIN' && !locationPool) {
+  // pick them. Pickup/scan remain driver-only. The More cheat-code box and the
+  // hidden API connections page are operator tools, so admins may open them.
+  if (!isAdminRoute && user.value?.role === 'ADMIN' && !locationPool && !moreArea) {
     return navigateTo('/admin/containers')
   }
 })

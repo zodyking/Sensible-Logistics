@@ -22,6 +22,7 @@ const nav = [
     items: [
       { to: '/admin/documents', label: 'Documents', icon: '▤' },
       { to: '/admin/settings', label: 'Settings', icon: '⚙' },
+      { to: '/more', label: 'More', icon: '⋯' },
     ],
   },
 ]

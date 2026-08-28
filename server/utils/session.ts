@@ -1,5 +1,7 @@
 import type { H3Event } from 'h3'
 import type { Role } from '#shared/utils/domain'
+import type { FeatureId } from '../../shared/utils/feature-codes'
+import { FEATURE_IDS } from '../../shared/utils/feature-codes'
 
 /**
  * Authenticated request context. Every tenant-scoped query must be filtered by
@@ -55,6 +57,36 @@ export async function requireDriver(event: H3Event): Promise<AuthContext & { dri
     throw createError({ statusCode: 403, statusMessage: 'Driver access required.' })
   }
   return auth as AuthContext & { driverId: string }
+}
+
+export function readUnlockedFeatures(session: { unlockedFeatures?: unknown } | null | undefined): FeatureId[] {
+  const raw = session?.unlockedFeatures
+  if (!Array.isArray(raw)) return []
+  return raw.filter((item): item is FeatureId => typeof item === 'string' && (FEATURE_IDS as readonly string[]).includes(item))
+}
+
+/** Persist cheat-code unlocks without dropping the encrypted membership. */
+export async function setUnlockedFeatures(event: H3Event, unlocked: FeatureId[]) {
+  const current = await getUserSession(event)
+  await setUserSession(event, {
+    user: current.user,
+    secure: current.secure,
+    loggedInAt: current.loggedInAt,
+    unlockedFeatures: unlocked,
+  })
+}
+
+/**
+ * Hidden operator pages and their APIs 404 unless this session has unlocked
+ * the matching cheat code. Hiding the More row is not authorization.
+ */
+export async function requireUnlockedFeature(event: H3Event, id: FeatureId): Promise<AuthContext> {
+  const auth = await requireAuth(event)
+  const session = await getUserSession(event)
+  if (!readUnlockedFeatures(session).includes(id)) {
+    throw createError({ statusCode: 404, statusMessage: 'Not found.' })
+  }
+  return auth
 }
 
 /**
