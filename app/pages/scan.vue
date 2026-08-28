@@ -55,6 +55,7 @@ async function onPhoto(dataUrl: string) {
   capturedPhoto.value = dataUrl
   reading.value = true
   errorMessage.value = ''
+  const startedAt = Date.now()
   try {
     const result = await $fetch('/api/scan/recognize', {
       method: 'POST',
@@ -75,6 +76,7 @@ async function onPhoto(dataUrl: string) {
     )
   }
   finally {
+    await waitAtLeast(startedAt, 1000)
     reading.value = false
     cameraOpen.value = false
   }
