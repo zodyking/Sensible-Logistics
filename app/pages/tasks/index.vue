@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { stepsFromBlob } from '#shared/utils/task-steps'
 import type { TaskStep } from '#shared/utils/task-steps'
 
 useHead({ title: 'Tasks' })
@@ -10,7 +9,8 @@ type PageMode = 'view' | 'edit'
 
 const { data, status, error, refresh } = await useFetch('/api/tasks')
 
-const mode = ref<PageMode>('edit')
+const mode = ref<PageMode>('view')
+const menuOpen = ref(false)
 const draft = ref('')
 const adding = ref(false)
 const persistTimers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -44,8 +44,6 @@ const earlierTasks = computed(() =>
   allTasks.value.filter(task => task.workDate < todayIso.value && task.status !== 'DISMISSED'),
 )
 
-const draftSteps = computed(() => stepsFromBlob(draft.value))
-
 const jsonBody = computed(() => JSON.stringify({
   text: '(the SMS text)',
   from: '(the sender)',
@@ -58,7 +56,6 @@ const setupStateLabel = computed(() => {
 })
 
 onMounted(() => {
-  if (todayTasks.value.length) mode.value = 'view'
   const tick = () => {
     if (document.visibilityState !== 'visible') return
     if (mode.value === 'edit' || persistTimers.size || adding.value) return
@@ -73,6 +70,11 @@ onMounted(() => {
     persistTimers.clear()
   })
 })
+
+function setMode(next: PageMode) {
+  mode.value = next
+  menuOpen.value = false
+}
 
 async function copyValue(key: CopyKey, value: string) {
   try {
@@ -96,7 +98,6 @@ async function submitDraft() {
   try {
     await $fetch('/api/tasks', { method: 'POST', body: { text } })
     draft.value = ''
-    mode.value = 'edit'
     await refresh()
   }
   catch (err) {
@@ -104,14 +105,6 @@ async function submitDraft() {
   }
   finally {
     adding.value = false
-  }
-}
-
-function onDraftEnter(event: KeyboardEvent) {
-  if (event.shiftKey) return
-  if (event.metaKey || event.ctrlKey) {
-    event.preventDefault()
-    void submitDraft()
   }
 }
 
@@ -241,38 +234,23 @@ async function patchTask(id: string, statusValue: 'DONE' | 'DISMISSED') {
 
 <template>
   <section class="d-page">
-    <div class="task-head">
-      <div>
-        <span class="eyebrow">Dispatch</span>
-        <h1 class="d-title task-title">
-          Tasks
-        </h1>
-      </div>
-      <div
-        class="view-toggle"
-        role="tablist"
-        aria-label="Task mode"
-      >
+    <PageHeader
+      eyebrow="Dispatch"
+      title="Tasks"
+    >
+      <template #actions>
         <button
           type="button"
-          role="tab"
-          :aria-selected="mode === 'view'"
-          :class="{ on: mode === 'view' }"
-          @click="mode = 'view'"
+          class="icon-btn"
+          aria-label="Task actions"
+          aria-haspopup="menu"
+          :aria-expanded="menuOpen"
+          @click="menuOpen = true"
         >
-          View
+          ⋮
         </button>
-        <button
-          type="button"
-          role="tab"
-          :aria-selected="mode === 'edit'"
-          :class="{ on: mode === 'edit' }"
-          @click="mode = 'edit'"
-        >
-          Edit
-        </button>
-      </div>
-    </div>
+      </template>
+    </PageHeader>
 
     <div
       v-if="status === 'pending' && !data"
@@ -310,10 +288,10 @@ async function patchTask(id: string, statusValue: 'DONE' | 'DISMISSED') {
       </p>
 
       <p
-        v-if="mode === 'view' && todayTasks.length"
+        v-if="mode === 'edit'"
         class="task-mode-hint"
       >
-        Check off work as you go. Switch to Edit to paste, split, or undo a step.
+        Paste the full dispatcher text. After you add it, use Split to break it into steps.
       </p>
 
       <form
@@ -329,40 +307,20 @@ async function patchTask(id: string, statusValue: 'DONE' | 'DISMISSED') {
           id="task-blob"
           v-model="draft"
           class="task-compose-input"
-          rows="4"
-          placeholder="Paste the container work here. Enter starts a new step."
+          rows="6"
+          placeholder="Paste the full dispatcher text here."
           autocomplete="off"
-          @keydown.enter="onDraftEnter"
         />
-        <div
-          v-if="draftSteps.length"
-          class="task-compose-preview"
-          aria-label="Step preview"
-        >
-          <div
-            v-for="step in draftSteps"
-            :key="step.id"
-            class="task-check-row"
-          >
-            <span
-              class="task-check-box"
-              aria-hidden="true"
-            >
-              <span />
-            </span>
-            <span class="task-check-text">{{ step.text }}</span>
-          </div>
-        </div>
         <div class="task-compose-bar">
           <p class="field-hint mb-0">
-            Enter new step · Ctrl+Enter saves
+            Stays one block until you split it.
           </p>
           <button
             class="btn-dark"
             type="submit"
             :disabled="adding || !draft.trim()"
           >
-            {{ adding ? 'Adding…' : 'Add steps' }}
+            {{ adding ? 'Adding…' : 'Add work' }}
           </button>
         </div>
       </form>
@@ -407,8 +365,8 @@ async function patchTask(id: string, statusValue: 'DONE' | 'DISMISSED') {
         glyph="☰"
         title="No steps yet"
         :description="mode === 'edit'
-          ? 'Paste the dispatcher text above. Enter starts a new step, then tap Add steps.'
-          : 'Switch to Edit to paste today’s container work.'"
+          ? 'Paste the full dispatcher text above, add it, then split it into steps.'
+          : 'Open the menu and choose Edit to paste today’s work.'"
       />
 
       <template v-if="upcomingTasks.length">
@@ -467,6 +425,29 @@ async function patchTask(id: string, statusValue: 'DONE' | 'DISMISSED') {
         <span>{{ setup?.tested ? 'Connected' : 'Optional setup' }}</span>
       </button>
     </template>
+
+    <BottomSheet
+      :open="menuOpen"
+      title="Tasks"
+      @close="menuOpen = false"
+    >
+      <button
+        v-if="mode === 'view'"
+        type="button"
+        class="menu-row"
+        @click="setMode('edit')"
+      >
+        Edit
+      </button>
+      <button
+        v-else
+        type="button"
+        class="menu-row"
+        @click="setMode('view')"
+      >
+        Done editing
+      </button>
+    </BottomSheet>
 
     <BottomSheet
       :open="setupOpen"

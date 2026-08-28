@@ -4371,8 +4371,8 @@
 
 .task-check-row {
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) auto;
-  align-items: center;
+  grid-template-columns: 44px minmax(0, 1fr);
+  align-items: start;
   min-height: 48px;
   gap: 2px;
 }
@@ -4420,6 +4420,13 @@
   font-size: var(--text-base);
   line-height: 1.35;
   padding: 8px 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.task-check-body {
+  min-width: 0;
+  padding: 2px 0 8px;
 }
 
 .task-check-input {
@@ -4430,8 +4437,10 @@
   background: transparent;
   font: inherit;
   font-size: var(--text-base);
+  line-height: 1.35;
   color: var(--color-ink-900);
   padding: 8px 0;
+  resize: vertical;
 }
 
 .task-check-input:focus {
@@ -4439,13 +4448,25 @@
   border-bottom-color: var(--color-navy-800);
 }
 
-.task-check-merge {
+.task-check-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.task-check-action {
   min-height: 44px;
-  padding: 0 10px;
+  padding: 0 12px;
+  border-radius: var(--radius-md);
   font-size: var(--text-xs);
   font-weight: 700;
-  color: var(--color-ink-500);
-  background: transparent;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-navy-800);
+  background: var(--color-paper-50);
+  border: 1px solid var(--color-line-200);
+  cursor: pointer;
 }
 
 .task-check-tools {

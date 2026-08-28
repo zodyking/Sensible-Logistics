@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { mergeWithPrevious, splitStepAt } from '#shared/utils/task-steps'
+import { splitStepAt, splitStepLines, mergeWithPrevious } from '#shared/utils/task-steps'
 import type { TaskStep } from '#shared/utils/task-steps'
 
 const props = defineProps<{
@@ -20,8 +20,8 @@ const local = ref<TaskStep[]>(cloneSteps(props.steps))
 const emitting = ref(false)
 const focusId = ref<string | null>(null)
 const focusCaret = ref(0)
-const lastSplitIndex = ref<number | null>(null)
-const inputEls = new Map<string, HTMLInputElement>()
+const carets = new Map<string, number>()
+const inputEls = new Map<string, HTMLTextAreaElement>()
 
 watch(() => props.steps, (next) => {
   if (emitting.value) return
@@ -29,7 +29,7 @@ watch(() => props.steps, (next) => {
 }, { deep: true })
 
 function bindInput(id: string, el: unknown) {
-  if (el instanceof HTMLInputElement) inputEls.set(id, el)
+  if (el instanceof HTMLTextAreaElement) inputEls.set(id, el)
   else inputEls.delete(id)
 }
 
@@ -59,16 +59,22 @@ function toggle(id: string) {
 }
 
 function setText(id: string, text: string) {
-  lastSplitIndex.value = null
   persist(local.value.map(step => step.id === id ? { ...step, text } : step), false)
 }
 
-function onEnter(index: number, event: KeyboardEvent) {
-  if (props.mode !== 'edit') return
-  event.preventDefault()
-  const input = event.target as HTMLInputElement
-  const next = splitStepAt(local.value, index, input.selectionStart ?? input.value.length)
-  lastSplitIndex.value = index + 1
+function rememberCaret(id: string, event: Event) {
+  const input = event.target as HTMLTextAreaElement
+  carets.set(id, input.selectionStart ?? input.value.length)
+}
+
+function caretFor(index: number): number {
+  const step = local.value[index]
+  if (!step) return 0
+  return carets.get(step.id) ?? step.text.length
+}
+
+function splitAt(index: number) {
+  const next = splitStepAt(local.value, index, caretFor(index))
   const created = next[index + 1]
   if (created) {
     focusId.value = created.id
@@ -77,18 +83,19 @@ function onEnter(index: number, event: KeyboardEvent) {
   persist(next)
 }
 
-function onBackspace(index: number, event: KeyboardEvent) {
-  if (props.mode !== 'edit' || index === 0) return
-  const input = event.target as HTMLInputElement
-  if ((input.selectionStart ?? 0) !== 0 || (input.selectionEnd ?? 0) !== 0) return
-  event.preventDefault()
-  mergeAt(index)
+function splitLines(index: number) {
+  const next = splitStepLines(local.value, index)
+  const created = next[index]
+  if (created) {
+    focusId.value = created.id
+    focusCaret.value = created.text.length
+  }
+  persist(next)
 }
 
 function mergeAt(index: number) {
   const merged = mergeWithPrevious(local.value, index)
   if (!merged) return
-  lastSplitIndex.value = null
   const prev = merged.steps[index - 1]
   if (prev) {
     focusId.value = prev.id
@@ -97,18 +104,16 @@ function mergeAt(index: number) {
   persist(merged.steps)
 }
 
-function undoSplit() {
-  if (lastSplitIndex.value == null) return
-  mergeAt(lastSplitIndex.value)
-}
-
 function addStep() {
   const next = [...local.value, { id: crypto.randomUUID(), text: '', done: false }]
   const created = next[next.length - 1]!
   focusId.value = created.id
   focusCaret.value = 0
-  lastSplitIndex.value = null
   persist(next)
+}
+
+function hasLines(text: string) {
+  return text.replace(/\r\n/g, '\n').split('\n').filter(line => line.trim()).length > 1
 }
 </script>
 
@@ -131,31 +136,53 @@ function addStep() {
         <span aria-hidden="true" />
       </label>
 
-      <input
-        v-if="mode === 'edit'"
-        :ref="el => bindInput(step.id, el)"
-        class="task-check-input"
-        :value="step.text"
-        :aria-label="`Step ${index + 1}`"
-        @input="setText(step.id, ($event.target as HTMLInputElement).value)"
-        @keydown.enter.exact="onEnter(index, $event)"
-        @keydown.backspace="onBackspace(index, $event)"
-      >
-      <span
-        v-else
-        class="task-check-text"
-      >{{ step.text }}</span>
+      <div class="task-check-body">
+        <textarea
+          v-if="mode === 'edit'"
+          :ref="el => bindInput(step.id, el)"
+          class="task-check-input"
+          :rows="Math.max(2, step.text.split('\n').length)"
+          :value="step.text"
+          :aria-label="`Step ${index + 1}`"
+          @input="setText(step.id, ($event.target as HTMLTextAreaElement).value)"
+          @click="rememberCaret(step.id, $event)"
+          @keyup="rememberCaret(step.id, $event)"
+          @select="rememberCaret(step.id, $event)"
+        />
+        <span
+          v-else
+          class="task-check-text"
+        >{{ step.text }}</span>
 
-      <button
-        v-if="mode === 'edit' && index > 0"
-        type="button"
-        class="task-check-merge"
-        title="Merge with the step above"
-        :aria-label="`Merge step ${index + 1} with the step above`"
-        @click="mergeAt(index)"
-      >
-        Undo
-      </button>
+        <div
+          v-if="mode === 'edit'"
+          class="task-check-row-actions"
+        >
+          <button
+            type="button"
+            class="task-check-action"
+            @click="splitAt(index)"
+          >
+            Split
+          </button>
+          <button
+            v-if="hasLines(step.text)"
+            type="button"
+            class="task-check-action"
+            @click="splitLines(index)"
+          >
+            Split lines
+          </button>
+          <button
+            v-if="index > 0"
+            type="button"
+            class="task-check-action"
+            @click="mergeAt(index)"
+          >
+            Merge
+          </button>
+        </div>
+      </div>
     </div>
 
     <div
@@ -168,14 +195,6 @@ function addStep() {
         @click="addStep"
       >
         Add step
-      </button>
-      <button
-        v-if="lastSplitIndex != null"
-        type="button"
-        class="btn-ghost"
-        @click="undoSplit"
-      >
-        Undo split
       </button>
     </div>
   </div>

@@ -6,7 +6,7 @@ const schema = z.object({
   text: z.string().trim().min(1, 'Paste the work first.').max(8000),
 })
 
-/** Paste a dispatcher blob; each line becomes a checkbox step. */
+/** Paste a dispatcher blob as one step. The driver splits it on the Tasks page. */
 export default defineEventHandler(async (event) => {
   const auth = await requireDriver(event)
   const body = await readValidatedJson(event, schema)

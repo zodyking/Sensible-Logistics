@@ -1,6 +1,6 @@
 /**
- * Checklist steps for a dispatch task. A pasted blob becomes one step per
- * line; Enter splits a step, and merge/undo joins two back together.
+ * Checklist steps for a dispatch task. A pasted blob stays one step until
+ * the driver splits it. Merge joins two steps back together.
  */
 
 export interface TaskStep {
@@ -29,10 +29,24 @@ export function cleanStepText(value: string): string {
     .trim()
 }
 
+/** Keep the pasted dispatcher text as a single step. Drivers split it by hand. */
 export function stepsFromBlob(text: string): TaskStep[] {
-  const lines = text.replace(/\r\n/g, '\n').split('\n').map(cleanStepText).filter(Boolean)
-  if (!lines.length) return []
-  return lines.map(line => emptyStep(line))
+  const blob = text.replace(/\r\n/g, '\n').trim()
+  if (!blob) return []
+  return [emptyStep(blob)]
+}
+
+/** Break one step into one step per non-empty line. */
+export function splitStepLines(steps: TaskStep[], index: number): TaskStep[] {
+  const step = steps[index]
+  if (!step) return steps
+  const lines = step.text.replace(/\r\n/g, '\n').split('\n').map(line => line.trim()).filter(Boolean)
+  if (lines.length <= 1) return steps
+  const next = steps.slice()
+  next.splice(index, 1, ...lines.map((line, offset) => (
+    offset === 0 ? { ...step, text: line } : emptyStep(line)
+  )))
+  return next
 }
 
 export function normalizeSteps(value: unknown): TaskStep[] {
@@ -43,7 +57,7 @@ export function normalizeSteps(value: unknown): TaskStep[] {
     const row = item as { id?: unknown, text?: unknown, done?: unknown }
     const text = typeof row.text === 'string' ? row.text : ''
     const id = typeof row.id === 'string' && row.id ? row.id : ''
-    // Keep blank editor rows (they have ids) so Add step / Enter-split can persist.
+    // Keep blank editor rows (they have ids) so Add step can persist.
     if (!text.trim() && row.done !== true && !id) continue
     steps.push({
       id: id || newStepId(),
