@@ -80,7 +80,7 @@ async function save() {
         back-label="Trip"
       />
       <p class="mb-4 text-sm text-[var(--color-ink-500)]">
-        This only updates the planned destination. You place the container on the map when you arrive.
+        This updates where Arrive will drop off. It does not finish the trip.
       </p>
 
       <p
