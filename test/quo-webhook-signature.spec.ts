@@ -2,6 +2,10 @@ import crypto from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import { verifyQuoWebhookSignature } from '../shared/quo-webhook-signature'
 
+function testWebhookKey() {
+  return `whsec_${crypto.randomBytes(32).toString('base64')}`
+}
+
 function sign(secretWhsec: string, id: string, ts: string, body: string) {
   const secretBase64 = secretWhsec.startsWith('whsec_') ? secretWhsec.slice(6) : secretWhsec
   const key = Buffer.from(secretBase64, 'base64')
@@ -11,8 +15,7 @@ function sign(secretWhsec: string, id: string, ts: string, body: string) {
 
 describe('verifyQuoWebhookSignature', () => {
   it('accepts a valid signature', () => {
-    const keyBytes = crypto.randomBytes(32)
-    const webhookKey = `whsec_${keyBytes.toString('base64')}`
+    const webhookKey = testWebhookKey()
     const webhookId = 'msg_123'
     const webhookTimestamp = String(Math.floor(Date.now() / 1000))
     const rawBody = '{"type":"message.received"}'
@@ -29,7 +32,7 @@ describe('verifyQuoWebhookSignature', () => {
 
   it('rejects a bad signature', () => {
     expect(verifyQuoWebhookSignature({
-      webhookKey: 'whsec_YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY=',
+      webhookKey: testWebhookKey(),
       webhookId: 'msg_123',
       webhookTimestamp: String(Math.floor(Date.now() / 1000)),
       webhookSignature: 'v1,not-valid',
@@ -38,8 +41,7 @@ describe('verifyQuoWebhookSignature', () => {
   })
 
   it('rejects a stale timestamp', () => {
-    const keyBytes = crypto.randomBytes(32)
-    const webhookKey = `whsec_${keyBytes.toString('base64')}`
+    const webhookKey = testWebhookKey()
     const webhookId = 'msg_stale'
     const webhookTimestamp = String(Math.floor(Date.now() / 1000) - 60 * 60)
     const rawBody = '{}'
