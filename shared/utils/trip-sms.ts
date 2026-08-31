@@ -91,7 +91,7 @@ export function formatTripSmsMessage(action: TripSmsAction, input: TripSmsFields
 
 /**
  * Two-container swap SMS: the load leaving the customer, then the empty left
- * behind. Attach the empty's photos and documents with the send.
+ * behind. Photos and documents from both boxes attach with the send.
  */
 export function formatSwapSmsMessage(picked: TripSmsFields, dropped: TripSmsFields): string {
   return [

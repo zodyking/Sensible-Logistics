@@ -4,7 +4,6 @@ import { driverOcrMessage } from '#shared/utils/ocr-parse'
 
 useHead({ title: 'Scan' })
 
-const cameraOpen = ref(true)
 const reading = ref(false)
 const captured = ref(false)
 const capturedPhoto = ref('')
@@ -17,8 +16,7 @@ const chassisOk = computed(() => !chassisNumber.value || isCompleteChassisNumber
 const canContinue = computed(() =>
   containerValidation.value.structureValid
   && chassisOk.value
-  && !reading.value
-  && !cameraOpen.value,
+  && !reading.value,
 )
 
 type FieldState = 'ok' | 'error' | 'idle'
@@ -54,7 +52,6 @@ async function onPhoto(dataUrl: string) {
   captured.value = true
   capturedPhoto.value = dataUrl
   reading.value = true
-  cameraOpen.value = false
   errorMessage.value = ''
   await nextTick()
   const startedAt = Date.now()
@@ -81,11 +78,6 @@ async function onPhoto(dataUrl: string) {
     await waitAtLeast(startedAt, PHOTO_READ_MIN_MS)
     reading.value = false
   }
-}
-
-function retake() {
-  errorMessage.value = ''
-  cameraOpen.value = true
 }
 
 async function continuePickup() {
@@ -115,12 +107,12 @@ async function continuePickup() {
     />
 
     <ScanPhotoPeek
-      v-if="capturedPhoto && !reading && !cameraOpen"
+      v-if="capturedPhoto && !reading"
       :src="capturedPhoto"
     />
 
     <div
-      v-if="captured && !reading && !cameraOpen"
+      v-if="captured && !reading"
       class="card p-4"
     >
       <label
@@ -184,14 +176,12 @@ async function continuePickup() {
       v-if="!reading"
       class="mt-6 flex gap-3"
     >
-      <button
-        type="button"
+      <DevicePhotoInput
         class="btn-ghost flex-1"
+        :label="captured ? 'Retake photo' : 'Take photo'"
         :disabled="reading"
-        @click="retake"
-      >
-        {{ captured ? 'Retake photo' : 'Open camera' }}
-      </button>
+        @photo="onPhoto"
+      />
       <button
         type="button"
         class="btn-dark flex-1"
@@ -201,13 +191,5 @@ async function continuePickup() {
         Continue
       </button>
     </div>
-
-    <CaptureCamera
-      v-if="cameraOpen"
-      title="Container and chassis"
-      reading-label="Reading container and chassis numbers…"
-      @close="cameraOpen = false"
-      @photo="onPhoto"
-    />
   </section>
 </template>

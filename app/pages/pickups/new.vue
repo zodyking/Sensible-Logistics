@@ -218,11 +218,9 @@ if (swapMode.value) {
 
 const submitting = ref(false)
 const errorMessage = ref('')
-const cameraOpen = ref(false)
 const capturedPhoto = ref('')
 const readingPhoto = ref(false)
 const ocrMessage = ref('')
-const cameraAutoOpened = ref(false)
 
 /* --- ISO 6346 validation (mirrors the server implementation) ----- */
 const normalized = computed(() => normalizeContainerNumber(rawNumber.value))
@@ -500,7 +498,7 @@ const canAdvance = computed(() => {
       return fromYard.value || manualEntry.value
     case 'equipment':
       if (pickupKind.value === 'BARE_CHASSIS') {
-        return chassisOk.value && !readingPhoto.value && !cameraOpen.value
+        return chassisOk.value && !readingPhoto.value
       }
       return validation.value.structureValid
         && chassisOk.value
@@ -508,7 +506,6 @@ const canAdvance = computed(() => {
         && !resolving.value
         && Boolean(resolution.value)
         && !readingPhoto.value
-        && !cameraOpen.value
     case 'containerType':
     case 'equipmentType':
     case 'load':
@@ -697,13 +694,6 @@ async function abandon() {
   }
 }
 
-watch(step, (current) => {
-  if (current !== 'equipment') return
-  if (cameraAutoOpened.value || tripId.value || rawNumber.value || cameraOpen.value) return
-  cameraAutoOpened.value = true
-  cameraOpen.value = true
-})
-
 watch([tripId, capturedPhoto], ([id, photo]) => {
   if (id && photo) void rememberTripPhoto(id, photo)
 })
@@ -711,7 +701,6 @@ watch([tripId, capturedPhoto], ([id, photo]) => {
 async function onPhoto(dataUrl: string) {
   capturedPhoto.value = dataUrl
   readingPhoto.value = true
-  cameraOpen.value = false
   ocrMessage.value = ''
   errorMessage.value = ''
   await nextTick()
@@ -746,11 +735,6 @@ async function onPhoto(dataUrl: string) {
     await waitAtLeast(startedAt, PHOTO_READ_MIN_MS)
     readingPhoto.value = false
   }
-}
-
-function retakePhoto() {
-  ocrMessage.value = ''
-  cameraOpen.value = true
 }
 </script>
 
@@ -1029,7 +1013,7 @@ function retakePhoto() {
       />
       <template v-else>
         <ScanPhotoPeek
-          v-if="capturedPhoto && !cameraOpen"
+          v-if="capturedPhoto"
           :src="capturedPhoto"
         />
         <div class="card p-4">
@@ -1128,15 +1112,13 @@ function retakePhoto() {
           </p>
         </div>
 
-        <button
+        <DevicePhotoInput
           v-if="!tripId"
-          type="button"
           class="btn-ghost mt-4 w-full"
+          :label="capturedPhoto ? 'Retake photo' : 'Take photo'"
           :disabled="readingPhoto"
-          @click="retakePhoto"
-        >
-          {{ capturedPhoto ? 'Retake photo' : 'Open camera' }}
-        </button>
+          @photo="onPhoto"
+        />
       </template>
     </template>
 
@@ -1359,13 +1341,5 @@ function retakePhoto() {
     >
       {{ tripId ? (swapMode ? 'Cancel swap pickup' : 'Cancel this pickup') : 'Discard and go home' }}
     </button>
-
-    <CaptureCamera
-      v-if="cameraOpen"
-      :title="pickupKind === 'BARE_CHASSIS' ? 'Chassis' : 'Container and chassis'"
-      :reading-label="pickupKind === 'BARE_CHASSIS' ? 'Reading the chassis number…' : 'Reading container and chassis numbers…'"
-      @close="cameraOpen = false"
-      @photo="onPhoto"
-    />
   </section>
 </template>

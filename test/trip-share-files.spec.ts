@@ -1,6 +1,21 @@
 import { describe, expect, it } from 'vitest'
 
-import { dataUrlToFile } from '../app/utils/trip-share-files'
+import { dataUrlToFile, nextShareTitle } from '../app/utils/trip-share-files'
+
+describe('nextShareTitle', () => {
+  it('numbers container images from 1', () => {
+    expect(nextShareTitle('container', [], 'image/jpeg')).toBe('container image 1.jpg')
+    expect(nextShareTitle('container', [{ fileName: 'container image 1.jpg' }], 'image/jpeg'))
+      .toBe('container image 2.jpg')
+  })
+
+  it('numbers document images separately', () => {
+    expect(nextShareTitle('document', [
+      { fileName: 'container image 1.jpg' },
+      { fileName: 'document image 1.pdf' },
+    ], 'image/jpeg')).toBe('document image 2.jpg')
+  })
+})
 
 describe('dataUrlToFile', () => {
   it('turns a JPEG data URL into a named File', async () => {

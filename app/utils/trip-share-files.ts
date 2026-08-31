@@ -108,10 +108,27 @@ export async function rememberTripShareFile(tripId: string, file: TripShareFile)
   await persist(tripId, current)
 }
 
+export function nextShareTitle(
+  kind: 'container' | 'document',
+  existing: Array<{ fileName: string }>,
+  mimeType: string,
+): string {
+  const stem = kind === 'container' ? 'container image' : 'document image'
+  const ext = extensionForMime(mimeType)
+  const numbered = new RegExp(`^${stem} (\\d+)\\.`, 'i')
+  let max = 0
+  for (const item of existing) {
+    const match = numbered.exec(item.fileName)
+    if (match) max = Math.max(max, Number(match[1]))
+  }
+  return `${stem} ${max + 1}.${ext}`
+}
+
 export async function rememberTripPhoto(tripId: string, dataUrl: string): Promise<void> {
   if (!tripId || !dataUrl.startsWith('data:')) return
   const mimeType = mimeFromDataUrl(dataUrl)
-  const fileName = `container.${extensionForMime(mimeType)}`
+  const current = await listTripShareFiles(tripId)
+  const fileName = nextShareTitle('container', current, mimeType)
   await rememberTripShareFile(tripId, { kind: 'photo', fileName, mimeType, dataUrl })
 }
 
@@ -134,7 +151,7 @@ function uniqueFileName(existing: TripShareFile[], fileName: string): string {
   return `${base}-${n}${ext}`
 }
 
-/** Extra photos or PDFs the driver attaches for the pickup SMS. */
+/** Extra photos or PDFs the driver attaches from Trip documents. */
 export async function rememberTripShareBlobs(tripId: string, files: File[]): Promise<void> {
   if (!tripId || !files.length) return
   const current = [...await listTripShareFiles(tripId)]
@@ -142,10 +159,9 @@ export async function rememberTripShareBlobs(tripId: string, files: File[]): Pro
     const dataUrl = await fileToDataUrl(file)
     if (!dataUrl.startsWith('data:')) continue
     const mimeType = file.type || mimeFromDataUrl(dataUrl)
-    const rawName = file.name.replace(/[^\w.-]/g, '_').slice(-80) || `file.${extensionForMime(mimeType)}`
     current.push({
-      kind: mimeType.startsWith('image/') ? 'photo' : 'document',
-      fileName: uniqueFileName(current, rawName),
+      kind: 'document',
+      fileName: nextShareTitle('document', current, mimeType),
       mimeType,
       dataUrl,
     })
@@ -156,6 +172,21 @@ export async function rememberTripShareBlobs(tripId: string, files: File[]): Pro
 export async function tripShareFilesAsFiles(tripId: string): Promise<File[]> {
   const stored = await listTripShareFiles(tripId)
   return stored.map(file => dataUrlToFile(file.dataUrl, file.fileName))
+}
+
+/** Files from one or more trips, with unique names so a swap can attach both boxes. */
+export async function tripShareFilesAsFilesFromTrips(tripIds: Array<string | null | undefined>): Promise<File[]> {
+  const names: TripShareFile[] = []
+  const files: File[] = []
+  for (const tripId of tripIds) {
+    if (!tripId) continue
+    for (const stored of await listTripShareFiles(tripId)) {
+      const fileName = uniqueFileName(names, stored.fileName)
+      names.push({ ...stored, fileName })
+      files.push(dataUrlToFile(stored.dataUrl, fileName))
+    }
+  }
+  return files
 }
 
 export async function deleteTripShareFile(tripId: string, fileName: string): Promise<void> {

@@ -14,6 +14,7 @@ const pending = ref(false)
 const errorMessage = ref('')
 const pendingDelete = ref<string | null>(null)
 const deleting = ref(false)
+const preview = ref<TripShareFile | null>(null)
 
 async function reload() {
   if (!props.tripId) {
@@ -28,6 +29,7 @@ watch(
   async ([open, tripId]) => {
     errorMessage.value = ''
     pendingDelete.value = null
+    preview.value = null
     if (!open || !tripId) {
       files.value = []
       return
@@ -73,7 +75,33 @@ async function confirmDelete() {
 }
 
 function kindLabel(file: TripShareFile) {
-  return file.kind === 'photo' ? 'Photo' : 'Document'
+  return file.kind === 'photo' ? 'Container image' : 'Document image'
+}
+
+function isImage(file: TripShareFile) {
+  return file.mimeType.startsWith('image/')
+}
+
+function viewFile(file: TripShareFile) {
+  if (isImage(file)) {
+    preview.value = file
+    return
+  }
+  const blob = dataUrlToBlob(file.dataUrl)
+  const url = URL.createObjectURL(blob)
+  window.open(url, '_blank', 'noopener')
+  window.setTimeout(() => URL.revokeObjectURL(url), 30_000)
+}
+
+function dataUrlToBlob(dataUrl: string): Blob {
+  const comma = dataUrl.indexOf(',')
+  const meta = comma >= 0 ? dataUrl.slice(0, comma) : ''
+  const payload = comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl
+  const mime = /data:([^;]+)/.exec(meta)?.[1] || 'application/octet-stream'
+  const binary = atob(payload)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  return new Blob([bytes], { type: mime })
 }
 </script>
 
@@ -84,7 +112,7 @@ function kindLabel(file: TripShareFile) {
     @close="emit('close')"
   >
     <p class="text-sm text-[var(--color-ink-500)]">
-      Photos and files for this pickup stay on this phone and attach to the dispatch SMS.
+      Photos and files for this pickup stay on this phone and attach to the dispatch SMS. Tap a file to view it.
     </p>
 
     <p
@@ -105,10 +133,27 @@ function kindLabel(file: TripShareFile) {
         :key="file.fileName"
         class="doc-row"
       >
-        <div>
-          <b>{{ file.fileName }}</b>
-          <small>{{ kindLabel(file) }}</small>
-        </div>
+        <button
+          type="button"
+          class="doc-open"
+          @click="viewFile(file)"
+        >
+          <img
+            v-if="isImage(file)"
+            class="doc-thumb"
+            :src="file.dataUrl"
+            alt=""
+          >
+          <span
+            v-else
+            class="doc-thumb doc-thumb-file"
+            aria-hidden="true"
+          >PDF</span>
+          <span class="doc-open-copy">
+            <b>{{ file.fileName }}</b>
+            <small>{{ kindLabel(file) }} · View</small>
+          </span>
+        </button>
         <button
           type="button"
           class="doc-delete"
@@ -125,6 +170,26 @@ function kindLabel(file: TripShareFile) {
     >
       Nothing saved for this trip yet.
     </p>
+
+    <div
+      v-if="preview"
+      class="doc-preview"
+    >
+      <p class="doc-preview-name">
+        {{ preview.fileName }}
+      </p>
+      <img
+        :src="preview.dataUrl"
+        :alt="preview.fileName"
+      >
+      <button
+        type="button"
+        class="btn-ghost mt-3 w-full"
+        @click="preview = null"
+      >
+        Back to files
+      </button>
+    </div>
 
     <div
       v-if="pendingDelete"
@@ -152,7 +217,7 @@ function kindLabel(file: TripShareFile) {
     </div>
 
     <div
-      v-else
+      v-else-if="!preview"
       class="sheet-actions"
     >
       <button
