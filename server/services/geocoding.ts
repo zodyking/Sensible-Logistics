@@ -1,5 +1,11 @@
 import { and, eq, isNotNull, sql } from 'drizzle-orm'
 import { bboxFromExtent, isUnitedStatesCountry, type BoundingBox } from '#shared/utils/geo'
+import {
+  displayNameFromPhoton,
+  localityFromPhoton,
+  postalState,
+  streetLineFromPhoton,
+} from '#shared/utils/us-address'
 import type { DbExecutor } from '../utils/db'
 import { locations } from '../database/schema'
 
@@ -57,6 +63,7 @@ interface PhotonFeature {
     street?: string
     city?: string
     district?: string
+    locality?: string
     county?: string
     state?: string
     postcode?: string
@@ -67,15 +74,16 @@ interface PhotonFeature {
   }
 }
 
-function photonToResult(feature: PhotonFeature): GeocodeResult | null {
+function photonToResult(feature: PhotonFeature, query = ''): GeocodeResult | null {
   const coords = feature.geometry?.coordinates
   const lon = coords?.[0]
   const lat = coords?.[1]
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null
   const p = feature.properties ?? {}
-  const street = [p.housenumber, p.street].filter(Boolean).join(' ')
-  const city = p.city || p.district || p.county || null
-  const display = [p.name, street, city, p.state].filter(Boolean).join(', ')
+  const street = streetLineFromPhoton(p, query)
+  const city = localityFromPhoton(p)
+  const state = postalState(p.state) ?? p.state ?? null
+  const display = displayNameFromPhoton(p, query)
   return {
     displayName: display || `${lat}, ${lon}`,
     latitude: lat!,
@@ -83,7 +91,7 @@ function photonToResult(feature: PhotonFeature): GeocodeResult | null {
     confidence: 0.85,
     addressLine1: street || p.name || null,
     city,
-    state: p.state ?? null,
+    state,
     postalCode: p.postcode ?? null,
     country: p.countrycode?.toUpperCase() ?? p.country ?? null,
     bbox: Array.isArray(p.extent) ? bboxFromExtent(p.extent) : null,
@@ -111,7 +119,7 @@ class PhotonGeocoder implements Geocoder {
     try {
       const payload = await fetchJson(this.searchUrl(q, Math.max(limit, 8))) as { features?: PhotonFeature[] }
       const results = (payload.features ?? [])
-        .map(photonToResult)
+        .map(feature => photonToResult(feature, q))
         .filter((r): r is GeocodeResult => r !== null && isUnitedStatesCountry(r.country))
         .slice(0, limit)
       return { available: true, results }

@@ -3,6 +3,7 @@ import { LOCATION_TYPE_LABELS, LOCATION_TYPES } from '#shared/utils/domain'
 import type { LocationType } from '#shared/utils/domain'
 import { isPlacedPin } from '#shared/utils/yard-slots'
 import { formatPhoneInput, isValidPhone } from '#shared/utils/phone'
+import { formatCityStateZip } from '#shared/utils/us-address'
 
 const { user } = useUserSession()
 setPageLayout(user.value?.role === 'ADMIN' ? 'admin' : 'default')
@@ -383,7 +384,7 @@ function createAnyway() {
               @click="applySuggestion(hit)"
             >
               <b>{{ hit.displayName }}</b>
-              <small>{{ [hit.city, hit.state, hit.postalCode].filter(Boolean).join(', ') || 'OpenStreetMap' }}</small>
+              <small>{{ formatCityStateZip(hit.city, hit.state, hit.postalCode) || 'OpenStreetMap' }}</small>
             </button>
           </li>
         </ul>
