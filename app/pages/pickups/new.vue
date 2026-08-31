@@ -3,6 +3,7 @@ import { ACTIVE_POOL_LABELS, CONTAINER_TYPES, CONTAINER_TYPE_LABELS, EQUIPMENT_T
 import type { ContainerType, EquipmentType, TripKind } from '#shared/utils/domain'
 import { PICKUP_STEPS, pickupSteps } from '#shared/utils/pickup-steps'
 import type { PickupStep } from '#shared/utils/pickup-steps'
+import { filterLocations } from '#shared/utils/location-search'
 import {
   formatChassisNumber,
   formatContainerNumber,
@@ -106,12 +107,15 @@ watch(STEPS, (steps) => {
 /* --- Data sources ----------------------------------------------- */
 const locationSearch = ref('')
 const destinationSearch = ref('')
-const listSearch = computed(() =>
-  step.value === 'destination' ? destinationSearch.value : locationSearch.value,
-)
-const { data: locationData } = await useFetch('/api/locations', {
-  query: computed(() => ({ q: listSearch.value || undefined, limit: 100 })),
+const { data: locationData, status: locationStatus, error: locationError } = await useFetch('/api/locations', {
+  key: 'pickup-location-pool',
+  query: { limit: 200, lite: '1' },
+  server: false,
 })
+
+const originOptions = computed(() =>
+  filterLocations(locationData.value?.items ?? [], locationSearch.value),
+)
 
 const inventory = ref<{
   containers: YardBox[]
@@ -485,8 +489,20 @@ const destinationLocation = computed(() =>
 )
 
 const destinationOptions = computed(() =>
-  (locationData.value?.items ?? []).filter(item => item.id !== originLocationId.value),
+  filterLocations(
+    (locationData.value?.items ?? []).filter(item => item.id !== originLocationId.value),
+    destinationSearch.value,
+  ),
 )
+
+function locationAddressLine(location: { addressLine1?: string | null, city?: string | null }) {
+  return [location.addressLine1, location.city].filter(Boolean).join(' · ') || '—'
+}
+
+function chassisCountLabel(count: number | undefined) {
+  const n = count ?? 0
+  return n === 1 ? '1 chassis' : `${n} chassis`
+}
 
 const canAdvance = computed(() => {
   switch (step.value) {
@@ -824,6 +840,13 @@ async function onPhoto(dataUrl: string) {
 
     <!-- ── Location ────────────────────────────────────────────── -->
     <template v-else-if="step === 'location'">
+      <p
+        v-if="pickupKind === 'BARE_CHASSIS'"
+        class="note"
+      >
+        <span>Every company yard, terminal, and customer. Chassis already parked there are listed next.</span>
+      </p>
+
       <div class="searchbar">
         <span aria-hidden="true">⌕</span>
         <input
@@ -834,12 +857,28 @@ async function onPhoto(dataUrl: string) {
         >
       </div>
 
+      <p
+        v-if="locationStatus === 'pending'"
+        class="note"
+        role="status"
+      >
+        <span>Loading locations…</span>
+      </p>
+
+      <p
+        v-else-if="locationError"
+        class="banner err"
+        role="alert"
+      >
+        Could not load locations. Go back and try again, or add sites from More → Customers & locations.
+      </p>
+
       <div
-        v-if="locationData?.items.length"
+        v-else-if="originOptions.length"
         class="card rowlist"
       >
         <button
-          v-for="location in locationData.items"
+          v-for="location in originOptions"
           :key="location.id"
           type="button"
           class="row"
@@ -852,7 +891,12 @@ async function onPhoto(dataUrl: string) {
           >{{ LOCATION_GLYPH[location.type] }}</span>
           <span class="row-main">
             <b>{{ location.name }}</b>
-            <small>{{ [location.addressLine1, location.city].filter(Boolean).join(' · ') || '—' }}</small>
+            <small>
+              {{ locationAddressLine(location) }}
+              <template v-if="pickupKind === 'BARE_CHASSIS'">
+                · {{ chassisCountLabel(location.availableChassis) }}
+              </template>
+            </small>
           </span>
           <span class="row-end">
             <StatusChip
@@ -869,9 +913,9 @@ async function onPhoto(dataUrl: string) {
       </div>
 
       <EmptyState
-        v-if="!locationData?.items.length"
+        v-else
         glyph="◫"
-        title="No locations match"
+        :title="locationSearch.trim() ? 'No locations match' : 'No locations yet'"
         description="Pick an existing yard, terminal, or customer. Add new ones from More → Customers & locations."
       />
     </template>
@@ -1230,8 +1274,24 @@ async function onPhoto(dataUrl: string) {
         >
       </div>
 
+      <p
+        v-if="locationStatus === 'pending'"
+        class="note"
+        role="status"
+      >
+        <span>Loading locations…</span>
+      </p>
+
+      <p
+        v-else-if="locationError"
+        class="banner err"
+        role="alert"
+      >
+        Could not load locations. Go back and try again, or add sites from More → Customers & locations.
+      </p>
+
       <div
-        v-if="destinationOptions.length"
+        v-else-if="destinationOptions.length"
         class="card rowlist"
       >
         <button
@@ -1248,7 +1308,7 @@ async function onPhoto(dataUrl: string) {
           >{{ LOCATION_GLYPH[location.type] }}</span>
           <span class="row-main">
             <b>{{ location.name }}</b>
-            <small>{{ [location.addressLine1, location.city].filter(Boolean).join(' · ') || '—' }}</small>
+            <small>{{ locationAddressLine(location) }}</small>
           </span>
           <span class="row-end">
             <StatusChip
@@ -1267,7 +1327,7 @@ async function onPhoto(dataUrl: string) {
       <EmptyState
         v-else
         glyph="◫"
-        title="No drop-off matches"
+        :title="destinationSearch.trim() ? 'No drop-off matches' : 'No other locations yet'"
         description="Pick a different yard, terminal, or customer than the pickup. Add new ones from More → Customers & locations."
       />
     </template>

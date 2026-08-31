@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { containerPlacements, containers, chassis, locations } from '../../database/schema'
 import { displayContainers, mapContainerFromRow } from '../../services/placements'
 import { requireAuth } from '../../utils/session'
-import { countContainersByType, LOCATION_TYPES } from '#shared/utils/domain'
+import { countContainersByType, emptyTypeCounts, LOCATION_TYPES } from '#shared/utils/domain'
 import type { GeoJsonPolygon } from '#shared/utils/geo'
 
 const querySchema = z.object({
@@ -11,6 +11,8 @@ const querySchema = z.object({
   type: z.enum(LOCATION_TYPES).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(100),
   includeUncategorized: z.enum(['1', 'true']).optional(),
+  /** Skip container occupancy — pickup / drop-off pickers only need the site list. */
+  lite: z.enum(['1', 'true']).optional(),
 })
 
 /** Shared location pool with live occupancy, brand counts, and map placements. */
@@ -37,6 +39,7 @@ export default defineEventHandler(async (event) => {
       id: locations.id,
       name: locations.name,
       type: locations.type,
+      locationCode: locations.locationCode,
       addressLine1: locations.addressLine1,
       city: locations.city,
       state: locations.state,
@@ -57,6 +60,56 @@ export default defineEventHandler(async (event) => {
     .limit(query.limit)
 
   const locationIds = rows.map(row => row.id)
+  const chassisOnSite = locationIds.length
+    ? await db
+        .select({
+          locationId: chassis.currentLocationId,
+          count: sql<number>`count(*)::int`,
+        })
+        .from(chassis)
+        .where(and(
+          eq(chassis.companyId, auth.companyId),
+          inArray(chassis.currentLocationId, locationIds),
+          isNull(chassis.deletedAt),
+          eq(chassis.outOfService, false),
+          isNull(chassis.currentContainerId),
+        ))
+        .groupBy(chassis.currentLocationId)
+    : []
+  const chassisByLocation = new Map(
+    chassisOnSite
+      .filter((row): row is typeof row & { locationId: string } => Boolean(row.locationId))
+      .map(row => [row.locationId, Number(row.count)]),
+  )
+
+  if (query.lite) {
+    return {
+      items: rows.map(row => ({
+        id: row.id,
+        name: row.name,
+        type: row.type,
+        locationCode: row.locationCode,
+        addressLine1: row.addressLine1,
+        city: row.city,
+        state: row.state,
+        mainPhone: row.mainPhone,
+        contactPhone: row.contactPhone,
+        capacity: row.capacity,
+        status: row.status,
+        isUncategorized: row.isUncategorized,
+        latitude: row.latitude ? Number(row.latitude) : null,
+        longitude: row.longitude ? Number(row.longitude) : null,
+        mapHeading: row.mapHeading ?? 0,
+        boundary: row.boundary,
+        hasBoundary: row.hasBoundary,
+        occupancy: 0,
+        availableChassis: chassisByLocation.get(row.id) ?? 0,
+        typeCounts: emptyTypeCounts(),
+        containers: [],
+      })),
+    }
+  }
+
   const onSite = locationIds.length
     ? await db
         .select({
@@ -122,6 +175,7 @@ export default defineEventHandler(async (event) => {
       id: row.id,
       name: row.name,
       type: row.type,
+      locationCode: row.locationCode,
       addressLine1: row.addressLine1,
       city: row.city,
       state: row.state,
@@ -136,6 +190,7 @@ export default defineEventHandler(async (event) => {
       boundary: row.boundary,
       hasBoundary: row.hasBoundary,
       occupancy: mapped.length,
+      availableChassis: chassisByLocation.get(row.id) ?? 0,
       typeCounts: countContainersByType(mapped),
       containers: mapped,
     }
