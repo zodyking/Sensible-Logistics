@@ -75,11 +75,9 @@ watch(STEPS, (steps) => {
 
 const submitting = ref(false)
 const errorMessage = ref('')
-const cameraOpen = ref(false)
 const capturedPhoto = ref('')
 const readingPhoto = ref(false)
 const ocrMessage = ref('')
-const cameraAutoOpened = ref(false)
 const resolving = ref(false)
 
 const normalized = computed(() => normalizeContainerNumber(rawNumber.value))
@@ -145,7 +143,6 @@ const canAdvance = computed(() => {
         && !resolving.value
         && Boolean(resolution.value)
         && !readingPhoto.value
-        && !cameraOpen.value
     case 'containerType':
     case 'equipmentType':
     case 'load':
@@ -200,14 +197,6 @@ async function attach() {
   }
 }
 
-watch(step, (current) => {
-  if (!canAttach.value) return
-  if (current !== 'equipment') return
-  if (cameraAutoOpened.value || rawNumber.value || cameraOpen.value) return
-  cameraAutoOpened.value = true
-  cameraOpen.value = true
-}, { immediate: true })
-
 watch([tripId, capturedPhoto], ([id, photo]) => {
   if (id && photo) void rememberTripPhoto(id, photo)
 })
@@ -215,7 +204,6 @@ watch([tripId, capturedPhoto], ([id, photo]) => {
 async function onPhoto(dataUrl: string) {
   capturedPhoto.value = dataUrl
   readingPhoto.value = true
-  cameraOpen.value = false
   ocrMessage.value = ''
   errorMessage.value = ''
   await nextTick()
@@ -242,11 +230,6 @@ async function onPhoto(dataUrl: string) {
     await waitAtLeast(startedAt, PHOTO_READ_MIN_MS)
     readingPhoto.value = false
   }
-}
-
-function retakePhoto() {
-  ocrMessage.value = ''
-  cameraOpen.value = true
 }
 </script>
 
@@ -310,7 +293,7 @@ function retakePhoto() {
         />
         <template v-else>
           <ScanPhotoPeek
-            v-if="capturedPhoto && !cameraOpen"
+            v-if="capturedPhoto"
             :src="capturedPhoto"
           />
           <div class="card p-4">
@@ -381,14 +364,12 @@ function retakePhoto() {
             </div>
           </div>
 
-          <button
-            type="button"
+          <DevicePhotoInput
             class="btn-ghost mt-4 w-full"
+            :label="capturedPhoto ? 'Retake photo' : 'Take photo'"
             :disabled="readingPhoto"
-            @click="retakePhoto"
-          >
-            {{ capturedPhoto ? 'Retake photo' : 'Open camera' }}
-          </button>
+            @photo="onPhoto"
+          />
         </template>
       </template>
 
@@ -512,13 +493,5 @@ function retakePhoto() {
         </button>
       </div>
     </template>
-
-    <CaptureCamera
-      v-if="cameraOpen"
-      title="Container"
-      reading-label="Reading the container number…"
-      @close="cameraOpen = false"
-      @photo="onPhoto"
-    />
   </section>
 </template>

@@ -3,7 +3,7 @@ import type { ContainerType, TripStatus } from '#shared/utils/domain'
 import { formatSwapSmsMessage, formatTripSmsMessage, tripSmsAction } from '#shared/utils/trip-sms'
 import type { TripSmsFields } from '#shared/utils/trip-sms'
 import { shareTripSms } from '~/utils/share-trip-sms'
-import { rememberTripShareBlobs, tripShareFilesAsFiles } from '~/utils/trip-share-files'
+import { rememberTripShareBlobs, tripShareFilesAsFilesFromTrips } from '~/utils/trip-share-files'
 
 type TripSmsSheetFields = TripSmsFields & {
   tripId?: string | null
@@ -67,10 +67,17 @@ const message = computed(() => {
   return formatTripSmsMessage(action.value, toFields(props))
 })
 
-const attachmentTripId = computed(() => {
-  if (isSwap.value) return props.swapDropped?.tripId ?? null
-  if (action.value === 'pickup') return props.tripId ?? null
-  return null
+const attachmentTripIds = computed(() => {
+  if (isSwap.value) {
+    return [props.swapPicked?.tripId, props.swapDropped?.tripId].filter(Boolean) as string[]
+  }
+  if (action.value === 'pickup' && props.tripId) return [props.tripId]
+  return []
+})
+
+const extraFilesTripId = computed(() => {
+  if (isSwap.value) return props.swapPicked?.tripId || props.swapDropped?.tripId || null
+  return attachmentTripIds.value[0] ?? null
 })
 
 const attachmentCount = computed(() => attachmentFiles.value.length)
@@ -78,10 +85,10 @@ const attachmentCount = computed(() => attachmentFiles.value.length)
 const attachmentHint = computed(() => {
   if (isSwap.value) {
     if (attachmentCount.value === 0) {
-      return 'Attach the empty’s container photo and documents — the box left at the customer.'
+      return 'Attach container photos and documents from both boxes — they go with this send.'
     }
     const noun = attachmentCount.value === 1 ? 'file' : 'files'
-    return `${attachmentCount.value} ${noun} from the empty left at the customer will attach.`
+    return `${attachmentCount.value} ${noun} from this swap will attach.`
   }
   if (action.value === 'dropoff') {
     return 'Drop-off messages are text only. Photos and documents stay off this send.'
@@ -94,14 +101,14 @@ const attachmentHint = computed(() => {
 })
 
 watch(
-  () => [props.open, attachmentTripId.value] as const,
-  async ([open, tripId]) => {
+  () => [props.open, attachmentTripIds.value.join('|')] as const,
+  async ([open, ids]) => {
     shareError.value = ''
     copied.value = false
     attachmentFiles.value = []
-    if (!open || !tripId) return
-    const next = await tripShareFilesAsFiles(tripId)
-    if (props.open && attachmentTripId.value === tripId) attachmentFiles.value = next
+    if (!open || !ids) return
+    const next = await tripShareFilesAsFilesFromTrips(ids.split('|').filter(Boolean))
+    if (props.open && attachmentTripIds.value.join('|') === ids) attachmentFiles.value = next
   },
 )
 
@@ -109,11 +116,11 @@ async function onAddFiles(event: Event) {
   const input = event.target as HTMLInputElement
   const selected = [...input.files ?? []]
   input.value = ''
-  if (!attachmentTripId.value || !selected.length) return
+  if (!extraFilesTripId.value || !selected.length) return
   shareError.value = ''
   try {
-    await rememberTripShareBlobs(attachmentTripId.value, selected)
-    attachmentFiles.value = await tripShareFilesAsFiles(attachmentTripId.value)
+    await rememberTripShareBlobs(extraFilesTripId.value, selected)
+    attachmentFiles.value = await tripShareFilesAsFilesFromTrips(attachmentTripIds.value)
   }
   catch {
     shareError.value = 'Could not attach those files.'
@@ -128,7 +135,7 @@ async function share() {
   try {
     const result = await shareTripSms({
       text: message.value,
-      files: attachmentTripId.value ? attachmentFiles.value : [],
+      files: extraFilesTripId.value ? attachmentFiles.value : [],
     })
     copied.value = result.copied
     if (result.aborted) return
@@ -176,7 +183,7 @@ async function share() {
         {{ attachmentHint }}
       </p>
       <label
-        v-if="attachmentTripId"
+        v-if="extraFilesTripId"
         class="sms-add-files"
       >
         <input
