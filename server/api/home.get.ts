@@ -1,7 +1,9 @@
-import { and, desc, eq, gte, inArray, isNotNull, ne, or, sql } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, ne, notInArray, or } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/pg-core'
 import { chassis, containers, locations, trips } from '../database/schema'
 import type { Trip } from '../database/schema'
 import { findActiveTrips } from '../services/movements'
+import { countHomeDayTally } from '#shared/utils/home-tally'
 import { calendarDateInZone } from '#shared/utils/sms-task'
 import { companyTimezone, listOpenTasksForHome } from '../services/tasks'
 import { requireDriver } from '../utils/session'
@@ -123,15 +125,35 @@ export default defineEventHandler(async (event) => {
     if (completedTrip) recentCompleted = await bundleTrip(db, completedTrip)
   }
 
-  const [swapCount] = await db
-    .select({ value: sql<number>`count(*)::int` })
+  const originLoc = alias(locations, 'home_origin')
+  const destLoc = alias(locations, 'home_dest')
+  const since = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
+  const dayTrips = await db
+    .select({
+      id: trips.id,
+      createdAt: trips.createdAt,
+      pickedUpAt: trips.pickedUpAt,
+      droppedOffAt: trips.droppedOffAt,
+      swapPairTripId: trips.swapPairTripId,
+      originState: originLoc.state,
+      originPostalCode: originLoc.postalCode,
+      destinationState: destLoc.state,
+      destinationPostalCode: destLoc.postalCode,
+    })
     .from(trips)
+    .leftJoin(originLoc, eq(originLoc.id, trips.originLocationId))
+    .leftJoin(destLoc, eq(destLoc.id, trips.destinationLocationId))
     .where(and(
+      eq(trips.companyId, auth.companyId),
       eq(trips.driverId, auth.driverId),
-      isNotNull(trips.swapPairTripId),
-      inArray(trips.status, ['COMPLETED', 'DROPPED_OFF']),
-      eq(trips.isLoaded, false),
+      notInArray(trips.status, ['DRAFT', 'CANCELLED']),
+      or(
+        gte(trips.createdAt, since),
+        gte(trips.pickedUpAt, since),
+        gte(trips.droppedOffAt, since),
+      ),
     ))
+  const dayTally = countHomeDayTally(dayTrips, todayIso, timezone)
 
   const recentContainers = await db
     .select({
@@ -176,7 +198,7 @@ export default defineEventHandler(async (event) => {
 
   return {
     driver: { name: auth.fullName, firstName: auth.firstName, company: auth.companyName },
-    stats: { bridgeCrosses: 0, swaps: swapCount?.value ?? 0 },
+    stats: { bridgeCrosses: dayTally.bridgeCrosses, swaps: dayTally.swaps },
     todayIso,
     todayTasks,
     duty: {

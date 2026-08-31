@@ -311,18 +311,16 @@ async function patchTask(id: string, statusValue: 'DONE' | 'DISMISSED') {
           placeholder="Paste the full dispatcher text here."
           autocomplete="off"
         />
-        <div class="task-compose-bar">
-          <p class="field-hint mb-0">
-            Stays one block until you split it.
-          </p>
-          <button
-            class="btn-dark"
-            type="submit"
-            :disabled="adding || !draft.trim()"
-          >
-            {{ adding ? 'Adding…' : 'Add work' }}
-          </button>
-        </div>
+        <p class="task-compose-hint">
+          Stays one block until you split it.
+        </p>
+        <button
+          class="btn-dark"
+          type="submit"
+          :disabled="adding || !draft.trim()"
+        >
+          {{ adding ? 'Adding…' : 'Add work' }}
+        </button>
       </form>
 
       <div class="section-label">

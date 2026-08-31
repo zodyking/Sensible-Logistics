@@ -28,6 +28,49 @@ function isNewYorkState(state: string | null | undefined): boolean {
   return n === 'new york' || n === 'ny' || n === 'n y'
 }
 
+function isNewJerseyState(state: string | null | undefined): boolean {
+  const n = fold(state)
+  return n === 'new jersey' || n === 'nj' || n === 'n j'
+}
+
+/** Two-letter USPS code when we can resolve it. */
+export function usStateCode(state: string | null | undefined): string | null {
+  if (isNewYorkState(state)) return 'NY'
+  if (isNewJerseyState(state)) return 'NJ'
+  const n = fold(state)
+  if (/^[a-z]{2}$/.test(n)) return n.toUpperCase()
+  return null
+}
+
+/** NY / NJ from a 5-digit ZIP when the state field is blank. */
+export function stateFromPostalCode(postalCode: string | null | undefined): 'NY' | 'NJ' | null {
+  const digits = String(postalCode ?? '').replace(/\D/g, '')
+  if (digits.length < 3) return null
+  const prefix = digits.slice(0, 3)
+  const n = Number(prefix)
+  if (prefix === '005' || prefix === '063' || (n >= 100 && n <= 149)) return 'NY'
+  if (n >= 70 && n <= 89) return 'NJ'
+  return null
+}
+
+/** State on a location: stored state, then ZIP. */
+export function locationStateCode(input: {
+  state?: string | null
+  postalCode?: string | null
+}): string | null {
+  return usStateCode(input.state) || stateFromPostalCode(input.postalCode)
+}
+
+/** True when origin and destination sit on opposite sides of the Hudson. */
+export function isNyNjBridgeCross(
+  originState: string | null | undefined,
+  destState: string | null | undefined,
+): boolean {
+  const origin = usStateCode(originState) || originState || null
+  const dest = usStateCode(destState) || destState || null
+  return (origin === 'NY' && dest === 'NJ') || (origin === 'NJ' && dest === 'NY')
+}
+
 function isNewYorkCityLabel(city: string | null | undefined): boolean {
   const n = fold(city)
   return n === 'new york' || n === 'new york city' || n === 'nyc' || n === 'city of new york'
@@ -71,7 +114,8 @@ export function localityFromPhoton(parts: PhotonAddressParts): string | null {
 export function postalState(state: string | null | undefined): string | null {
   const raw = String(state ?? '').trim()
   if (!raw) return null
-  if (isNewYorkState(raw)) return 'NY'
+  const code = usStateCode(raw)
+  if (code) return code
   return raw
 }
 
