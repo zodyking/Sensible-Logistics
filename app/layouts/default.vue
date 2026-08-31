@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Driver operational shell — sticky brand bar, 520px column, five-tab bar
+ * Driver operational shell — brand bar, scrolling 520px column, five-tab bar
  * locked to the bottom of the viewport: Home, Trips, Tasks (FAB), Containers, More.
  */
 const route = useRoute()
