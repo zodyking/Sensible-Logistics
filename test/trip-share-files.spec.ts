@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { dataUrlToFile, nextShareTitle } from '../app/utils/trip-share-files'
+import { dataUrlToFile, nextShareTitle, nextAttachmentSelection } from '../app/utils/trip-share-files'
 
 describe('nextShareTitle', () => {
   it('numbers container images from 1', () => {
@@ -33,5 +33,16 @@ describe('dataUrlToFile', () => {
     const file = dataUrlToFile('data:application/pdf;base64,JVBERi0=', 'gate-ticket.pdf')
     expect(file.type).toBe('application/pdf')
     expect(file.name).toBe('gate-ticket.pdf')
+  })
+})
+
+describe('nextAttachmentSelection', () => {
+  it('selects every file on the first load', () => {
+    expect([...nextAttachmentSelection([], [], ['a.jpg', 'b.pdf'])]).toEqual(['a.jpg', 'b.pdf'])
+  })
+
+  it('keeps ticks and selects newly added files', () => {
+    expect([...nextAttachmentSelection(['a.jpg'], ['a.jpg', 'b.pdf'], ['a.jpg', 'b.pdf', 'c.jpg'])])
+      .toEqual(['a.jpg', 'c.jpg'])
   })
 })

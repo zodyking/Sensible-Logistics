@@ -3,7 +3,7 @@ import type { ContainerType, TripStatus } from '#shared/utils/domain'
 import { formatSwapSmsMessage, formatTripSmsMessage, tripSmsAction } from '#shared/utils/trip-sms'
 import type { TripSmsFields } from '#shared/utils/trip-sms'
 import { shareTripSms } from '~/utils/share-trip-sms'
-import { rememberTripShareBlobs, tripShareFilesAsFilesFromTrips } from '~/utils/trip-share-files'
+import { rememberTripShareBlobs, nextAttachmentSelection, tripShareFilesAsFilesFromTrips } from '~/utils/trip-share-files'
 
 type TripSmsSheetFields = TripSmsFields & {
   tripId?: string | null
@@ -33,6 +33,8 @@ const sharing = ref(false)
 const shareError = ref('')
 const copied = ref(false)
 const attachmentFiles = ref<File[]>([])
+const selectedNames = ref<Set<string>>(new Set())
+const editingDocs = ref(false)
 
 const isSwap = computed(() => Boolean(
   props.swapPicked
@@ -80,12 +82,23 @@ const extraFilesTripId = computed(() => {
   return attachmentTripIds.value[0] ?? null
 })
 
-const attachmentCount = computed(() => attachmentFiles.value.length)
+const selectedFiles = computed(() =>
+  attachmentFiles.value.filter(file => selectedNames.value.has(file.name)),
+)
+
+const attachmentCount = computed(() => selectedFiles.value.length)
+const availableCount = computed(() => attachmentFiles.value.length)
 
 const attachmentHint = computed(() => {
   if (isSwap.value) {
-    if (attachmentCount.value === 0) {
+    if (availableCount.value === 0) {
       return 'Attach container photos and documents from both boxes — they go with this send.'
+    }
+    if (attachmentCount.value === 0) {
+      return 'No files will attach this send.'
+    }
+    if (attachmentCount.value < availableCount.value) {
+      return `${attachmentCount.value} of ${availableCount.value} files from this swap will attach.`
     }
     const noun = attachmentCount.value === 1 ? 'file' : 'files'
     return `${attachmentCount.value} ${noun} from this swap will attach.`
@@ -93,22 +106,46 @@ const attachmentHint = computed(() => {
   if (action.value === 'dropoff') {
     return 'Drop-off messages are text only. Photos and documents stay off this send.'
   }
-  if (attachmentCount.value === 0) {
+  if (availableCount.value === 0) {
     return 'No container photos or documents are saved on this pickup yet. The text still copies so you can paste it into the conversation.'
+  }
+  if (attachmentCount.value === 0) {
+    return 'No files will attach this send.'
+  }
+  if (attachmentCount.value < availableCount.value) {
+    return `${attachmentCount.value} of ${availableCount.value} files will attach with the message.`
   }
   const noun = attachmentCount.value === 1 ? 'file' : 'files'
   return `${attachmentCount.value} ${noun} (container photos and uploaded documents) will attach with the message.`
 })
+
+function applyFiles(next: File[]) {
+  selectedNames.value = nextAttachmentSelection(
+    selectedNames.value,
+    attachmentFiles.value.map(file => file.name),
+    next.map(file => file.name),
+  )
+  attachmentFiles.value = next
+}
+
+function toggleFile(name: string) {
+  const next = new Set(selectedNames.value)
+  if (next.has(name)) next.delete(name)
+  else next.add(name)
+  selectedNames.value = next
+}
 
 watch(
   () => [props.open, attachmentTripIds.value.join('|')] as const,
   async ([open, ids]) => {
     shareError.value = ''
     copied.value = false
+    editingDocs.value = false
     attachmentFiles.value = []
+    selectedNames.value = new Set()
     if (!open || !ids) return
     const next = await tripShareFilesAsFilesFromTrips(ids.split('|').filter(Boolean))
-    if (props.open && attachmentTripIds.value.join('|') === ids) attachmentFiles.value = next
+    if (props.open && attachmentTripIds.value.join('|') === ids) applyFiles(next)
   },
 )
 
@@ -120,7 +157,7 @@ async function onAddFiles(event: Event) {
   shareError.value = ''
   try {
     await rememberTripShareBlobs(extraFilesTripId.value, selected)
-    attachmentFiles.value = await tripShareFilesAsFilesFromTrips(attachmentTripIds.value)
+    applyFiles(await tripShareFilesAsFilesFromTrips(attachmentTripIds.value))
   }
   catch {
     shareError.value = 'Could not attach those files.'
@@ -135,7 +172,7 @@ async function share() {
   try {
     const result = await shareTripSms({
       text: message.value,
-      files: extraFilesTripId.value ? attachmentFiles.value : [],
+      files: extraFilesTripId.value ? selectedFiles.value : [],
     })
     copied.value = result.copied
     if (result.aborted) return
@@ -181,7 +218,37 @@ async function share() {
       >{{ message }}</pre>
       <p class="sms-share-hint">
         {{ attachmentHint }}
+        <button
+          v-if="availableCount"
+          type="button"
+          class="sms-edit-docs"
+          :aria-expanded="editingDocs"
+          @click="editingDocs = !editingDocs"
+        >
+          {{ editingDocs ? 'Done' : 'Edit documents' }}
+        </button>
       </p>
+      <fieldset
+        v-if="editingDocs && availableCount"
+        class="sms-doc-picker"
+      >
+        <legend class="sr-only">
+          Files to send with this SMS
+        </legend>
+        <label
+          v-for="file in attachmentFiles"
+          :key="file.name"
+          class="sms-doc-pick"
+        >
+          <input
+            type="checkbox"
+            :checked="selectedNames.has(file.name)"
+            :disabled="sharing"
+            @change="toggleFile(file.name)"
+          >
+          <span>{{ file.name }}</span>
+        </label>
+      </fieldset>
       <label
         v-if="extraFilesTripId"
         class="sms-add-files"

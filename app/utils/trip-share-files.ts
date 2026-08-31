@@ -189,6 +189,24 @@ export async function tripShareFilesAsFilesFromTrips(tripIds: Array<string | nul
   return files
 }
 
+/**
+ * Default: every file is selected. After an add/reload, keep the driver's
+ * ticks and auto-select files that were not on the list before.
+ */
+export function nextAttachmentSelection(
+  previousSelected: Iterable<string>,
+  previousNames: Iterable<string>,
+  nextNames: Iterable<string>,
+): Set<string> {
+  const selectedBefore = new Set(previousSelected)
+  const known = new Set(previousNames)
+  const selected = new Set<string>()
+  for (const name of nextNames) {
+    if (selectedBefore.has(name) || !known.has(name)) selected.add(name)
+  }
+  return selected
+}
+
 export async function deleteTripShareFile(tripId: string, fileName: string): Promise<void> {
   const current = (await listTripShareFiles(tripId)).filter(item => item.fileName !== fileName)
   await persist(tripId, current)
