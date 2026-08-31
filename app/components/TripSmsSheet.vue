@@ -3,7 +3,7 @@ import type { ContainerType, TripStatus } from '#shared/utils/domain'
 import { formatSwapSmsMessage, formatTripSmsMessage, tripSmsAction } from '#shared/utils/trip-sms'
 import type { TripSmsFields } from '#shared/utils/trip-sms'
 import { shareTripSms } from '~/utils/share-trip-sms'
-import { rememberTripShareBlobs, nextAttachmentSelection, tripShareFilesAsFilesFromTrips } from '~/utils/trip-share-files'
+import { nextAttachmentSelection, tripShareFilesAsFilesFromTrips } from '~/utils/trip-share-files'
 
 type TripSmsSheetFields = TripSmsFields & {
   tripId?: string | null
@@ -34,7 +34,6 @@ const shareError = ref('')
 const copied = ref(false)
 const attachmentFiles = ref<File[]>([])
 const selectedNames = ref<Set<string>>(new Set())
-const editingDocs = ref(false)
 
 const isSwap = computed(() => Boolean(
   props.swapPicked
@@ -77,11 +76,6 @@ const attachmentTripIds = computed(() => {
   return []
 })
 
-const extraFilesTripId = computed(() => {
-  if (isSwap.value) return props.swapPicked?.tripId || props.swapDropped?.tripId || null
-  return attachmentTripIds.value[0] ?? null
-})
-
 const selectedFiles = computed(() =>
   attachmentFiles.value.filter(file => selectedNames.value.has(file.name)),
 )
@@ -92,7 +86,7 @@ const availableCount = computed(() => attachmentFiles.value.length)
 const attachmentHint = computed(() => {
   if (isSwap.value) {
     if (availableCount.value === 0) {
-      return 'Attach container photos and documents from both boxes — they go with this send.'
+      return 'No container photos or documents on this swap yet. Add them from Documents, then send again.'
     }
     if (attachmentCount.value === 0) {
       return 'No files will attach this send.'
@@ -107,7 +101,7 @@ const attachmentHint = computed(() => {
     return 'Drop-off messages are text only. Photos and documents stay off this send.'
   }
   if (availableCount.value === 0) {
-    return 'No container photos or documents are saved on this pickup yet. The text still copies so you can paste it into the conversation.'
+    return 'No container photos or documents are saved on this pickup yet. Add them from Documents on this trip, then send again.'
   }
   if (attachmentCount.value === 0) {
     return 'No files will attach this send.'
@@ -140,7 +134,6 @@ watch(
   async ([open, ids]) => {
     shareError.value = ''
     copied.value = false
-    editingDocs.value = false
     attachmentFiles.value = []
     selectedNames.value = new Set()
     if (!open || !ids) return
@@ -148,21 +141,6 @@ watch(
     if (props.open && attachmentTripIds.value.join('|') === ids) applyFiles(next)
   },
 )
-
-async function onAddFiles(event: Event) {
-  const input = event.target as HTMLInputElement
-  const selected = [...input.files ?? []]
-  input.value = ''
-  if (!extraFilesTripId.value || !selected.length) return
-  shareError.value = ''
-  try {
-    await rememberTripShareBlobs(extraFilesTripId.value, selected)
-    applyFiles(await tripShareFilesAsFilesFromTrips(attachmentTripIds.value))
-  }
-  catch {
-    shareError.value = 'Could not attach those files.'
-  }
-}
 
 async function share() {
   if (!action.value || sharing.value) return
@@ -172,7 +150,7 @@ async function share() {
   try {
     const result = await shareTripSms({
       text: message.value,
-      files: extraFilesTripId.value ? selectedFiles.value : [],
+      files: selectedFiles.value,
     })
     copied.value = result.copied
     if (result.aborted) return
@@ -218,22 +196,13 @@ async function share() {
       >{{ message }}</pre>
       <p class="sms-share-hint">
         {{ attachmentHint }}
-        <button
-          v-if="availableCount"
-          type="button"
-          class="sms-edit-docs"
-          :aria-expanded="editingDocs"
-          @click="editingDocs = !editingDocs"
-        >
-          {{ editingDocs ? 'Done' : 'Edit documents' }}
-        </button>
       </p>
       <fieldset
-        v-if="editingDocs && availableCount"
+        v-if="availableCount"
         class="sms-doc-picker"
       >
-        <legend class="sr-only">
-          Files to send with this SMS
+        <legend>
+          On this trip
         </legend>
         <label
           v-for="file in attachmentFiles"
@@ -249,20 +218,6 @@ async function share() {
           <span>{{ file.name }}</span>
         </label>
       </fieldset>
-      <label
-        v-if="extraFilesTripId"
-        class="sms-add-files"
-      >
-        <input
-          type="file"
-          class="sr-only"
-          accept="image/*,application/pdf"
-          multiple
-          :disabled="sharing"
-          @change="onAddFiles"
-        >
-        Add photos or documents
-      </label>
       <p
         v-if="shareError"
         class="banner err"
