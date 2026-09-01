@@ -84,6 +84,11 @@ export default defineNuxtConfig({
       appName: 'Sensible Logistics Solutions LLC',
       mapTilesUrl: '',
       geocoderUrl: '',
+      /**
+       * Baked when the image is built, so More shows which bundle a phone is
+       * actually running. A stale service worker is otherwise invisible.
+       */
+      buildTime: new Date().toISOString(),
     },
   },
 

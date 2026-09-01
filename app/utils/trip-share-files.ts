@@ -7,7 +7,7 @@
  * with an in-memory cache for the current session.
  */
 
-import { formatChassisNumber, formatContainerNumber } from '../../shared/utils/iso6346'
+import { formatChassisNumber, formatContainerNumber } from '#shared/utils/iso6346'
 
 export type TripShareKind = 'photo' | 'document'
 export type ShareTitleKind = 'container' | 'chassis' | 'document'
@@ -198,6 +198,23 @@ export function displayShareFileName(file: Pick<TripShareFile, 'fileName' | 'kin
   }], names)[0]?.fileName ?? file.fileName
 }
 
+/**
+ * One entry per photo. The old pickup screen saved the same capture twice —
+ * once from the watcher and once on confirm — so identical bytes collapse.
+ */
+export function dedupeShareFiles(files: readonly TripShareFile[]): TripShareFile[] {
+  const seen = new Set<string>()
+  const unique: TripShareFile[] = []
+  for (const file of files) {
+    if (file.dataUrl) {
+      if (seen.has(file.dataUrl)) continue
+      seen.add(file.dataUrl)
+    }
+    unique.push(file)
+  }
+  return unique
+}
+
 /** Rename leftover generic scans/docs to equipment numbers and document 1, 2, 3… */
 export function backfillShareFiles(
   files: readonly TripShareFile[],
@@ -211,7 +228,7 @@ export function backfillShareFiles(
       : 'container'
   const canRenameScan = scanShareStem(names) !== 'scan'
 
-  for (const file of files) {
+  for (const file of dedupeShareFiles(files)) {
     if (/^document image\b/i.test(file.fileName)) {
       next.push({
         ...file,
@@ -236,7 +253,7 @@ export function backfillShareFiles(
 export async function backfillTripShareFiles(tripId: string, names: ShareNameInput): Promise<TripShareFile[]> {
   const current = await listTripShareFiles(tripId)
   const next = backfillShareFiles(current, names)
-  const changed = next.some((file, index) => (
+  const changed = next.length !== current.length || next.some((file, index) => (
     file.fileName !== current[index]?.fileName || file.kind !== current[index]?.kind
   ))
   if (changed) await persist(tripId, next)
@@ -253,10 +270,10 @@ export async function rememberTripPhoto(
   const current = [...await listTripShareFiles(tripId)]
   const kind: ShareTitleKind = names.containerNumber?.trim() ? 'container' : names.chassisNumber?.trim() ? 'chassis' : 'container'
   const stem = scanShareStem(names)
-  const kept = current.filter(item => !shouldReplacePhoto(item, stem))
+  const kept = current.filter(item => item.dataUrl !== dataUrl && !shouldReplacePhoto(item, stem))
   const fileName = nextShareTitle(kind, kept, mimeType, names)
   kept.push({ kind: 'photo', fileName, mimeType, dataUrl })
-  await persist(tripId, kept)
+  await persist(tripId, dedupeShareFiles(kept))
 }
 
 export function fileToDataUrl(file: File): Promise<string> {
@@ -297,6 +314,7 @@ export async function rememberTripShareBlobs(tripId: string, files: File[]): Pro
   for (const file of files) {
     const dataUrl = await fileToDataUrl(file)
     if (!dataUrl.startsWith('data:')) continue
+    if (current.some(item => item.dataUrl === dataUrl)) continue
     const mimeType = file.type || mimeFromDataUrl(dataUrl)
     current.push({
       kind: 'document',
@@ -309,7 +327,7 @@ export async function rememberTripShareBlobs(tripId: string, files: File[]): Pro
 }
 
 export async function tripShareFilesAsFiles(tripId: string): Promise<File[]> {
-  const stored = await listTripShareFiles(tripId)
+  const stored = dedupeShareFiles(await listTripShareFiles(tripId))
   return stored.map(file => dataUrlToFile(file.dataUrl, file.fileName))
 }
 
@@ -324,7 +342,7 @@ export async function listTripShareFilesFromTrips(
     if (!tripId) continue
     const stored = namesByTrip[tripId]
       ? await backfillTripShareFiles(tripId, namesByTrip[tripId]!)
-      : await listTripShareFiles(tripId)
+      : dedupeShareFiles(await listTripShareFiles(tripId))
     for (const file of stored) {
       const fileName = uniqueFileName(names, file.fileName)
       const item = { ...file, fileName }

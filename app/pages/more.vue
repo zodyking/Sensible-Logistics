@@ -62,6 +62,14 @@ async function signOut() {
   await clear()
   await navigateTo('/login', { replace: true })
 }
+
+const buildLabel = computed(() => {
+  const raw = useRuntimeConfig().public.buildTime
+  if (!raw) return ''
+  const stamp = new Date(raw)
+  if (Number.isNaN(stamp.getTime())) return String(raw)
+  return stamp.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+})
 </script>
 
 <template>
@@ -269,5 +277,12 @@ async function signOut() {
     >
       {{ signingOut ? 'Signing out…' : 'Sign out' }}
     </button>
+
+    <p
+      v-if="buildLabel"
+      class="app-build"
+    >
+      Build {{ buildLabel }}
+    </p>
   </section>
 </template>
