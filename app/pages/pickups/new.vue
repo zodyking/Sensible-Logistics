@@ -730,7 +730,12 @@ async function confirm() {
         notes: notes.value || null,
       },
     })
-    if (capturedPhoto.value) await rememberTripPhoto(tripId.value, capturedPhoto.value)
+    if (capturedPhoto.value) {
+      await rememberTripPhoto(tripId.value, capturedPhoto.value, {
+        containerNumber: pickupKind.value === 'CONTAINER' ? normalized.value : null,
+        chassisNumber: chassisNumber.value,
+      })
+    }
     await navigateTo('/')
   }
   catch (error) {
@@ -759,7 +764,12 @@ async function abandon() {
 }
 
 watch([tripId, capturedPhoto], ([id, photo]) => {
-  if (id && photo) void rememberTripPhoto(id, photo)
+  if (id && photo) {
+    void rememberTripPhoto(id, photo, {
+      containerNumber: pickupKind.value === 'CONTAINER' ? normalized.value : null,
+      chassisNumber: chassisNumber.value,
+    })
+  }
 })
 
 async function onPhoto(dataUrl: string) {

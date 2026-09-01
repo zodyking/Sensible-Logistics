@@ -198,7 +198,12 @@ async function attach() {
         sealNumber: isLoaded.value ? (sealNumber.value.trim() || null) : null,
       },
     })
-    if (tripId.value && capturedPhoto.value) await rememberTripPhoto(tripId.value, capturedPhoto.value)
+    if (tripId.value && capturedPhoto.value) {
+      await rememberTripPhoto(tripId.value, capturedPhoto.value, {
+        containerNumber: normalized.value,
+        chassisNumber: chassisNumber.value,
+      })
+    }
     await navigateTo('/')
   }
   catch (error) {
@@ -210,7 +215,12 @@ async function attach() {
 }
 
 watch([tripId, capturedPhoto], ([id, photo]) => {
-  if (id && photo) void rememberTripPhoto(id, photo)
+  if (id && photo) {
+    void rememberTripPhoto(id, photo, {
+      containerNumber: normalized.value,
+      chassisNumber: chassisNumber.value,
+    })
+  }
 })
 
 async function onPhoto(dataUrl: string) {
