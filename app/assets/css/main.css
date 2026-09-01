@@ -1593,7 +1593,8 @@
     overflow: hidden;
   }
 
-  .wiz-group + .wiz-label {
+  .wiz-group + .wiz-label,
+  .wiz-hint + .wiz-label {
     margin-top: var(--s5);
   }
 
