@@ -61,6 +61,7 @@ const STEPS = computed<Step[]>(() => {
 })
 
 const step = ref<Step>('equipment')
+watch(step, scrollWizardToTop)
 const stepIndex = computed(() => Math.max(0, STEPS.value.indexOf(step.value)))
 
 watch(STEPS, (steps) => {
@@ -158,6 +159,19 @@ async function next() {
   if (index < STEPS.value.length - 1) step.value = STEPS.value[index + 1]!
 }
 
+/** Classification rows commit and move on; typed screens keep the button. */
+async function pickContainerType(type: ContainerType) {
+  containerType.value = type
+  await next()
+}
+
+async function pickEquipmentType(type: EquipmentType) {
+  equipmentType.value = type
+  await next()
+}
+
+const showNext = computed(() => step.value !== 'containerType' && step.value !== 'equipmentType')
+
 function back() {
   const index = stepIndex.value
   if (index > 0) step.value = STEPS.value[index - 1]!
@@ -243,11 +257,11 @@ async function onPhoto(dataUrl: string) {
 
 <template>
   <section class="d-page">
-    <PageHeader
-      eyebrow="Add container"
+    <WizardNav
       :title="STEP_TITLES[step]"
-      back-to="/"
-      back-label="Home"
+      :back-label="stepIndex > 0 ? 'Back' : 'Home'"
+      :back-to="stepIndex > 0 ? undefined : '/'"
+      @back="back"
     />
 
     <p
@@ -269,22 +283,6 @@ async function onPhoto(dataUrl: string) {
     </p>
 
     <template v-else>
-      <div
-        class="stepper"
-        role="progressbar"
-        :aria-valuenow="stepIndex + 1"
-        aria-valuemin="1"
-        :aria-valuemax="STEPS.length"
-        :aria-label="`Step ${stepIndex + 1} of ${STEPS.length}`"
-      >
-        <span
-          v-for="(name, index) in STEPS"
-          :key="name"
-          class="stepper-step"
-          :class="{ done: index < stepIndex, on: index === stepIndex }"
-        />
-      </div>
-
       <p
         v-if="errorMessage"
         class="banner err"
@@ -421,8 +419,8 @@ async function onPhoto(dataUrl: string) {
           </div>
 
           <DevicePhotoInput
-            class="btn-ghost mt-4 w-full"
-            :label="capturedPhoto ? 'Retake photo' : 'Take photo'"
+            class="btn-ghost mt-5 w-full"
+            :label="capturedPhoto ? 'Retake photo' : 'Scan with the camera'"
             :disabled="readingPhoto"
             @photo="onPhoto"
           />
@@ -430,50 +428,83 @@ async function onPhoto(dataUrl: string) {
       </template>
 
       <template v-else-if="step === 'containerType'">
-        <div class="choice-grid">
+        <span class="wiz-label">Container type</span>
+        <div class="wiz-group">
           <button
             v-for="type in CONTAINER_TYPES"
             :key="type"
             type="button"
-            class="choice-card"
+            class="wiz-pick"
             :aria-pressed="containerType === type"
-            @click="containerType = type"
+            @click="pickContainerType(type)"
           >
-            {{ CONTAINER_TYPE_LABELS[type] }}
+            <span class="wiz-pick-main">
+              <b>{{ CONTAINER_TYPE_LABELS[type] }}</b>
+            </span>
+            <span
+              v-if="containerType === type"
+              class="wiz-check"
+              aria-hidden="true"
+            >✓</span>
+            <span
+              v-else
+              class="wiz-chev"
+              aria-hidden="true"
+            >›</span>
           </button>
         </div>
       </template>
 
       <template v-else-if="step === 'equipmentType'">
-        <div class="choice-grid">
+        <span class="wiz-label">Container size</span>
+        <div class="wiz-group">
           <button
             v-for="type in PICKUP_EQUIPMENT_SIZES"
             :key="type"
             type="button"
-            class="choice-card"
+            class="wiz-pick"
             :aria-pressed="equipmentType === type"
-            @click="equipmentType = type"
+            @click="pickEquipmentType(type)"
           >
-            {{ PICKUP_EQUIPMENT_SIZE_LABELS[type] }}
+            <span class="wiz-pick-main">
+              <b>{{ PICKUP_EQUIPMENT_SIZE_LABELS[type] }}</b>
+            </span>
+            <span
+              v-if="equipmentType === type"
+              class="wiz-check"
+              aria-hidden="true"
+            >✓</span>
+            <span
+              v-else
+              class="wiz-chev"
+              aria-hidden="true"
+            >›</span>
           </button>
         </div>
       </template>
 
       <template v-else-if="step === 'seal'">
-        <div class="card p-4">
-          <label class="field !mb-0">
-            <span>Seal number</span>
+        <span class="wiz-label">Seal</span>
+        <div class="wiz-group">
+          <div class="wiz-row">
+            <label
+              class="wiz-row-label"
+              for="attach-seal"
+            >Number</label>
             <input
+              id="attach-seal"
               v-model="sealNumber"
               class="input mono"
-              placeholder="004512"
+              placeholder="required"
               autocapitalize="characters"
               autocomplete="off"
               required
             >
-            <small class="field-hint">Required for a loaded container.</small>
-          </label>
+          </div>
         </div>
+        <p class="wiz-hint">
+          A loaded container carries its seal on the trip.
+        </p>
       </template>
 
       <template v-else>
@@ -490,39 +521,32 @@ async function onPhoto(dataUrl: string) {
           origin-label="Pickup"
         />
 
-        <p class="note">
-          <span>This hangs the container on the live chassis and puts the box in your custody.</span>
+        <p class="wiz-hint">
+          This hangs the container on the live chassis and puts the box in your custody.
         </p>
+      </template>
 
+      <div
+        v-if="!(step === 'equipment' && readingPhoto)"
+        class="wiz-actions"
+      >
         <button
-          class="btn-primary-action"
+          v-if="step === 'confirm'"
+          type="button"
+          class="wiz-next"
           :disabled="submitting"
           @click="attach"
         >
           {{ submitting ? 'Saving…' : 'Add container to chassis' }}
         </button>
-      </template>
-
-      <div
-        v-if="!(step === 'equipment' && readingPhoto)"
-        class="mt-6 flex gap-3"
-      >
         <button
-          v-if="stepIndex > 0"
+          v-else-if="showNext"
           type="button"
-          class="btn-ghost flex-1"
-          @click="back"
-        >
-          Back
-        </button>
-        <button
-          v-if="step !== 'confirm'"
-          type="button"
-          class="btn-dark flex-1"
+          class="wiz-next"
           :disabled="!canAdvance || submitting"
           @click="next"
         >
-          Continue
+          Next
         </button>
       </div>
     </template>

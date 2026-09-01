@@ -58,6 +58,7 @@ const STEPS = computed<Step[]>(() => {
 })
 
 const step = ref<Step>('number')
+watch(step, scrollWizardToTop)
 const stepIndex = computed(() => Math.max(0, STEPS.value.indexOf(step.value)))
 
 watch(STEPS, (steps) => {
@@ -115,6 +116,19 @@ function back() {
   const index = stepIndex.value
   if (index > 0) step.value = STEPS.value[index - 1]!
 }
+
+/** Classification rows commit and move on; typed screens keep the button. */
+function pickContainerType(type: ContainerType) {
+  containerType.value = type
+  next()
+}
+
+function pickEquipmentType(type: EquipmentType) {
+  equipmentType.value = type
+  next()
+}
+
+const showNext = computed(() => step.value !== 'containerType' && step.value !== 'equipmentType')
 
 async function confirm() {
   if (submitting.value) return
@@ -175,28 +189,12 @@ async function onPhoto(dataUrl: string) {
 
 <template>
   <section :class="user?.role === 'ADMIN' ? '' : 'd-page'">
-    <PageHeader
-      eyebrow="Add container"
+    <WizardNav
       :title="STEP_TITLES[step]"
-      :back-to="`/locations/${locationId}`"
-      :back-label="locationData?.location.name ?? 'Location'"
+      :back-label="stepIndex > 0 ? 'Back' : (locationData?.location.name ?? 'Location')"
+      :back-to="stepIndex > 0 ? undefined : `/locations/${locationId}`"
+      @back="back"
     />
-
-    <div
-      class="stepper"
-      role="progressbar"
-      :aria-valuenow="stepIndex + 1"
-      aria-valuemin="1"
-      :aria-valuemax="STEPS.length"
-      :aria-label="`Step ${stepIndex + 1} of ${STEPS.length}`"
-    >
-      <span
-        v-for="(name, index) in STEPS"
-        :key="name"
-        class="stepper-step"
-        :class="{ done: index < stepIndex, on: index === stepIndex }"
-      />
-    </div>
 
     <p
       v-if="errorMessage"
@@ -331,75 +329,101 @@ async function onPhoto(dataUrl: string) {
     </template>
 
     <template v-else-if="step === 'containerType'">
-      <div class="choice-grid">
+      <span class="wiz-label">Container type</span>
+      <div class="wiz-group">
         <button
           v-for="type in CONTAINER_TYPES"
           :key="type"
           type="button"
-          class="choice-card"
+          class="wiz-pick"
           :aria-pressed="containerType === type"
-          @click="containerType = type"
+          @click="pickContainerType(type)"
         >
-          {{ CONTAINER_TYPE_LABELS[type] }}
+          <span class="wiz-pick-main">
+            <b>{{ CONTAINER_TYPE_LABELS[type] }}</b>
+          </span>
+          <span
+            v-if="containerType === type"
+            class="wiz-check"
+            aria-hidden="true"
+          >✓</span>
+          <span
+            v-else
+            class="wiz-chev"
+            aria-hidden="true"
+          >›</span>
         </button>
       </div>
     </template>
 
     <template v-else-if="step === 'equipmentType'">
-      <div class="choice-grid">
+      <span class="wiz-label">Container size</span>
+      <div class="wiz-group">
         <button
           v-for="type in PICKUP_EQUIPMENT_SIZES"
           :key="type"
           type="button"
-          class="choice-card"
+          class="wiz-pick"
           :aria-pressed="equipmentType === type"
-          @click="equipmentType = type"
+          @click="pickEquipmentType(type)"
         >
-          {{ PICKUP_EQUIPMENT_SIZE_LABELS[type] }}
+          <span class="wiz-pick-main">
+            <b>{{ PICKUP_EQUIPMENT_SIZE_LABELS[type] }}</b>
+          </span>
+          <span
+            v-if="equipmentType === type"
+            class="wiz-check"
+            aria-hidden="true"
+          >✓</span>
+          <span
+            v-else
+            class="wiz-chev"
+            aria-hidden="true"
+          >›</span>
         </button>
       </div>
     </template>
 
     <template v-else>
-      <div class="card p-4">
-        <span class="eyebrow">On site</span>
-        <b class="mt-2 block font-mono text-lg">{{ formatContainerNumber(normalized) }}</b>
-        <p class="mt-2 text-sm text-[var(--color-ink-500)]">
-          {{ CONTAINER_TYPE_LABELS[containerType] }}
-          · {{ pickupEquipmentSizeLabel(equipmentType) }}
-          · {{ isLoaded ? 'Loaded' : 'Empty' }}
-        </p>
-        <p class="mt-2 text-sm">
-          {{ locationData?.location.name }}
-        </p>
+      <span class="wiz-label">On site</span>
+      <div class="wiz-group">
+        <div class="wiz-row">
+          <span class="wiz-row-label">Number</span>
+          <span class="mono flex-1">{{ formatContainerNumber(normalized) }}</span>
+        </div>
+        <div class="wiz-row">
+          <span class="wiz-row-label">Box</span>
+          <span class="flex-1 text-[var(--color-ink-700)]">
+            {{ CONTAINER_TYPE_LABELS[containerType] }}
+            · {{ pickupEquipmentSizeLabel(equipmentType) }}
+            · {{ isLoaded ? 'Loaded' : 'Empty' }}
+          </span>
+        </div>
+        <div class="wiz-row">
+          <span class="wiz-row-label">Where</span>
+          <span class="flex-1 text-[var(--color-ink-700)]">{{ locationData?.location.name }}</span>
+        </div>
       </div>
+    </template>
+
+    <div class="wiz-actions">
       <button
+        v-if="step === 'confirm'"
         type="button"
-        class="btn-primary-action mt-4"
+        class="wiz-next"
         :disabled="submitting"
         @click="confirm"
       >
         {{ submitting ? 'Saving…' : 'Save container' }}
       </button>
-    </template>
-
-    <div class="mt-6 flex gap-3">
       <button
-        v-if="stepIndex > 0"
+        v-else-if="showNext"
         type="button"
-        class="btn-ghost flex-1"
-        @click="back"
-      >
-        Back
-      </button>
-      <button
-        v-if="step !== 'confirm'"
-        type="button"
-        class="btn-dark flex-1"
+        class="wiz-next"
         :disabled="!canAdvance || submitting"
         @click="next"
       >
-        Continue
+        Next
       </button>
     </div>
   </section>

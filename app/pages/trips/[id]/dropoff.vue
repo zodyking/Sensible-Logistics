@@ -107,9 +107,8 @@ async function arrive() {
     </p>
 
     <template v-else-if="data">
-      <PageHeader
-        eyebrow="Arrive"
-        :title="swapEmpty ? 'Drop the empty' : 'Drop off here'"
+      <WizardNav
+        :title="swapEmpty ? 'Drop the empty' : 'Arrive'"
         back-to="/"
         back-label="Home"
       />
@@ -136,139 +135,122 @@ async function arrive() {
         :status="data.trip.status"
       />
 
-      <div class="arrive-block">
-        <span class="field-label">Where</span>
-
-        <template v-if="selectedLocation && !pickingLocation">
-          <div class="card arrive-where">
-            <div>
+      <template v-if="selectedLocation && !pickingLocation">
+        <span class="wiz-label">Arriving at</span>
+        <div class="wiz-group">
+          <button
+            type="button"
+            class="wiz-pick"
+            @click="pickingLocation = true"
+          >
+            <span class="wiz-pick-main">
               <b>{{ selectedLocation.name }}</b>
               <small>{{ 'type' in selectedLocation ? LOCATION_TYPE_LABELS[selectedLocation.type] : 'Drop-off' }}</small>
-            </div>
-            <button
-              type="button"
-              class="route-change"
-              @click="pickingLocation = true"
-            >
-              Change
-            </button>
-          </div>
-        </template>
+            </span>
+            <span
+              class="wiz-chev"
+              aria-hidden="true"
+            >›</span>
+          </button>
+        </div>
+      </template>
 
-        <template v-else>
-          <p
-            v-if="!selectedLocation"
-            class="note"
+      <template v-else>
+        <div class="searchbar wiz-search">
+          <span aria-hidden="true">⌕</span>
+          <input
+            v-model="locationSearch"
+            type="search"
+            placeholder="Search yards, customers, terminals…"
+            aria-label="Search drop-off locations"
           >
-            <span>Pick where this is coming off. Pickup already asked for this — it is missing on the trip.</span>
-          </p>
-          <div class="searchbar">
-            <span aria-hidden="true">⌕</span>
-            <input
-              v-model="locationSearch"
-              type="search"
-              placeholder="Search yards, customers, terminals…"
-              aria-label="Search drop-off locations"
-            >
-          </div>
-          <div
-            v-if="locationList?.items.length"
-            class="card rowlist"
-          >
+        </div>
+
+        <template v-if="locationList?.items.length">
+          <span class="wiz-label">Where are you dropping off?</span>
+          <div class="wiz-group">
             <button
               v-for="location in locationList.items"
               :key="location.id"
               type="button"
-              class="row"
+              class="wiz-pick"
               :aria-pressed="destinationLocationId === location.id"
               @click="chooseLocation(location.id)"
             >
-              <span class="row-main">
+              <span class="wiz-pick-main">
                 <b>{{ location.name }}</b>
                 <small>
                   {{ LOCATION_TYPE_LABELS[location.type] }}
                   <template v-if="location.addressLine1"> · {{ location.addressLine1 }}</template>
                 </small>
               </span>
-              <span class="row-end">
-                <StatusChip
-                  v-if="destinationLocationId === location.id"
-                  variant="ok"
-                  label="Selected"
-                />
-                <span
-                  v-else
-                  aria-hidden="true"
-                >›</span>
-              </span>
+              <span
+                v-if="destinationLocationId === location.id"
+                class="wiz-check"
+                aria-hidden="true"
+              >✓</span>
+              <span
+                v-else
+                class="wiz-chev"
+                aria-hidden="true"
+              >›</span>
             </button>
           </div>
-          <EmptyState
-            v-else
-            glyph="◫"
-            title="No locations match"
-            description="Pick an existing location. Add new ones from More → Customers & locations."
-          />
-          <button
-            v-if="selectedLocation"
-            type="button"
-            class="btn-ghost mt-3 w-full"
-            @click="pickingLocation = false"
-          >
-            Keep {{ selectedLocation.name }}
-          </button>
         </template>
-      </div>
 
-      <div
-        v-if="hasChassis"
-        class="arrive-block"
-      >
-        <span class="field-label">Chassis</span>
-        <div class="choice-grid cols-2">
-          <button
-            type="button"
-            class="choice-card"
-            :aria-pressed="!retainChassis"
-            @click="retainChassis = false"
-          >
-            {{ data.trip.kind === 'BARE_CHASSIS' ? 'Park here' : 'Unhook' }}
-            <small>{{ data.trip.kind === 'BARE_CHASSIS' ? 'Available at this stop' : 'Leave it here' }}</small>
-          </button>
-          <button
-            type="button"
-            class="choice-card"
-            :aria-pressed="retainChassis"
-            @click="retainChassis = true"
-          >
-            {{ data.trip.kind === 'BARE_CHASSIS' ? 'Keep it' : 'Keep attached' }}
-            <small>{{ data.trip.kind === 'BARE_CHASSIS' ? 'Stays on this trip' : 'Stays on the box' }}</small>
-          </button>
+        <EmptyState
+          v-else
+          glyph="◫"
+          title="No locations match"
+          description="Pick an existing location. Add new ones from More → Customers & locations."
+        />
+      </template>
+
+      <template v-if="hasChassis">
+        <span class="wiz-label">Chassis</span>
+        <div class="wiz-group">
+          <div class="wiz-row wiz-row-toggle">
+            <span class="wiz-row-label">
+              {{ data.trip.kind === 'BARE_CHASSIS' ? 'Keep this chassis with you?' : 'Keep the chassis attached?' }}
+            </span>
+            <button
+              type="button"
+              class="wiz-switch"
+              role="switch"
+              :aria-checked="retainChassis"
+              :aria-label="data.trip.kind === 'BARE_CHASSIS' ? 'Keep this chassis with you' : 'Keep the chassis attached'"
+              @click="retainChassis = !retainChassis"
+            />
+          </div>
+        </div>
+      </template>
+
+      <p class="wiz-hint">
+        {{ outcome }}
+      </p>
+
+      <span class="wiz-label">Notes</span>
+      <div class="wiz-group">
+        <div class="wiz-row wiz-row-stack">
+          <textarea
+            v-model="notes"
+            class="textarea"
+            placeholder="optional — gate ticket, receiver, damage…"
+            aria-label="Notes"
+          />
         </div>
       </div>
 
-      <p class="banner info arrive-outcome">
-        <span aria-hidden="true">▸</span>
-        <span>{{ outcome }}</span>
-      </p>
-
-      <label class="field arrive-block">
-        <span>Notes</span>
-        <textarea
-          v-model="notes"
-          class="textarea"
-          placeholder="Optional — gate ticket, receiver, damage…"
-        />
-      </label>
-
-      <button
-        type="button"
-        class="btn-primary-action"
-        :disabled="!canArrive"
-        @click="arrive"
-      >
-        {{ submitting ? 'Saving…' : (swapEmpty ? 'Arrive · finish empty' : 'Arrive') }}
-      </button>
+      <div class="wiz-actions">
+        <button
+          type="button"
+          class="wiz-next"
+          :disabled="!canArrive"
+          @click="arrive"
+        >
+          {{ submitting ? 'Saving…' : (swapEmpty ? 'Arrive · finish empty' : 'Arrive') }}
+        </button>
+      </div>
     </template>
   </section>
 </template>

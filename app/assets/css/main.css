@@ -18,6 +18,11 @@
   --color-blue-100: #dce9f4;
   --color-blue-50: #eef4fa;
 
+  /* Wizard action blue. Brighter than the brand blue so a full-width button
+     reads as a live control rather than a slab of navy. */
+  --color-action-500: #2f74e6;
+  --color-action-600: #2664cb;
+
   --color-amber-500: #f0a422;
   --color-amber-600: #d98e0b;
   --color-amber-100: #fcf0d7;
@@ -1589,7 +1594,8 @@
     overflow: hidden;
   }
 
-  .wiz-group + .wiz-label {
+  .wiz-group + .wiz-label,
+  .wiz-hint + .wiz-label {
     margin-top: var(--s5);
   }
 
@@ -1687,6 +1693,16 @@
     border-bottom: none;
   }
 
+  .wiz-row-stack {
+    align-items: stretch;
+    padding: var(--s3) var(--s4);
+  }
+
+  .wiz-row-stack .textarea {
+    min-height: 104px;
+    padding: 0;
+  }
+
   .wiz-row-label {
     flex: 0 0 84px;
     font-size: var(--text-base);
@@ -1715,6 +1731,46 @@
   .wiz-row .textarea::placeholder {
     color: var(--color-ink-400);
     font-weight: 500;
+  }
+
+  .wiz-row-toggle {
+    justify-content: space-between;
+    gap: var(--s3);
+  }
+
+  .wiz-row-toggle .wiz-row-label {
+    flex: 1 1 auto;
+  }
+
+  .wiz-switch {
+    position: relative;
+    flex-shrink: 0;
+    width: 51px;
+    height: 31px;
+    border-radius: 999px;
+    background: var(--color-line-300);
+    transition: background 0.18s ease;
+  }
+
+  .wiz-switch::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 27px;
+    height: 27px;
+    border-radius: 999px;
+    background: #fff;
+    box-shadow: 0 1px 3px rgb(12 30 48 / 0.3);
+    transition: transform 0.18s ease;
+  }
+
+  .wiz-switch[aria-checked='true'] {
+    background: var(--color-action-500);
+  }
+
+  .wiz-switch[aria-checked='true']::after {
+    transform: translateX(20px);
   }
 
   .wiz-status {
@@ -1753,12 +1809,12 @@
   }
 
   .wiz-status-btn[aria-pressed='true'] .wiz-status-mark {
-    background: var(--color-blue-500);
+    background: var(--color-action-500);
     color: #fff;
   }
 
   .wiz-status-btn[aria-pressed='true'] .wiz-status-name {
-    background: var(--color-blue-500);
+    background: var(--color-action-500);
     color: #fff;
   }
 
@@ -1767,6 +1823,133 @@
     font-size: var(--text-xs);
     font-weight: 500;
     color: var(--color-ink-500);
+  }
+
+  /* Nav bar, hairline progress, and the single primary action. The nav is
+     pulled to the page edges so its rule spans the full width. */
+  .wiz-nav {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    gap: var(--s2);
+    margin: calc(-1 * var(--s4)) calc(-1 * var(--s4)) 0;
+    padding: 0 var(--s2);
+    min-height: 48px;
+    border-bottom: 1px solid var(--color-line-200);
+  }
+
+  .wiz-back {
+    justify-self: start;
+    display: inline-flex;
+    align-items: center;
+    gap: 1px;
+    min-height: 44px;
+    padding: 0 var(--s2);
+    color: var(--color-action-500);
+    font-size: var(--text-base);
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .wiz-back-glyph {
+    font-size: var(--text-xl);
+    line-height: 1;
+    margin-top: -2px;
+  }
+
+  .wiz-nav-title {
+    grid-column: 2;
+    min-width: 0;
+    font-size: var(--text-base);
+    font-weight: 700;
+    text-align: center;
+    color: var(--color-ink-900);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .wiz-nav-end {
+    justify-self: end;
+    padding-right: var(--s2);
+  }
+
+  .wiz-tag {
+    font-size: var(--text-xs);
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-action-500);
+  }
+
+  .wiz-gap {
+    height: var(--s5);
+  }
+
+  .wiz-actions {
+    display: grid;
+    gap: var(--s1);
+    margin-top: var(--s8);
+  }
+
+  .wiz-next {
+    width: 100%;
+    min-height: 52px;
+    border-radius: var(--radius-md);
+    background: var(--color-action-500);
+    color: #fff;
+    font-size: var(--text-lg);
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--s2);
+    transition: transform 0.06s ease;
+  }
+
+  .wiz-next:active {
+    transform: scale(0.99);
+  }
+
+  .wiz-next:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .wiz-text-btn {
+    width: 100%;
+    min-height: 44px;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--color-ink-500);
+  }
+
+  .wiz-text-btn.danger {
+    color: var(--color-err-600);
+  }
+
+  .wiz-search {
+    background: var(--color-line-200);
+    border-color: transparent;
+    box-shadow: none;
+    height: 44px;
+    border-radius: 10px;
+  }
+
+  .wiz-search span {
+    color: var(--color-ink-400);
+  }
+
+  .wiz-check {
+    flex-shrink: 0;
+    color: var(--color-action-500);
+    font-size: var(--text-lg);
+    font-weight: 700;
+  }
+
+  .wiz-pick:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
   }
 
   /* --- Full-screen capture (container / chassis photo) --- */
@@ -2452,42 +2635,6 @@
 
   .route-change:active {
     opacity: 0.7;
-  }
-
-  .arrive-block {
-    margin-top: var(--s4);
-  }
-
-  .arrive-where {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--s3);
-    padding: var(--s3) var(--s4);
-  }
-
-  .arrive-where b {
-    display: block;
-    font-size: var(--text-sm);
-    font-weight: 700;
-    color: var(--color-ink-900);
-  }
-
-  .arrive-where small {
-    display: block;
-    margin-top: 2px;
-    font-size: var(--text-xs);
-    color: var(--color-ink-500);
-  }
-
-  .arrive-where .route-change {
-    min-height: 44px;
-    padding: 0 var(--s2);
-    margin-top: 0;
-  }
-
-  .arrive-outcome {
-    margin-top: var(--s4);
   }
 
   .home-cta {
