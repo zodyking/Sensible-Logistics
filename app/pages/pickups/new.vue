@@ -93,6 +93,7 @@ const STEPS = computed<Step[]>(() => pickupSteps({
 }))
 
 const step = ref<Step>(swapMode.value ? 'inventory' : 'kind')
+watch(step, scrollWizardToTop)
 const stepIndex = computed(() => Math.max(0, STEPS.value.indexOf(step.value)))
 
 watch(STEPS, (steps) => {
@@ -807,8 +808,6 @@ async function onPhoto(dataUrl: string) {
       :title="STEP_TITLES[step]"
       :back-label="stepIndex > 0 ? 'Back' : 'Home'"
       :back-to="stepIndex > 0 ? undefined : '/'"
-      :step="stepIndex"
-      :steps="STEPS.length"
       @back="back"
     >
       <template

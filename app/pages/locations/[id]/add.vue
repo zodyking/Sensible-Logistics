@@ -58,6 +58,7 @@ const STEPS = computed<Step[]>(() => {
 })
 
 const step = ref<Step>('number')
+watch(step, scrollWizardToTop)
 const stepIndex = computed(() => Math.max(0, STEPS.value.indexOf(step.value)))
 
 watch(STEPS, (steps) => {
@@ -192,8 +193,6 @@ async function onPhoto(dataUrl: string) {
       :title="STEP_TITLES[step]"
       :back-label="stepIndex > 0 ? 'Back' : (locationData?.location.name ?? 'Location')"
       :back-to="stepIndex > 0 ? undefined : `/locations/${locationId}`"
-      :step="stepIndex"
-      :steps="STEPS.length"
       @back="back"
     />
 
