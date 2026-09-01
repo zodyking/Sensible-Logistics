@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  backfillShareFiles,
   dataUrlToFile,
   nextAttachmentSelection,
   nextShareTitle,
@@ -47,6 +48,30 @@ describe('nextShareTitle', () => {
       { fileName: 'BSIU826127-1.jpg' },
       { fileName: 'document 1.pdf' },
     ], 'image/jpeg')).toBe('document 2.jpg')
+  })
+})
+
+describe('backfillShareFiles', () => {
+  const jpeg = { mimeType: 'image/jpeg', dataUrl: 'data:image/jpeg;base64,x' }
+
+  it('renames leftover container and document images', () => {
+    expect(backfillShareFiles([
+      { kind: 'photo', fileName: 'container image 1.jpg', ...jpeg },
+      { kind: 'photo', fileName: 'container image 2.jpg', ...jpeg },
+      { kind: 'document', fileName: 'document image 1.pdf', mimeType: 'application/pdf', dataUrl: 'data:application/pdf;base64,z' },
+    ], { containerNumber: 'BSIU8261271', chassisNumber: 'AIMZ481121' }).map(file => file.fileName))
+      .toEqual(['BSIU826127-1.jpg', 'BSIU826127-1 2.jpg', 'document 1.pdf'])
+  })
+
+  it('renames leftover chassis scans when there is no box', () => {
+    expect(backfillShareFiles([
+      { kind: 'photo', fileName: 'container image 1.jpg', ...jpeg },
+    ], { chassisNumber: 'AIMZ481121' })[0]!.fileName).toBe('AIMZ481121.jpg')
+  })
+
+  it('leaves already-named files alone', () => {
+    const files = [{ kind: 'photo' as const, fileName: 'BSIU826127-1.jpg', ...jpeg }]
+    expect(backfillShareFiles(files, { containerNumber: 'BSIU8261271' })).toEqual(files)
   })
 })
 

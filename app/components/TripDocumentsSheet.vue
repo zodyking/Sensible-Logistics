@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { dataUrlToBlob, deleteTripShareFile, isImageShareFile, listTripShareFiles, rememberTripShareBlobs } from '~/utils/trip-share-files'
+import { backfillTripShareFiles, dataUrlToBlob, deleteTripShareFile, isImageShareFile, rememberTripShareBlobs } from '~/utils/trip-share-files'
 import type { TripShareFile } from '~/utils/trip-share-files'
 
 const props = defineProps<{
   open: boolean
   tripId?: string | null
+  containerNumber?: string | null
+  chassisNumber?: string | null
 }>()
 
 const emit = defineEmits<{ close: [] }>()
@@ -21,11 +23,14 @@ async function reload() {
     files.value = []
     return
   }
-  files.value = await listTripShareFiles(props.tripId)
+  files.value = await backfillTripShareFiles(props.tripId, {
+    containerNumber: props.containerNumber,
+    chassisNumber: props.chassisNumber,
+  })
 }
 
 watch(
-  () => [props.open, props.tripId] as const,
+  () => [props.open, props.tripId, props.containerNumber, props.chassisNumber] as const,
   async ([open, tripId]) => {
     errorMessage.value = ''
     pendingDelete.value = null

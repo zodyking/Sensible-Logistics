@@ -178,6 +178,55 @@ export function nextShareTitle(
   return `${stem} ${n}.${ext}`
 }
 
+export function isLegacyShareName(fileName: string): boolean {
+  return /^(container image|document image)\b/i.test(fileName)
+    || /^(container|chassis|scan)(?:\s|$|\.)/i.test(fileName)
+}
+
+/** Rename leftover generic scans/docs to equipment numbers and document 1, 2, 3… */
+export function backfillShareFiles(
+  files: readonly TripShareFile[],
+  names: ShareNameInput,
+): TripShareFile[] {
+  const next: TripShareFile[] = []
+  const photoKind: ShareTitleKind = names.containerNumber?.trim()
+    ? 'container'
+    : names.chassisNumber?.trim()
+      ? 'chassis'
+      : 'container'
+  const canRenameScan = scanShareStem(names) !== 'scan'
+
+  for (const file of files) {
+    if (/^document image\b/i.test(file.fileName)) {
+      next.push({
+        ...file,
+        kind: 'document',
+        fileName: nextShareTitle('document', next, file.mimeType),
+      })
+      continue
+    }
+    if (canRenameScan && file.kind === 'photo' && isLegacyShareName(file.fileName)) {
+      next.push({
+        ...file,
+        fileName: nextShareTitle(photoKind, next, file.mimeType, names),
+      })
+      continue
+    }
+    next.push(file)
+  }
+  return next
+}
+
+export async function backfillTripShareFiles(tripId: string, names: ShareNameInput): Promise<TripShareFile[]> {
+  const current = await listTripShareFiles(tripId)
+  const next = backfillShareFiles(current, names)
+  const changed = next.some((file, index) => (
+    file.fileName !== current[index]?.fileName || file.kind !== current[index]?.kind
+  ))
+  if (changed) await persist(tripId, next)
+  return next
+}
+
 export async function rememberTripPhoto(
   tripId: string,
   dataUrl: string,
@@ -249,14 +298,20 @@ export async function tripShareFilesAsFiles(tripId: string): Promise<File[]> {
 }
 
 /** Files from one or more trips, with unique names so a swap can attach both boxes. */
-export async function listTripShareFilesFromTrips(tripIds: Array<string | null | undefined>): Promise<TripShareFile[]> {
+export async function listTripShareFilesFromTrips(
+  tripIds: Array<string | null | undefined>,
+  namesByTrip: Record<string, ShareNameInput> = {},
+): Promise<TripShareFile[]> {
   const names: TripShareFile[] = []
   const items: TripShareFile[] = []
   for (const tripId of tripIds) {
     if (!tripId) continue
-    for (const stored of await listTripShareFiles(tripId)) {
-      const fileName = uniqueFileName(names, stored.fileName)
-      const item = { ...stored, fileName }
+    const stored = namesByTrip[tripId]
+      ? await backfillTripShareFiles(tripId, namesByTrip[tripId]!)
+      : await listTripShareFiles(tripId)
+    for (const file of stored) {
+      const fileName = uniqueFileName(names, file.fileName)
+      const item = { ...file, fileName }
       names.push(item)
       items.push(item)
     }

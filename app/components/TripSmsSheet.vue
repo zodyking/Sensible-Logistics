@@ -10,7 +10,7 @@ import {
   listTripShareFilesFromTrips,
   nextAttachmentSelection,
 } from '~/utils/trip-share-files'
-import type { TripShareFile } from '~/utils/trip-share-files'
+import type { ShareNameInput, TripShareFile } from '~/utils/trip-share-files'
 
 type TripSmsSheetFields = TripSmsFields & {
   tripId?: string | null
@@ -84,6 +84,18 @@ const attachmentTripIds = computed(() => {
   return []
 })
 
+const namesByTrip = computed(() => {
+  const map: Record<string, ShareNameInput> = {}
+  function add(id: string | null | undefined, containerNumber?: string | null, chassisNumber?: string | null) {
+    if (!id) return
+    map[id] = { containerNumber, chassisNumber }
+  }
+  add(props.tripId, props.containerNumber, props.chassisNumber)
+  add(props.swapPicked?.tripId, props.swapPicked?.containerNumber, props.swapPicked?.chassisNumber)
+  add(props.swapDropped?.tripId, props.swapDropped?.containerNumber, props.swapDropped?.chassisNumber)
+  return map
+})
+
 const selectedFiles = computed(() =>
   attachmentFiles.value
     .filter(file => selectedNames.value.has(file.fileName))
@@ -150,7 +162,7 @@ function viewFile(file: TripShareFile) {
 }
 
 watch(
-  () => [props.open, attachmentTripIds.value.join('|')] as const,
+  () => [props.open, attachmentTripIds.value.join('|'), namesByTrip.value] as const,
   async ([open, ids]) => {
     shareError.value = ''
     copied.value = false
@@ -158,7 +170,7 @@ watch(
     attachmentFiles.value = []
     selectedNames.value = new Set()
     if (!open || !ids) return
-    const next = await listTripShareFilesFromTrips(ids.split('|').filter(Boolean))
+    const next = await listTripShareFilesFromTrips(ids.split('|').filter(Boolean), namesByTrip.value)
     if (props.open && attachmentTripIds.value.join('|') === ids) applyFiles(next)
   },
 )

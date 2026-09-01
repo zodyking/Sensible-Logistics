@@ -77,6 +77,12 @@ const canSendSms = computed(() =>
 )
 
 const documentsTripId = computed(() => loadTrip.value?.trip.id ?? displayTrip.value?.trip.id ?? null)
+const documentsTrip = computed(() => {
+  const id = documentsTripId.value
+  if (loadTrip.value?.trip.id === id) return loadTrip.value
+  if (displayTrip.value?.trip.id === id) return displayTrip.value
+  return null
+})
 
 const pulseDocuments = computed(() => Boolean(
   loadTrip.value && ['IN_TRANSIT', 'DROPOFF_IN_PROGRESS', 'PICKUP_IN_PROGRESS'].includes(loadTrip.value.trip.status),
@@ -390,6 +396,8 @@ async function confirmCancelTrip() {
     <TripDocumentsSheet
       :open="sheet === 'documents'"
       :trip-id="documentsTripId"
+      :container-number="documentsTrip?.container?.number"
+      :chassis-number="documentsTrip?.chassis?.number"
       @close="sheet = null"
     />
 
