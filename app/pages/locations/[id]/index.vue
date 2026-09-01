@@ -100,8 +100,13 @@ async function confirmDelete() {
           </button>
         </template>
       </PageHeader>
-      <p class="mb-4 text-sm text-[var(--color-ink-500)]">
-        {{ subtitle }}
+      <p class="mb-4 flex items-center gap-2 text-sm text-[var(--color-ink-500)]">
+        <LocationIcon
+          v-if="!data.location.isUncategorized"
+          :name="data.location.type"
+          :size="20"
+        />
+        <span>{{ subtitle }}</span>
       </p>
       <div
         v-if="data.location.mainPhone || data.location.contactPhone"

@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { LOCATION_TYPE_LABELS } from '#shared/utils/domain'
-
 useHead({ title: 'Locations' })
 
 const search = ref('')
@@ -22,12 +20,9 @@ const { data, status, error } = await useFetch('/api/locations', {
   })),
 })
 
-function addressLine(item: { type: keyof typeof LOCATION_TYPE_LABELS, addressLine1: string | null, city: string | null, isUncategorized?: boolean }) {
+function addressLine(item: { addressLine1: string | null, city: string | null, isUncategorized?: boolean }) {
   if (item.isUncategorized) return 'Holding site for equipment from deleted locations'
-  const bits = [LOCATION_TYPE_LABELS[item.type]]
-  if (item.addressLine1) bits.push(item.addressLine1)
-  if (item.city) bits.push(item.city)
-  return bits.join(' · ')
+  return [item.addressLine1, item.city].filter(Boolean).join(' · ') || '—'
 }
 </script>
 
@@ -72,29 +67,38 @@ function addressLine(item: { type: keyof typeof LOCATION_TYPE_LABELS, addressLin
     </p>
 
     <template v-else-if="data?.items.length">
-      <div class="card rowlist">
-        <button
-          v-for="item in data.items"
-          :key="item.id"
-          type="button"
-          class="row"
-          @click="navigateTo(`/locations/${item.id}`)"
-        >
-          <span class="row-main">
-            <b>{{ item.name }}</b>
-            <small>{{ addressLine(item) }}</small>
-          </span>
-          <span class="row-end">
-            <small>{{ item.occupancy }} on site</small>
-            <span aria-hidden="true">›</span>
-          </span>
-        </button>
-      </div>
+      <LocationGroupedList :items="data.items">
+        <template #default="{ item }">
+          <button
+            type="button"
+            class="wiz-pick"
+            @click="navigateTo(`/locations/${item.id}`)"
+          >
+            <span
+              class="wiz-pick-ico"
+              aria-hidden="true"
+            >
+              <LocationIcon :name="item.type" />
+            </span>
+            <span class="wiz-pick-main">
+              <b>{{ item.name }}</b>
+              <small>{{ addressLine(item) }}</small>
+            </span>
+            <span class="wiz-pick-end">
+              <small>{{ item.occupancy }} on site</small>
+              <span
+                class="wiz-chev"
+                aria-hidden="true"
+              >›</span>
+            </span>
+          </button>
+        </template>
+      </LocationGroupedList>
     </template>
 
     <EmptyState
       v-else
-      glyph="◫"
+      glyph="⌂"
       title="No locations yet"
       description="Add a yard, terminal, or customer."
     >

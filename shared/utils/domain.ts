@@ -317,10 +317,48 @@ export const LOCATION_TYPE_LABELS: Record<LocationType, string> = {
 }
 
 export const LOCATION_GLYPH: Record<LocationType, string> = {
-  COMPANY_YARD: '◫',
-  CUSTOMER: '▤',
-  MARINE_TERMINAL: '▣',
-  RAIL_TERMINAL: '▤',
+  COMPANY_YARD: '⌂',
+  CUSTOMER: '☖',
+  MARINE_TERMINAL: '⚓',
+  RAIL_TERMINAL: '┼',
+}
+
+/**
+ * Location lists and the new-location type picker share these headers.
+ * Marine terminals and rail yards sit together because drivers treat them
+ * as the same kind of gate: inbound/outbound infrastructure.
+ */
+export const LOCATION_TYPE_GROUPS = [
+  { key: 'company', label: 'Company yards', types: ['COMPANY_YARD'] },
+  { key: 'customer', label: 'Customers', types: ['CUSTOMER'] },
+  { key: 'terminal', label: 'Marine terminals / Rail yards', types: ['MARINE_TERMINAL', 'RAIL_TERMINAL'] },
+] as const
+
+export type LocationTypeGroup = (typeof LOCATION_TYPE_GROUPS)[number]
+
+export function locationTypeGroup(type: LocationType): LocationTypeGroup {
+  return LOCATION_TYPE_GROUPS.find(group => (group.types as readonly LocationType[]).includes(type))
+    ?? LOCATION_TYPE_GROUPS[0]
+}
+
+export function groupLocationsByType<T extends { type: LocationType, isUncategorized?: boolean }>(
+  items: T[],
+): Array<{ key: string, label: string, items: T[] }> {
+  const buckets = new Map<string, { key: string, label: string, items: T[] }>()
+  for (const group of LOCATION_TYPE_GROUPS) {
+    buckets.set(group.key, { key: group.key, label: group.label, items: [] })
+  }
+  const leftover: T[] = []
+  for (const item of items) {
+    if (item.isUncategorized) {
+      leftover.push(item)
+      continue
+    }
+    buckets.get(locationTypeGroup(item.type).key)!.items.push(item)
+  }
+  const grouped = [...buckets.values()].filter(group => group.items.length)
+  if (leftover.length) grouped.push({ key: 'other', label: 'Uncategorized', items: leftover })
+  return grouped
 }
 
 export const TIMECARD_STATUSES = ['OPEN', 'COMPLETED', 'LOCKED'] as const
