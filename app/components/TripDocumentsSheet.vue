@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { deleteTripShareFile, listTripShareFiles, rememberTripShareBlobs } from '~/utils/trip-share-files'
+import { backfillTripShareFiles, dataUrlToBlob, deleteTripShareFile, isImageShareFile, rememberTripShareBlobs } from '~/utils/trip-share-files'
 import type { TripShareFile } from '~/utils/trip-share-files'
 
 const props = defineProps<{
   open: boolean
   tripId?: string | null
+  containerNumber?: string | null
+  chassisNumber?: string | null
 }>()
 
 const emit = defineEmits<{ close: [] }>()
@@ -21,11 +23,14 @@ async function reload() {
     files.value = []
     return
   }
-  files.value = await listTripShareFiles(props.tripId)
+  files.value = await backfillTripShareFiles(props.tripId, {
+    containerNumber: props.containerNumber,
+    chassisNumber: props.chassisNumber,
+  })
 }
 
 watch(
-  () => [props.open, props.tripId] as const,
+  () => [props.open, props.tripId, props.containerNumber, props.chassisNumber] as const,
   async ([open, tripId]) => {
     errorMessage.value = ''
     pendingDelete.value = null
@@ -75,33 +80,20 @@ async function confirmDelete() {
 }
 
 function kindLabel(file: TripShareFile) {
-  return file.kind === 'photo' ? 'Container image' : 'Document image'
-}
-
-function isImage(file: TripShareFile) {
-  return file.mimeType.startsWith('image/')
+  if (file.kind === 'document') return 'Document'
+  if (/^[A-Z]{4}\d{6}-\d/i.test(file.fileName)) return 'Container scan'
+  if (/^[A-Z]{4}\d{6}\b/i.test(file.fileName)) return 'Chassis scan'
+  return 'Scan'
 }
 
 function viewFile(file: TripShareFile) {
-  if (isImage(file)) {
+  if (isImageShareFile(file)) {
     preview.value = file
     return
   }
-  const blob = dataUrlToBlob(file.dataUrl)
-  const url = URL.createObjectURL(blob)
+  const url = URL.createObjectURL(dataUrlToBlob(file.dataUrl))
   window.open(url, '_blank', 'noopener')
   window.setTimeout(() => URL.revokeObjectURL(url), 30_000)
-}
-
-function dataUrlToBlob(dataUrl: string): Blob {
-  const comma = dataUrl.indexOf(',')
-  const meta = comma >= 0 ? dataUrl.slice(0, comma) : ''
-  const payload = comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl
-  const mime = /data:([^;]+)/.exec(meta)?.[1] || 'application/octet-stream'
-  const binary = atob(payload)
-  const bytes = new Uint8Array(binary.length)
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-  return new Blob([bytes], { type: mime })
 }
 </script>
 
@@ -139,7 +131,7 @@ function dataUrlToBlob(dataUrl: string): Blob {
           @click="viewFile(file)"
         >
           <img
-            v-if="isImage(file)"
+            v-if="isImageShareFile(file)"
             class="doc-thumb"
             :src="file.dataUrl"
             alt=""

@@ -3,7 +3,14 @@ import type { ContainerType, TripStatus } from '#shared/utils/domain'
 import { formatSwapSmsMessage, formatTripSmsMessage, tripSmsAction } from '#shared/utils/trip-sms'
 import type { TripSmsFields } from '#shared/utils/trip-sms'
 import { shareTripSms } from '~/utils/share-trip-sms'
-import { nextAttachmentSelection, tripShareFilesAsFilesFromTrips } from '~/utils/trip-share-files'
+import {
+  dataUrlToBlob,
+  dataUrlToFile,
+  isImageShareFile,
+  listTripShareFilesFromTrips,
+  nextAttachmentSelection,
+} from '~/utils/trip-share-files'
+import type { ShareNameInput, TripShareFile } from '~/utils/trip-share-files'
 
 type TripSmsSheetFields = TripSmsFields & {
   tripId?: string | null
@@ -32,8 +39,9 @@ const emit = defineEmits<{ close: [] }>()
 const sharing = ref(false)
 const shareError = ref('')
 const copied = ref(false)
-const attachmentFiles = ref<File[]>([])
+const attachmentFiles = ref<TripShareFile[]>([])
 const selectedNames = ref<Set<string>>(new Set())
+const preview = ref<TripShareFile | null>(null)
 
 const isSwap = computed(() => Boolean(
   props.swapPicked
@@ -76,8 +84,22 @@ const attachmentTripIds = computed(() => {
   return []
 })
 
+const namesByTrip = computed(() => {
+  const map: Record<string, ShareNameInput> = {}
+  function add(id: string | null | undefined, containerNumber?: string | null, chassisNumber?: string | null) {
+    if (!id) return
+    map[id] = { containerNumber, chassisNumber }
+  }
+  add(props.tripId, props.containerNumber, props.chassisNumber)
+  add(props.swapPicked?.tripId, props.swapPicked?.containerNumber, props.swapPicked?.chassisNumber)
+  add(props.swapDropped?.tripId, props.swapDropped?.containerNumber, props.swapDropped?.chassisNumber)
+  return map
+})
+
 const selectedFiles = computed(() =>
-  attachmentFiles.value.filter(file => selectedNames.value.has(file.name)),
+  attachmentFiles.value
+    .filter(file => selectedNames.value.has(file.fileName))
+    .map(file => dataUrlToFile(file.dataUrl, file.fileName)),
 )
 
 const attachmentCount = computed(() => selectedFiles.value.length)
@@ -113,11 +135,11 @@ const attachmentHint = computed(() => {
   return `${attachmentCount.value} ${noun} (container photos and uploaded documents) will attach with the message.`
 })
 
-function applyFiles(next: File[]) {
+function applyFiles(next: TripShareFile[]) {
   selectedNames.value = nextAttachmentSelection(
     selectedNames.value,
-    attachmentFiles.value.map(file => file.name),
-    next.map(file => file.name),
+    attachmentFiles.value.map(file => file.fileName),
+    next.map(file => file.fileName),
   )
   attachmentFiles.value = next
 }
@@ -129,15 +151,26 @@ function toggleFile(name: string) {
   selectedNames.value = next
 }
 
+function viewFile(file: TripShareFile) {
+  if (isImageShareFile(file)) {
+    preview.value = file
+    return
+  }
+  const url = URL.createObjectURL(dataUrlToBlob(file.dataUrl))
+  window.open(url, '_blank', 'noopener')
+  window.setTimeout(() => URL.revokeObjectURL(url), 30_000)
+}
+
 watch(
-  () => [props.open, attachmentTripIds.value.join('|')] as const,
+  () => [props.open, attachmentTripIds.value.join('|'), namesByTrip.value] as const,
   async ([open, ids]) => {
     shareError.value = ''
     copied.value = false
+    preview.value = null
     attachmentFiles.value = []
     selectedNames.value = new Set()
     if (!open || !ids) return
-    const next = await tripShareFilesAsFilesFromTrips(ids.split('|').filter(Boolean))
+    const next = await listTripShareFilesFromTrips(ids.split('|').filter(Boolean), namesByTrip.value)
     if (props.open && attachmentTripIds.value.join('|') === ids) applyFiles(next)
   },
 )
@@ -206,18 +239,55 @@ async function share() {
         </legend>
         <label
           v-for="file in attachmentFiles"
-          :key="file.name"
+          :key="file.fileName"
           class="sms-doc-pick"
         >
           <input
             type="checkbox"
-            :checked="selectedNames.has(file.name)"
+            :checked="selectedNames.has(file.fileName)"
             :disabled="sharing"
-            @change="toggleFile(file.name)"
+            @change="toggleFile(file.fileName)"
           >
-          <span>{{ file.name }}</span>
+          <button
+            type="button"
+            class="sms-doc-open"
+            :disabled="sharing"
+            @click.prevent="viewFile(file)"
+          >
+            <img
+              v-if="isImageShareFile(file)"
+              class="doc-thumb"
+              :src="file.dataUrl"
+              alt=""
+            >
+            <span
+              v-else
+              class="doc-thumb doc-thumb-file"
+              aria-hidden="true"
+            >PDF</span>
+            <span class="sms-doc-name">{{ file.fileName }}</span>
+          </button>
         </label>
       </fieldset>
+      <div
+        v-if="preview"
+        class="doc-preview"
+      >
+        <p class="doc-preview-name">
+          {{ preview.fileName }}
+        </p>
+        <img
+          :src="preview.dataUrl"
+          :alt="preview.fileName"
+        >
+        <button
+          type="button"
+          class="btn-ghost mt-3 w-full"
+          @click="preview = null"
+        >
+          Back to files
+        </button>
+      </div>
       <p
         v-if="shareError"
         class="banner err"
