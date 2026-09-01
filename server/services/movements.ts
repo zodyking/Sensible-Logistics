@@ -14,7 +14,7 @@ import { claimContainerForPickup, nextTripReference, releasePickupClaim } from '
 import { eventExists, recordEvent } from './events'
 import { resolvePlacement, writePlacement, type GeoPlacementInput } from './placements'
 import type { AuthContext } from '../utils/session'
-import { normalizeContainerNumber } from '#shared/utils/iso6346'
+import { formatContainerNumber, normalizeContainerNumber } from '#shared/utils/iso6346'
 import type { ContainerStatus, TripKind } from '#shared/utils/domain'
 import {
   containerStatusAfterDropoff,
@@ -1299,6 +1299,20 @@ async function assertChassisAvailable(
     && record.currentContainerId !== containerId
     && record.currentContainerId !== alsoAllowContainerId
   ) {
-    throw createError({ statusCode: 409, statusMessage: `Chassis ${record.number} is already carrying another container.` })
+    const [box] = await tx
+      .select({ number: containers.number, numberNormalized: containers.numberNormalized })
+      .from(containers)
+      .where(eq(containers.id, record.currentContainerId))
+      .limit(1)
+    const raw = box?.numberNormalized ?? box?.number ?? ''
+    const label = formatContainerNumber(raw) || raw || 'another container'
+    throw createError({
+      statusCode: 409,
+      statusMessage: `Chassis ${record.number} is already attached to container number ${label}.`,
+      data: {
+        currentContainerId: record.currentContainerId,
+        currentContainerNumber: raw || null,
+      },
+    })
   }
 }

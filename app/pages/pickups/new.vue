@@ -225,6 +225,7 @@ const errorMessage = ref('')
 const capturedPhoto = ref('')
 const readingPhoto = ref(false)
 const ocrMessage = ref('')
+const { conflict: chassisConflict, releasing: chassisReleasing, promptText: chassisConflictText, decide: decideChassisRelease, releaseIfNeeded } = useChassisReleasePrompt()
 
 /* --- ISO 6346 validation (mirrors the server implementation) ----- */
 const normalized = computed(() => normalizeContainerNumber(rawNumber.value))
@@ -585,18 +586,27 @@ const canAdvance = computed(() => {
   return false
 })
 
+function pickupKeepContainerId() {
+  if (pickupKind.value !== 'CONTAINER') return null
+  if (fromYard.value) return selectedYardId.value
+  return resolution.value?.container?.id ?? null
+}
+
 async function attachChassis() {
   const typed = chassisNumber.value.trim()
   if (!typed) {
     chassisId.value = null
-    return
+    return true
   }
   const result = await $fetch('/api/chassis', {
     method: 'POST',
     body: { number: typed },
   })
+  const allowed = await releaseIfNeeded(result.item, pickupKeepContainerId())
+  if (!allowed) return false
   chassisId.value = result.item.id
   chassisNumber.value = result.item.number
+  return true
 }
 
 async function next() {
@@ -604,7 +614,7 @@ async function next() {
 
   if (step.value === 'inventory' && !manualEntry.value) {
     try {
-      await attachChassis()
+      if (!await attachChassis()) return
     }
     catch (error) {
       errorMessage.value = apiErrorMessage(error, 'Could not save the chassis.')
@@ -614,7 +624,7 @@ async function next() {
 
   if (step.value === 'equipment') {
     try {
-      await attachChassis()
+      if (!await attachChassis()) return
     }
     catch (error) {
       errorMessage.value = apiErrorMessage(error, 'Could not save the chassis.')
@@ -715,8 +725,15 @@ async function confirm() {
     errorMessage.value = 'Choose a drop-off location.'
     return
   }
-  submitting.value = true
   errorMessage.value = ''
+  try {
+    if (!await attachChassis()) return
+  }
+  catch (error) {
+    errorMessage.value = apiErrorMessage(error, 'Could not save the chassis.')
+    return
+  }
+  submitting.value = true
 
   try {
     await $fetch(`/api/trips/${tripId.value}/confirm`, {
@@ -1503,5 +1520,13 @@ async function onPhoto(dataUrl: string) {
         {{ tripId ? (swapMode ? 'Cancel swap pickup' : 'Cancel this pickup') : 'Discard and go home' }}
       </button>
     </div>
+
+    <ChassisReleaseSheet
+      :open="Boolean(chassisConflict)"
+      :message="chassisConflictText"
+      :busy="chassisReleasing"
+      @close="decideChassisRelease(false)"
+      @confirm="decideChassisRelease(true)"
+    />
   </section>
 </template>
