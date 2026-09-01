@@ -288,7 +288,8 @@ export async function createManualTask(
   const timezone = await companyTimezone(db, auth.companyId)
   const todayIso = calendarDateInZone(new Date(), timezone)
   const parsedSms = parseDispatchSms(blob, todayIso)
-  const workDate = parsedSms?.workDate ?? todayIso
+  /** Manual paste files on the calendar day it was added, not a date inside the blob. */
+  const workDate = todayIso
   const kind = parsedSms?.kind ?? 'NOTE'
   const title = parsedSms?.title ?? firstLineTitle(blob)
   const steps = stepsFromBlob(blob)

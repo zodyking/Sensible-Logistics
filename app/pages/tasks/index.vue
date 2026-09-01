@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { TaskStep } from '#shared/utils/task-steps'
+import { groupTasksByWorkDate } from '#shared/utils/task-days'
 
 useHead({ title: 'Tasks' })
 
@@ -33,16 +34,7 @@ const copyTimers: Partial<Record<CopyKey, ReturnType<typeof setTimeout>>> = {}
 const setup = computed(() => data.value?.setup)
 const todayIso = computed(() => data.value?.todayIso ?? '')
 const allTasks = computed(() => data.value?.tasks ?? [])
-
-const todayTasks = computed(() =>
-  allTasks.value.filter(task => task.workDate === todayIso.value && task.status !== 'DISMISSED'),
-)
-const upcomingTasks = computed(() =>
-  allTasks.value.filter(task => task.workDate > todayIso.value && task.status !== 'DISMISSED'),
-)
-const earlierTasks = computed(() =>
-  allTasks.value.filter(task => task.workDate < todayIso.value && task.status !== 'DISMISSED'),
-)
+const taskDays = computed(() => groupTasksByWorkDate(allTasks.value, todayIso.value))
 
 const jsonBody = computed(() => JSON.stringify({
   text: '(the SMS text)',
@@ -302,7 +294,7 @@ async function patchTask(id: string, statusValue: 'DONE' | 'DISMISSED') {
         <label
           class="sr-only"
           for="task-blob"
-        >Paste today’s work</label>
+        >Paste work for this day</label>
         <textarea
           id="task-blob"
           v-model="draft"
@@ -312,7 +304,7 @@ async function patchTask(id: string, statusValue: 'DONE' | 'DISMISSED') {
           autocomplete="off"
         />
         <p class="task-compose-hint">
-          Stays one block until you split it.
+          Files under the day you add it. Stays one block until you split it.
         </p>
         <button
           class="btn-dark"
@@ -323,64 +315,27 @@ async function patchTask(id: string, statusValue: 'DONE' | 'DISMISSED') {
         </button>
       </form>
 
-      <div class="section-label">
-        <span>Today</span>
-        <span v-if="todayTasks.length">{{ todayTasks.length }}</span>
-      </div>
-      <article
-        v-for="task in todayTasks"
-        :key="task.id"
-        class="task-card task-card-list"
-        :class="{ done: task.status === 'DONE' }"
+      <template
+        v-for="group in taskDays"
+        :key="group.iso"
       >
-        <div class="task-card-top">
-          <StatusChip
-            :variant="task.status === 'DONE' ? 'ok' : 'warn'"
-            :label="task.status === 'DONE' ? 'Done' : 'Open'"
-          />
-          <span class="task-card-when">{{ formatWorkDate(task.workDate) }}</span>
-        </div>
-        <TaskChecklist
-          :steps="task.steps"
-          :mode="mode"
-          @change="(steps, immediate) => persistSteps(task.id, steps, immediate)"
-        />
-        <div
-          v-if="mode === 'edit'"
-          class="task-card-actions"
-        >
-          <button
-            type="button"
-            class="btn-ghost"
-            @click="patchTask(task.id, 'DISMISSED')"
-          >
-            Remove
-          </button>
-        </div>
-      </article>
-      <EmptyState
-        v-if="!todayTasks.length"
-        glyph="☰"
-        title="No steps yet"
-        :description="mode === 'edit'
-          ? 'Paste the full dispatcher text above, add it, then split it into steps.'
-          : 'Open the menu and choose Edit to paste today’s work.'"
-      />
-
-      <template v-if="upcomingTasks.length">
         <div class="section-label">
-          <span>Upcoming</span>
-          <span>{{ upcomingTasks.length }}</span>
+          <span>{{ formatDayOf(group.iso, todayIso) }}</span>
+          <span v-if="group.tasks.length">{{ group.tasks.length }}</span>
         </div>
         <article
-          v-for="task in upcomingTasks"
+          v-for="task in group.tasks"
           :key="task.id"
           class="task-card task-card-list"
+          :class="{
+            done: task.status === 'DONE',
+            compact: group.iso < todayIso,
+          }"
         >
           <div class="task-card-top">
             <StatusChip
-              variant="idle"
-              :label="formatWorkDate(task.workDate)"
+              :variant="task.status === 'DONE' ? 'ok' : (group.iso > todayIso ? 'idle' : 'warn')"
+              :label="task.status === 'DONE' ? 'Done' : 'Open'"
             />
           </div>
           <TaskChecklist
@@ -388,30 +343,27 @@ async function patchTask(id: string, statusValue: 'DONE' | 'DISMISSED') {
             :mode="mode"
             @change="(steps, immediate) => persistSteps(task.id, steps, immediate)"
           />
-        </article>
-      </template>
-
-      <template v-if="earlierTasks.length">
-        <div class="section-label">
-          <span>Earlier</span>
-        </div>
-        <article
-          v-for="task in earlierTasks"
-          :key="task.id"
-          class="task-card task-card-list compact"
-        >
-          <div class="task-card-top">
-            <StatusChip
-              :variant="task.status === 'DONE' ? 'ok' : 'idle'"
-              :label="formatWorkDate(task.workDate)"
-            />
+          <div
+            v-if="mode === 'edit'"
+            class="task-card-actions"
+          >
+            <button
+              type="button"
+              class="btn-ghost"
+              @click="patchTask(task.id, 'DISMISSED')"
+            >
+              Remove
+            </button>
           </div>
-          <TaskChecklist
-            :steps="task.steps"
-            :mode="mode"
-            @change="(steps, immediate) => persistSteps(task.id, steps, immediate)"
-          />
         </article>
+        <EmptyState
+          v-if="group.iso === todayIso && !group.tasks.length"
+          glyph="☰"
+          title="No steps yet"
+          :description="mode === 'edit'
+            ? 'Paste the full dispatcher text above. It files under the day you add it.'
+            : 'Open the menu and choose Edit to paste work for today.'"
+        />
       </template>
 
       <button

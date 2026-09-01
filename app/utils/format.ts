@@ -99,6 +99,20 @@ export function formatWeekRange(isoDate: string): string {
   return `Week of ${fmt.format(start)} – ${fmt.format(end)}`
 }
 
+/** `Day of today · Tue, Sep 1` / `Day of Mon, Aug 31` */
+export function formatDayOf(isoDate: string, todayIso = new Date().toISOString().slice(0, 10)): string {
+  const [y, m, d] = isoDate.split('-').map(Number)
+  if (!y || !m || !d) return isoDate ? `Day of ${isoDate}` : 'Day of —'
+  const pretty = new Intl.DateTimeFormat('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'UTC',
+  }).format(new Date(Date.UTC(y, m - 1, d)))
+  if (isoDate === todayIso) return `Day of today · ${pretty}`
+  return `Day of ${pretty}`
+}
+
 /** `Today · Aug 24` / `Yesterday · Aug 23` / `Thursday · Aug 21` */
 export function formatDayHeading(isoDate: string, todayIso = new Date().toISOString().slice(0, 10)): string {
   const [y, m, d] = isoDate.split('-').map(Number)
