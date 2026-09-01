@@ -49,6 +49,7 @@ const errorMessage = ref('')
 const capturedPhoto = ref('')
 const readingPhoto = ref(false)
 const ocrMessage = ref('')
+const { conflict: chassisConflict, releasing: chassisReleasing, promptText: chassisConflictText, decide: decideChassisRelease, releaseIfNeeded } = useChassisReleasePrompt()
 
 const normalized = computed(() => normalizeContainerNumber(rawNumber.value))
 const validation = computed(() => validateContainerNumber(rawNumber.value))
@@ -185,8 +186,22 @@ const showNext = computed(() => {
 
 async function confirm() {
   if (submitting.value) return
-  submitting.value = true
   errorMessage.value = ''
+  if (chassisNumber.value.trim()) {
+    try {
+      const found = await $fetch('/api/chassis', {
+        method: 'POST',
+        body: { number: chassisNumber.value },
+      })
+      const keepId = kind.value === 'CONTAINER' ? (resolution.value?.container?.id ?? null) : null
+      if (!await releaseIfNeeded(found.item, keepId)) return
+    }
+    catch (error) {
+      errorMessage.value = apiErrorMessage(error, 'Could not check the chassis.')
+      return
+    }
+  }
+  submitting.value = true
   try {
     if (kind.value === 'BARE_CHASSIS') {
       await $fetch(`/api/locations/${locationId.value}/chassis`, {
@@ -587,5 +602,13 @@ async function onPhoto(dataUrl: string) {
         Next
       </button>
     </div>
+
+    <ChassisReleaseSheet
+      :open="Boolean(chassisConflict)"
+      :message="chassisConflictText"
+      :busy="chassisReleasing"
+      @close="decideChassisRelease(false)"
+      @confirm="decideChassisRelease(true)"
+    />
   </section>
 </template>

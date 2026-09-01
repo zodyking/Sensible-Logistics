@@ -1,7 +1,8 @@
 import { and, eq, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 import { chassis } from '../../database/schema'
-import { requireDriver } from '../../utils/session'
+import { withCurrentContainerNumber } from '../../services/chassis'
+import { requireAuth } from '../../utils/session'
 import { normalizeChassisNumber } from '#shared/utils/iso6346'
 
 const schema = z.object({
@@ -13,7 +14,7 @@ const schema = z.object({
  * number on New Pickup can be attached without a separate admin screen.
  */
 export default defineEventHandler(async (event) => {
-  const auth = await requireDriver(event)
+  const auth = await requireAuth(event)
   const body = await readValidatedJson(event, schema)
   const db = useDb()
 
@@ -44,7 +45,7 @@ export default defineEventHandler(async (event) => {
     if (existing.outOfService) {
       throw createError({ statusCode: 409, statusMessage: `Chassis ${existing.number} is flagged out of service.` })
     }
-    return { item: existing, created: false }
+    return { item: await withCurrentContainerNumber(db, existing), created: false }
   }
 
   const [created] = await db
@@ -77,5 +78,5 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 409, statusMessage: `Chassis ${created.number} is flagged out of service.` })
   }
 
-  return { item: created, created: !existing }
+  return { item: await withCurrentContainerNumber(db, created), created: !existing }
 })
