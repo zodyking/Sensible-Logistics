@@ -5255,6 +5255,13 @@
   padding: 0 var(--s4);
 }
 
+.app-build {
+  margin: var(--s4) 0 0;
+  text-align: center;
+  font-size: var(--text-xs);
+  color: var(--color-ink-500);
+}
+
 .reset-lead {
   margin: 0 0 var(--s4);
   font-size: var(--text-sm);

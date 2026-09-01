@@ -7,7 +7,7 @@
  * with an in-memory cache for the current session.
  */
 
-import { formatChassisNumber, formatContainerNumber } from '../../shared/utils/iso6346'
+import { formatChassisNumber, formatContainerNumber } from '#shared/utils/iso6346'
 
 export type TripShareKind = 'photo' | 'document'
 export type ShareTitleKind = 'container' | 'chassis' | 'document'
