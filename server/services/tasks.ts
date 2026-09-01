@@ -7,6 +7,7 @@ import type { Database, DbExecutor } from '../utils/db'
 import type { AuthContext } from '../utils/session'
 import {
   calendarDateInZone,
+  dispatchTaskTitle,
   isDispatchMessage,
   isSetupTestMessage,
   parseDispatchSms,
@@ -59,15 +60,20 @@ function newToken(): string {
   return randomBytes(24).toString('base64url')
 }
 
-function toView(row: DispatchTask): DispatchTaskView {
+function toView(row: DispatchTask, timezone: string): DispatchTaskView {
   const parsed = row.parsed ?? {}
+  const addedDate = row.receivedAt
+    ? calendarDateInZone(row.receivedAt, timezone)
+    : row.workDate
   return {
     id: row.id,
-    title: row.title,
+    title: isDispatchMessage(row.rawText)
+      ? dispatchTaskTitle(row.rawText, row.kind, addedDate)
+      : row.title,
     rawText: row.rawText,
     sender: row.sender,
     receivedAt: row.receivedAt,
-    workDate: row.workDate,
+    workDate: addedDate,
     kind: row.kind,
     status: row.status,
     source: row.source,
@@ -188,6 +194,7 @@ export async function listDriverTasks(
     filters.push(gte(dispatchTasks.workDate, options.sinceIso))
   }
 
+  const timezone = await companyTimezone(db, auth.companyId)
   const rows = await db
     .select()
     .from(dispatchTasks)
@@ -195,7 +202,7 @@ export async function listDriverTasks(
     .orderBy(desc(dispatchTasks.workDate), desc(dispatchTasks.receivedAt))
     .limit(limit)
 
-  return rows.map(toView)
+  return rows.map(row => toView(row, timezone))
 }
 
 export async function listOpenTasksForHome(
@@ -203,6 +210,7 @@ export async function listOpenTasksForHome(
   auth: AuthContext & { driverId: string },
   todayIso: string,
 ): Promise<DispatchTaskView[]> {
+  const timezone = await companyTimezone(db, auth.companyId)
   const rows = await db
     .select()
     .from(dispatchTasks)
@@ -215,7 +223,7 @@ export async function listOpenTasksForHome(
     .orderBy(asc(dispatchTasks.workDate), desc(dispatchTasks.receivedAt))
     .limit(5)
 
-  return rows.map(toView)
+  return rows.map(row => toView(row, timezone))
 }
 
 export async function listTasksForTrip(
@@ -245,7 +253,7 @@ export async function listTasksForTrip(
     .orderBy(desc(dispatchTasks.receivedAt))
     .limit(20)
 
-  return rows.map(toView)
+  return rows.map(row => toView(row, timezone))
 }
 
 export async function attachOpenTasksToTrip(
@@ -323,7 +331,7 @@ export async function createManualTask(
   if (!inserted) {
     throw createError({ statusCode: 500, statusMessage: 'Could not save the task.' })
   }
-  return toView(inserted)
+  return toView(inserted, timezone)
 }
 
 export async function updateDriverTask(
@@ -390,7 +398,7 @@ export async function updateDriverTask(
     .where(eq(dispatchTasks.id, row.id))
     .returning()
 
-  return toView(updated ?? row)
+  return toView(updated ?? row, await companyTimezone(db, auth.companyId))
 }
 
 export type InboundResult

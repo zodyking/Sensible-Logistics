@@ -11,19 +11,8 @@ import { DISPATCH_TASK_KIND_LABELS } from './domain'
 
 export const SETUP_TEST_PHRASE = 'Sensible setup test'
 
-const WEEKDAY_INDEX: Record<string, number> = {
-  sunday: 0,
-  monday: 1,
-  tuesday: 2,
-  wednesday: 3,
-  thursday: 4,
-  friday: 5,
-  saturday: 6,
-}
-
 const TOMORROW_RE = /\b(?:tom+or+ows?|tmrw|tmr)\b/i
 const WORK_FOR_TODAY_RE = /\bwork\s+for\s+today\b/i
-const WORK_FOR_WEEKDAY_RE = /\bwork\s+for\s+(sunday|monday|tuesday|wednesday|thursday|friday|saturday)s?\b/i
 const WORK_FOR_RE = /\bwork\s+for\b/i
 const PICKUP_RE = /\bpick[\s-]*ups?\b/i
 const DROPOFF_RE = /\bdrop[\s-]*offs?\b|\bdeliver(?:y|ies|ing)?\b/i
@@ -93,13 +82,6 @@ export function taskFingerprintSource(text: string, workDate: string): string {
   return `${workDate}\n${text.replace(/\s+/g, ' ').trim().toLowerCase()}`
 }
 
-function nextWeekdayIso(todayIso: string, weekday: number): string {
-  const [year, month, day] = todayIso.split('-').map(Number)
-  const current = new Date(Date.UTC(year!, month! - 1, day!)).getUTCDay()
-  const delta = (weekday - current + 7) % 7
-  return addIsoDays(todayIso, delta)
-}
-
 function shortDateLabel(iso: string): string {
   const [year, month, day] = iso.split('-').map(Number)
   return new Intl.DateTimeFormat('en-US', {
@@ -110,13 +92,8 @@ function shortDateLabel(iso: string): string {
   }).format(new Date(Date.UTC(year!, month! - 1, day!)))
 }
 
-export function resolveWorkDate(text: string, todayIso: string): string {
-  if (TOMORROW_RE.test(text)) return addIsoDays(todayIso, 1)
-  if (WORK_FOR_TODAY_RE.test(text)) return todayIso
-  const weekday = text.match(WORK_FOR_WEEKDAY_RE)?.[1]?.toLowerCase()
-  if (weekday && weekday in WEEKDAY_INDEX) {
-    return nextWeekdayIso(todayIso, WEEKDAY_INDEX[weekday]!)
-  }
+/** Work files on the calendar day it was added, not “tomorrow” or a weekday in the text. */
+export function resolveWorkDate(_text: string, todayIso: string): string {
   return todayIso
 }
 

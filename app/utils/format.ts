@@ -36,8 +36,12 @@ export function formatWorkDate(isoDate: string | null | undefined): string {
   if (!isoDate) return '—'
   const [y, m, d] = isoDate.split('-').map(Number)
   if (!y || !m || !d) return isoDate
-  return new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
-    .format(new Date(Date.UTC(y, m - 1, d)))
+  return new Intl.DateTimeFormat('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'UTC',
+  }).format(new Date(Date.UTC(y, m - 1, d)))
 }
 
 /** Relative age used on list rows, e.g. `3h ago`. */

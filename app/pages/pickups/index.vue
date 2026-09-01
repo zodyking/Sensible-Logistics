@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { countDayWork, formatDayWorkSummary, tripOccursOnDay, tripPickupDay, toLocalIsoDate } from '#shared/utils/trip-days'
+import { taskAddedDate } from '#shared/utils/task-days'
 
 useHead({ title: 'My Trips' })
 
@@ -22,9 +23,10 @@ const historyTasks = computed(() =>
 const tasksByDate = computed(() => {
   const map = new Map<string, typeof historyTasks.value>()
   for (const task of historyTasks.value) {
-    const bucket = map.get(task.workDate) ?? []
+    const iso = taskAddedDate(task)
+    const bucket = map.get(iso) ?? []
     bucket.push(task)
-    map.set(task.workDate, bucket)
+    map.set(iso, bucket)
   }
   return map
 })
@@ -318,7 +320,7 @@ function calendarDayLabel(cell: { iso: string, hasTrip: boolean, selected: boole
                 :raw-text="task.rawText"
                 :sender="task.sender"
                 :received-at="task.receivedAt"
-                :work-date="task.workDate"
+                :work-date="taskAddedDate(task)"
                 :kind="task.kind"
                 :status="task.status"
                 :trip-id="task.tripId"
@@ -421,7 +423,7 @@ function calendarDayLabel(cell: { iso: string, hasTrip: boolean, selected: boole
             :raw-text="task.rawText"
             :sender="task.sender"
             :received-at="task.receivedAt"
-            :work-date="task.workDate"
+            :work-date="taskAddedDate(task)"
             :kind="task.kind"
             :status="task.status"
             :trip-id="task.tripId"
