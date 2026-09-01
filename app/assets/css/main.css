@@ -1718,8 +1718,8 @@
 
   .wiz-status {
     display: flex;
-    justify-content: center;
-    gap: var(--s8);
+    justify-content: space-evenly;
+    gap: var(--s4);
     padding: var(--s4);
   }
 

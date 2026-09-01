@@ -1088,7 +1088,7 @@ async function onPhoto(dataUrl: string) {
           <span class="wiz-hero-badge">
             <EquipmentIcon
               :name="pickupKind === 'BARE_CHASSIS' ? 'chassis' : 'container'"
-              :size="54"
+              :size="60"
             />
           </span>
           <b>{{ TRIP_KIND_LABELS[pickupKind] }}</b>

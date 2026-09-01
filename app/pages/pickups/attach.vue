@@ -298,7 +298,7 @@ async function onPhoto(dataUrl: string) {
             <span class="wiz-hero-badge">
               <EquipmentIcon
                 name="container"
-                :size="54"
+                :size="60"
               />
             </span>
             <b>Container</b>
