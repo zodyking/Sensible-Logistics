@@ -5,8 +5,5 @@
  */
 export function scrollWizardToTop() {
   if (import.meta.server) return
-  requestAnimationFrame(() => {
-    document.querySelector('.d-shell')?.scrollTo({ top: 0 })
-    window.scrollTo({ top: 0 })
-  })
+  requestAnimationFrame(() => window.scrollTo({ top: 0 }))
 }
