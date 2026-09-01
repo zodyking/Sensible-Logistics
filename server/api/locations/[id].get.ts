@@ -72,6 +72,24 @@ export default defineEventHandler(async (event) => {
     },
   )
 
+  const chassisRows = await db
+    .select({
+      id: chassis.id,
+      number: chassis.number,
+      provider: chassis.provider,
+      sizeCompatibility: chassis.sizeCompatibility,
+      status: chassis.status,
+    })
+    .from(chassis)
+    .where(and(
+      eq(chassis.companyId, auth.companyId),
+      eq(chassis.currentLocationId, id),
+      isNull(chassis.deletedAt),
+      eq(chassis.outOfService, false),
+      isNull(chassis.currentContainerId),
+    ))
+    .orderBy(chassis.numberNormalized)
+
   return {
     location: {
       id: location!.id,
@@ -97,5 +115,6 @@ export default defineEventHandler(async (event) => {
     typeCounts: mapped.length ? countContainersByType(mapped) : emptyTypeCounts(),
     occupancy: mapped.length,
     containers: mapped,
+    chassis: chassisRows,
   }
 })

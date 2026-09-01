@@ -19,6 +19,13 @@ const confirmOpen = ref(false)
 const deleting = ref(false)
 const actionError = ref('')
 const editTo = computed(() => `/containers/${route.params.id}/edit`)
+const moveTo = computed(() => `/containers/${route.params.id}/move`)
+const canMove = computed(() => {
+  const c = data.value?.container
+  if (!c || c.doNotMove) return false
+  if (!data.value?.currentLocation) return false
+  return c.activePoolState === 'AT_LOCATION' || c.activePoolState === 'EXCEPTION'
+})
 
 const backTo = computed(() => {
   const locationId = data.value?.currentLocation?.id
@@ -228,6 +235,15 @@ const serviceCaption = computed(() => {
           @click="closeMenu"
         >
           Edit
+        </NuxtLink>
+        <NuxtLink
+          v-if="canMove"
+          :to="moveTo"
+          class="menu-row"
+          role="menuitem"
+          @click="closeMenu"
+        >
+          Move
         </NuxtLink>
         <button
           type="button"

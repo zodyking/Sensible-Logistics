@@ -9,6 +9,7 @@ const schema = z.object({
   containerType: z.enum(CONTAINER_TYPES),
   equipmentType: z.enum(EQUIPMENT_TYPES).default('DRY_40'),
   isLoaded: z.boolean().default(true),
+  chassisNumber: z.string().trim().max(40).nullish(),
   placement: z.object({
     latitude: z.number().min(-90).max(90),
     longitude: z.number().min(-180).max(180),
