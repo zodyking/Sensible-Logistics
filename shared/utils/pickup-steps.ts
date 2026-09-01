@@ -7,7 +7,6 @@ export const PICKUP_STEPS = [
   'equipment',
   'containerType',
   'equipmentType',
-  'load',
   'seal',
   'notes',
   'destination',
@@ -19,7 +18,8 @@ export type PickupStep = (typeof PICKUP_STEPS)[number]
 /**
  * New Pickup wizard. Choosing a box or chassis already at the yard skips
  * typing, classification, chassis, and cargo questions the record already
- * answers. Loaded containers still collect a seal number. Destination is
+ * answers. Typed containers carry their loaded/empty state on the equipment
+ * screen, and a loaded box still collects a seal number. Destination is
  * always last before confirm so it is not left to Home.
  */
 export function pickupSteps(input: {
@@ -52,9 +52,6 @@ export function pickupSteps(input: {
     steps.push('equipment')
     if (input.kind === 'CONTAINER' && input.needsClassification) {
       steps.push('containerType', 'equipmentType')
-    }
-    if (input.kind === 'CONTAINER') {
-      steps.push('load')
     }
   }
 
