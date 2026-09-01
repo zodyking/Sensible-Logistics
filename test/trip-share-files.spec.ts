@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   backfillShareFiles,
   dataUrlToFile,
+  dedupeShareFiles,
   displayShareFileName,
   nextAttachmentSelection,
   nextShareTitle,
@@ -54,11 +55,12 @@ describe('nextShareTitle', () => {
 
 describe('backfillShareFiles', () => {
   const jpeg = { mimeType: 'image/jpeg', dataUrl: 'data:image/jpeg;base64,x' }
+  const jpeg2 = { mimeType: 'image/jpeg', dataUrl: 'data:image/jpeg;base64,y' }
 
   it('renames leftover container and document images', () => {
     expect(backfillShareFiles([
       { kind: 'photo', fileName: 'container image 1.jpg', ...jpeg },
-      { kind: 'photo', fileName: 'container image 2.jpg', ...jpeg },
+      { kind: 'photo', fileName: 'container image 2.jpg', ...jpeg2 },
       { kind: 'document', fileName: 'document image 1.pdf', mimeType: 'application/pdf', dataUrl: 'data:application/pdf;base64,z' },
     ], { containerNumber: 'BSIU8261271', chassisNumber: 'AIMZ481121' }).map(file => file.fileName))
       .toEqual(['BSIU826127-1.jpg', 'BSIU826127-1 2.jpg', 'document 1.pdf'])
@@ -78,7 +80,7 @@ describe('backfillShareFiles', () => {
   it('renames leftover scans even when kind is missing or document', () => {
     expect(backfillShareFiles([
       { kind: 'document', fileName: 'container image 1.jpg', ...jpeg },
-      { kind: 'photo', fileName: 'container.jpg', ...jpeg },
+      { kind: 'photo', fileName: 'container.jpg', ...jpeg2 },
     ], { containerNumber: 'BSIU340521-0' }).map(file => file.fileName))
       .toEqual(['BSIU340521-0.jpg', 'BSIU340521-0 2.jpg'])
   })
@@ -88,6 +90,34 @@ describe('backfillShareFiles', () => {
       { kind: 'photo', fileName: 'container image 1.jpg', mimeType: 'image/jpeg' },
       { containerNumber: 'BSIU340521-0', chassisNumber: 'MCCZ202291' },
     )).toBe('BSIU340521-0.jpg')
+  })
+
+  it('collapses the same capture saved twice by the old pickup screen', () => {
+    expect(backfillShareFiles([
+      { kind: 'photo', fileName: 'container image 1.jpg', ...jpeg },
+      { kind: 'photo', fileName: 'container image 2.jpg', ...jpeg },
+    ], { containerNumber: 'MAGU5680498' }).map(file => file.fileName))
+      .toEqual(['MAGU568049-8.jpg'])
+  })
+})
+
+describe('dedupeShareFiles', () => {
+  const jpeg = { kind: 'photo' as const, mimeType: 'image/jpeg' }
+
+  it('keeps one entry per identical photo', () => {
+    expect(dedupeShareFiles([
+      { ...jpeg, fileName: 'container image 1.jpg', dataUrl: 'data:image/jpeg;base64,x' },
+      { ...jpeg, fileName: 'container image 2.jpg', dataUrl: 'data:image/jpeg;base64,x' },
+      { ...jpeg, fileName: 'container image 3.jpg', dataUrl: 'data:image/jpeg;base64,y' },
+    ]).map(file => file.fileName)).toEqual(['container image 1.jpg', 'container image 3.jpg'])
+  })
+
+  it('keeps two genuinely different scans of the same box', () => {
+    const files = [
+      { ...jpeg, fileName: 'MAGU568049-8.jpg', dataUrl: 'data:image/jpeg;base64,x' },
+      { ...jpeg, fileName: 'MAGU568049-8 2.jpg', dataUrl: 'data:image/jpeg;base64,y' },
+    ]
+    expect(dedupeShareFiles(files)).toEqual(files)
   })
 })
 
