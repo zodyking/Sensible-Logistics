@@ -4,6 +4,7 @@ import {
   formatPhoneDisplay,
   formatPhoneInput,
   isValidPhone,
+  isBlankOrValidPhone,
   phoneDigits,
   phonesEqual,
   toE164,
@@ -68,6 +69,15 @@ describe('isValidPhone', () => {
     expect(isValidPhone('+1 954 555 0142')).toBe(true)
     expect(isValidPhone('954555014')).toBe(false)
     expect(isValidPhone('')).toBe(false)
+  })
+})
+
+describe('isBlankOrValidPhone', () => {
+  it('allows a blank field and a complete number', () => {
+    expect(isBlankOrValidPhone('')).toBe(true)
+    expect(isBlankOrValidPhone('   ')).toBe(true)
+    expect(isBlankOrValidPhone('(954) 555-0142')).toBe(true)
+    expect(isBlankOrValidPhone('954555014')).toBe(false)
   })
 })
 

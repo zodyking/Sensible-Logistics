@@ -3,7 +3,7 @@ import { LOCATION_TYPE_LABELS, LOCATION_TYPES } from '#shared/utils/domain'
 import type { LocationType } from '#shared/utils/domain'
 import { isPlacedPin } from '#shared/utils/yard-slots'
 import { formatPhoneInput, isValidPhone } from '#shared/utils/phone'
-import { formatCityStateZip } from '#shared/utils/us-address'
+import { formatCityStateZip, parseUsAddressQuery } from '#shared/utils/us-address'
 
 const { user } = useUserSession()
 setPageLayout(user.value?.role === 'ADMIN' ? 'admin' : 'default')
@@ -47,6 +47,7 @@ const suggestions = ref<PlaceHit[]>([])
 const searching = ref(false)
 const suggestError = ref('')
 let searchTimer: ReturnType<typeof setTimeout> | undefined
+let applyingSuggestion = false
 
 useHead({ title: () => `Edit ${locationName.value}` })
 
@@ -95,7 +96,13 @@ onMounted(async () => {
 onBeforeUnmount(() => clearTimeout(searchTimer))
 
 watch(() => form.addressQuery, (value) => {
-  if (!addressDirty.value) return
+  if (applyingSuggestion || !addressDirty.value) return
+  latitude.value = null
+  longitude.value = null
+  form.addressLine1 = ''
+  form.city = ''
+  form.state = ''
+  form.postalCode = ''
   clearTimeout(searchTimer)
   if (value.trim().length < 3) {
     suggestions.value = []
@@ -111,8 +118,10 @@ function onPhoneInput(field: 'mainPhone' | 'contactPhone', event: Event) {
   if (input.value !== formatted) input.value = formatted
 }
 
-function markAddressDirty() {
+function onAddressTyped(event: Event) {
+  applyingSuggestion = false
   addressDirty.value = true
+  form.addressQuery = (event.target as HTMLInputElement).value
 }
 
 async function lookupAddress(q: string) {
@@ -132,6 +141,7 @@ async function lookupAddress(q: string) {
 }
 
 function applySuggestion(hit: PlaceHit) {
+  applyingSuggestion = true
   form.addressLine1 = hit.addressLine1 || hit.displayName
   form.city = hit.city ?? ''
   form.state = hit.state ?? ''
@@ -141,6 +151,9 @@ function applySuggestion(hit: PlaceHit) {
   longitude.value = hit.longitude
   suggestions.value = []
   addressDirty.value = false
+  void nextTick(() => {
+    applyingSuggestion = false
+  })
 }
 
 async function save() {
@@ -171,7 +184,19 @@ async function save() {
       body.type = form.type
       body.name = form.name.trim()
     }
-    if (isPlacedPin(latitude.value, longitude.value) && form.addressLine1) {
+    if (addressDirty.value) {
+      const parsed = parseUsAddressQuery(form.addressQuery)
+      const street = parsed.addressLine1 || form.addressQuery.trim()
+      if (street) {
+        body.addressLine1 = street
+        body.city = parsed.city
+        body.state = parsed.state
+        body.postalCode = parsed.postalCode
+        body.latitude = isPlacedPin(latitude.value, longitude.value) ? latitude.value : null
+        body.longitude = isPlacedPin(latitude.value, longitude.value) ? longitude.value : null
+      }
+    }
+    else if (isPlacedPin(latitude.value, longitude.value) && form.addressLine1) {
       body.addressLine1 = form.addressLine1
       body.city = form.city || null
       body.state = form.state || null
@@ -269,6 +294,7 @@ async function save() {
             placeholder="(954) 555-0100"
             @input="onPhoneInput('mainPhone', $event)"
           >
+          <small class="field-hint">Optional.</small>
         </label>
 
         <label class="field">
@@ -291,6 +317,7 @@ async function save() {
             placeholder="(954) 555-0142"
             @input="onPhoneInput('contactPhone', $event)"
           >
+          <small class="field-hint">Optional.</small>
         </label>
       </div>
 
@@ -298,13 +325,16 @@ async function save() {
         <label class="field !mb-0">
           <span>Address</span>
           <input
-            v-model="form.addressQuery"
+            :value="form.addressQuery"
             class="input"
             placeholder="Start typing a US street, terminal, or city"
             autocomplete="off"
             autocapitalize="words"
-            @input="markAddressDirty"
+            @input="onAddressTyped"
           >
+          <small class="field-hint">
+            Type the address. Suggestions are optional — you do not have to pick one.
+          </small>
         </label>
         <p
           v-if="searching"

@@ -19,6 +19,12 @@ export function isValidPhone(value: string | null | undefined): boolean {
   return phoneDigits(value).length === 10
 }
 
+/** Empty is allowed; a partial number is not. */
+export function isBlankOrValidPhone(value: string | null | undefined): boolean {
+  const digits = phoneDigits(value)
+  return digits.length === 0 || digits.length === 10
+}
+
 /**
  * Progressive mask for a text input. Partial input stays partially formatted so
  * the caret never jumps ahead of what has been typed.

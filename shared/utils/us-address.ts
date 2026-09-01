@@ -193,3 +193,70 @@ export function displayNameFromPhoton(parts: PhotonAddressParts, query = ''): st
   }
   return mailing || name
 }
+
+export interface ParsedUsAddress {
+  addressLine1: string
+  city: string | null
+  state: string | null
+  postalCode: string | null
+}
+
+function isStateToken(value: string): boolean {
+  const t = value.trim()
+  if (/^[A-Za-z]{2}$/.test(t)) return true
+  return isNewYorkState(t)
+}
+
+/**
+ * Split a typed US address into street / city / state / ZIP without requiring
+ * an autocomplete pick. Comma-separated mail lines work best; a single line
+ * still saves as the street.
+ */
+export function parseUsAddressQuery(query: string): ParsedUsAddress {
+  const raw = query.trim().replace(/\s+/g, ' ')
+  if (!raw) return { addressLine1: '', city: null, state: null, postalCode: null }
+
+  const zipMatch = raw.match(/\b(\d{5})(?:-\d{4})?\s*$/)
+  const postalCode = zipMatch?.[1] ?? null
+  const withoutZip = postalCode
+    ? raw.replace(/,?\s*\d{5}(?:-\d{4})?\s*$/, '').trim().replace(/,+$/, '').trim()
+    : raw
+
+  const parts = withoutZip.split(',').map(part => part.trim()).filter(Boolean)
+  if (parts.length === 0) {
+    return { addressLine1: raw, city: null, state: null, postalCode }
+  }
+
+  if (parts.length === 1) {
+    const tokens = parts[0]!.split(' ')
+    const last = tokens[tokens.length - 1] ?? ''
+    if (tokens.length >= 2 && isStateToken(last)) {
+      return {
+        addressLine1: tokens.slice(0, -1).join(' '),
+        city: null,
+        state: postalState(last) || last.toUpperCase(),
+        postalCode,
+      }
+    }
+    return { addressLine1: parts[0]!, city: null, state: null, postalCode }
+  }
+
+  const last = parts[parts.length - 1]!
+  if (isStateToken(last)) {
+    const streetParts = parts.slice(0, -1)
+    const city = streetParts.length >= 2 ? streetParts.pop()! : null
+    return {
+      addressLine1: streetParts.join(', ') || last,
+      city,
+      state: postalState(last) || last.toUpperCase(),
+      postalCode,
+    }
+  }
+
+  return {
+    addressLine1: parts.slice(0, -1).join(', '),
+    city: last,
+    state: null,
+    postalCode,
+  }
+}

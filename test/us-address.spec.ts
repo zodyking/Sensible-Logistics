@@ -3,6 +3,7 @@ import {
   displayNameFromPhoton,
   formatCityStateZip,
   localityFromPhoton,
+  parseUsAddressQuery,
   streetLineFromPhoton,
 } from '../shared/utils/us-address'
 
@@ -58,5 +59,34 @@ describe('NYC mailing line', () => {
   it('keeps the house number from the typed query when Photon omits it', () => {
     expect(streetLineFromPhoton(fosterAve, '8202 Foster Ave, Brooklyn, NY 11236'))
       .toBe('8202 Foster Avenue')
+  })
+})
+
+describe('parseUsAddressQuery', () => {
+  it('splits a typed NYC mailing line without an autocomplete pick', () => {
+    expect(parseUsAddressQuery('8202 Foster Ave, Brooklyn, NY 11236')).toEqual({
+      addressLine1: '8202 Foster Ave',
+      city: 'Brooklyn',
+      state: 'NY',
+      postalCode: '11236',
+    })
+  })
+
+  it('splits a Florida line', () => {
+    expect(parseUsAddressQuery('1850 Eller Drive, Fort Lauderdale, FL 33316')).toEqual({
+      addressLine1: '1850 Eller Drive',
+      city: 'Fort Lauderdale',
+      state: 'FL',
+      postalCode: '33316',
+    })
+  })
+
+  it('saves a name-only line as the street', () => {
+    expect(parseUsAddressQuery('Port Everglades Terminal 3')).toEqual({
+      addressLine1: 'Port Everglades Terminal 3',
+      city: null,
+      state: null,
+      postalCode: null,
+    })
   })
 })

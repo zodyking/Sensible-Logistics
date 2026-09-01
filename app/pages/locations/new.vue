@@ -2,8 +2,8 @@
 import { LOCATION_TYPE_LABELS, LOCATION_TYPES } from '#shared/utils/domain'
 import type { LocationType } from '#shared/utils/domain'
 import { isPlacedPin } from '#shared/utils/yard-slots'
-import { formatPhoneInput, isValidPhone } from '#shared/utils/phone'
-import { formatCityStateZip } from '#shared/utils/us-address'
+import { formatPhoneInput, isBlankOrValidPhone } from '#shared/utils/phone'
+import { formatCityStateZip, parseUsAddressQuery } from '#shared/utils/us-address'
 
 const { user } = useUserSession()
 setPageLayout(user.value?.role === 'ADMIN' ? 'admin' : 'default')
@@ -58,8 +58,16 @@ const suggestions = ref<PlaceHit[]>([])
 const searching = ref(false)
 const suggestError = ref('')
 let searchTimer: ReturnType<typeof setTimeout> | undefined
+let applyingSuggestion = false
 
 watch(() => form.addressQuery, (value) => {
+  if (applyingSuggestion) return
+  latitude.value = null
+  longitude.value = null
+  form.addressLine1 = ''
+  form.city = ''
+  form.state = ''
+  form.postalCode = ''
   clearTimeout(searchTimer)
   if (value.trim().length < 3) {
     suggestions.value = []
@@ -94,6 +102,7 @@ async function lookupAddress(q: string) {
 }
 
 async function applySuggestion(hit: PlaceHit) {
+  applyingSuggestion = true
   form.addressLine1 = hit.addressLine1 || hit.displayName
   form.city = hit.city ?? ''
   form.state = hit.state ?? ''
@@ -102,31 +111,34 @@ async function applySuggestion(hit: PlaceHit) {
   latitude.value = hit.latitude
   longitude.value = hit.longitude
   suggestions.value = []
+  void nextTick(() => {
+    applyingSuggestion = false
+  })
+}
+
+function commitTypedAddress() {
+  if (isPlacedPin(latitude.value, longitude.value) && form.addressLine1.trim()) return
+  const parsed = parseUsAddressQuery(form.addressQuery)
+  form.addressLine1 = parsed.addressLine1 || form.addressQuery.trim()
+  form.city = parsed.city ?? ''
+  form.state = parsed.state ?? ''
+  form.postalCode = parsed.postalCode ?? ''
 }
 
 const canAdvance = computed(() => {
   switch (step.value) {
     case 'type': return Boolean(form.type)
     case 'name': return form.name.trim().length >= 2
-    case 'phones': return isValidPhone(form.mainPhone) && isValidPhone(form.contactPhone)
-    case 'address': return Boolean(isPlacedPin(latitude.value, longitude.value) && form.addressLine1)
+    case 'phones': return isBlankOrValidPhone(form.mainPhone) && isBlankOrValidPhone(form.contactPhone)
+    case 'address': return form.addressQuery.trim().length >= 2
   }
   return false
 })
 
 async function next() {
   if (step.value === 'address') {
-    if (!isPlacedPin(latitude.value, longitude.value)) {
-      const query = form.addressQuery.trim()
-      if (query.length < 3) return
-      if (!suggestions.value.length) await lookupAddress(query)
-      const first = suggestions.value[0]
-      if (!first) {
-        suggestError.value = suggestError.value || 'No United States address matched. Try a street and city.'
-        return
-      }
-      applySuggestion(first)
-    }
+    commitTypedAddress()
+    if (!form.addressLine1.trim()) return
     await submit()
     return
   }
@@ -157,7 +169,8 @@ const DUPLICATE_REASONS: Record<DuplicateSuggestion['reason'], string> = {
 }
 
 async function submit() {
-  if (!isPlacedPin(latitude.value, longitude.value) || submitting.value) return
+  commitTypedAddress()
+  if (!form.addressLine1.trim() || submitting.value) return
   submitting.value = true
   errorMessage.value = ''
 
@@ -172,11 +185,11 @@ async function submit() {
         state: form.state.trim() || null,
         postalCode: form.postalCode.trim() || null,
         country: 'US',
-        latitude: latitude.value,
-        longitude: longitude.value,
-        mainPhone: form.mainPhone,
+        latitude: isPlacedPin(latitude.value, longitude.value) ? latitude.value : null,
+        longitude: isPlacedPin(latitude.value, longitude.value) ? longitude.value : null,
+        mainPhone: form.mainPhone.trim() || null,
         contactName: form.contactName.trim() || null,
-        contactPhone: form.contactPhone,
+        contactPhone: form.contactPhone.trim() || null,
         acknowledgeDuplicates: acknowledgeDuplicates.value,
       },
     })
@@ -300,6 +313,9 @@ function createAnyway() {
 
     <template v-else-if="step === 'phones'">
       <div class="card p-4">
+        <p class="mb-3 text-sm text-[var(--color-ink-500)]">
+          Leave this step blank if you do not have a number.
+        </p>
         <label class="field">
           <span>Main number</span>
           <input
@@ -311,7 +327,7 @@ function createAnyway() {
             placeholder="(954) 555-0100"
             @input="onPhoneInput('mainPhone', $event)"
           >
-          <small class="field-hint">Company switchboard for this site.</small>
+          <small class="field-hint">Optional. Company switchboard for this site.</small>
         </label>
         <label class="field">
           <span>Contact name</span>
@@ -333,7 +349,7 @@ function createAnyway() {
             placeholder="(954) 555-0142"
             @input="onPhoneInput('contactPhone', $event)"
           >
-          <small class="field-hint">Direct line for the person at this location.</small>
+          <small class="field-hint">Optional. Direct line for the person at this location.</small>
         </label>
       </div>
     </template>
@@ -350,7 +366,7 @@ function createAnyway() {
             autocapitalize="words"
           >
           <small class="field-hint">
-            United States addresses only. Pick a result to save this site.
+            Type the address. Suggestions are optional — you do not have to pick one.
           </small>
         </label>
 
