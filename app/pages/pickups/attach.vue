@@ -214,7 +214,7 @@ async function attach() {
   }
 }
 
-watch([tripId, capturedPhoto], ([id, photo]) => {
+watch([tripId, capturedPhoto, normalized, chassisNumber], ([id, photo]) => {
   if (id && photo) {
     void rememberTripPhoto(id, photo, {
       containerNumber: normalized.value,

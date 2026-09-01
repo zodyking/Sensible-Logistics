@@ -183,6 +183,21 @@ export function isLegacyShareName(fileName: string): boolean {
     || /^(container|chassis|scan)(?:\s|$|\.)/i.test(fileName)
 }
 
+function isLegacyScanName(fileName: string): boolean {
+  return /^(container image)\b/i.test(fileName)
+    || /^(container|chassis|scan)(?:\s|$|\.)/i.test(fileName)
+}
+
+/** Name shown in Documents / SMS — equipment number when the stored name is leftover. */
+export function displayShareFileName(file: Pick<TripShareFile, 'fileName' | 'kind' | 'mimeType'>, names: ShareNameInput): string {
+  return backfillShareFiles([{
+    kind: file.kind,
+    fileName: file.fileName,
+    mimeType: file.mimeType,
+    dataUrl: '',
+  }], names)[0]?.fileName ?? file.fileName
+}
+
 /** Rename leftover generic scans/docs to equipment numbers and document 1, 2, 3… */
 export function backfillShareFiles(
   files: readonly TripShareFile[],
@@ -205,9 +220,10 @@ export function backfillShareFiles(
       })
       continue
     }
-    if (canRenameScan && file.kind === 'photo' && isLegacyShareName(file.fileName)) {
+    if (canRenameScan && isLegacyScanName(file.fileName)) {
       next.push({
         ...file,
+        kind: 'photo',
         fileName: nextShareTitle(photoKind, next, file.mimeType, names),
       })
       continue

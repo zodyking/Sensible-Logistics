@@ -763,7 +763,7 @@ async function abandon() {
   }
 }
 
-watch([tripId, capturedPhoto], ([id, photo]) => {
+watch([tripId, capturedPhoto, normalized, chassisNumber], ([id, photo]) => {
   if (id && photo) {
     void rememberTripPhoto(id, photo, {
       containerNumber: pickupKind.value === 'CONTAINER' ? normalized.value : null,
