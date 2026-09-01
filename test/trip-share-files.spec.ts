@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   backfillShareFiles,
   dataUrlToFile,
+  displayShareFileName,
   nextAttachmentSelection,
   nextShareTitle,
   scanShareStem,
@@ -72,6 +73,21 @@ describe('backfillShareFiles', () => {
   it('leaves already-named files alone', () => {
     const files = [{ kind: 'photo' as const, fileName: 'BSIU826127-1.jpg', ...jpeg }]
     expect(backfillShareFiles(files, { containerNumber: 'BSIU8261271' })).toEqual(files)
+  })
+
+  it('renames leftover scans even when kind is missing or document', () => {
+    expect(backfillShareFiles([
+      { kind: 'document', fileName: 'container image 1.jpg', ...jpeg },
+      { kind: 'photo', fileName: 'container.jpg', ...jpeg },
+    ], { containerNumber: 'BSIU340521-0' }).map(file => file.fileName))
+      .toEqual(['BSIU340521-0.jpg', 'BSIU340521-0 2.jpg'])
+  })
+
+  it('uses a formatted box number already on the trip', () => {
+    expect(displayShareFileName(
+      { kind: 'photo', fileName: 'container image 1.jpg', mimeType: 'image/jpeg' },
+      { containerNumber: 'BSIU340521-0', chassisNumber: 'MCCZ202291' },
+    )).toBe('BSIU340521-0.jpg')
   })
 })
 

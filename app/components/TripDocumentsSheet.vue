@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { backfillTripShareFiles, dataUrlToBlob, deleteTripShareFile, isImageShareFile, rememberTripShareBlobs } from '~/utils/trip-share-files'
+import { backfillTripShareFiles, dataUrlToBlob, deleteTripShareFile, displayShareFileName, isImageShareFile, rememberTripShareBlobs } from '~/utils/trip-share-files'
 import type { TripShareFile } from '~/utils/trip-share-files'
 
 const props = defineProps<{
@@ -18,15 +18,27 @@ const pendingDelete = ref<string | null>(null)
 const deleting = ref(false)
 const preview = ref<TripShareFile | null>(null)
 
+const nameInput = computed(() => ({
+  containerNumber: props.containerNumber,
+  chassisNumber: props.chassisNumber,
+}))
+
+const pendingFile = computed(() => (
+  pendingDelete.value
+    ? files.value.find(file => file.fileName === pendingDelete.value) ?? null
+    : null
+))
+
+function shownName(file: TripShareFile) {
+  return displayShareFileName(file, nameInput.value)
+}
+
 async function reload() {
   if (!props.tripId) {
     files.value = []
     return
   }
-  files.value = await backfillTripShareFiles(props.tripId, {
-    containerNumber: props.containerNumber,
-    chassisNumber: props.chassisNumber,
-  })
+  files.value = await backfillTripShareFiles(props.tripId, nameInput.value)
 }
 
 watch(
@@ -41,6 +53,7 @@ watch(
     }
     await reload()
   },
+  { immediate: true },
 )
 
 async function onAdd(event: Event) {
@@ -80,9 +93,10 @@ async function confirmDelete() {
 }
 
 function kindLabel(file: TripShareFile) {
-  if (file.kind === 'document') return 'Document'
-  if (/^[A-Z]{4}\d{6}-\d/i.test(file.fileName)) return 'Container scan'
-  if (/^[A-Z]{4}\d{6}\b/i.test(file.fileName)) return 'Chassis scan'
+  const name = shownName(file)
+  if (/^[A-Z]{4}\d{6}-\d/i.test(name)) return 'Container scan'
+  if (/^[A-Z]{4}\d{6}\b/i.test(name)) return 'Chassis scan'
+  if (file.kind === 'document' || /^document \d+\./i.test(name)) return 'Document'
   return 'Scan'
 }
 
@@ -142,7 +156,7 @@ function viewFile(file: TripShareFile) {
             aria-hidden="true"
           >PDF</span>
           <span class="doc-open-copy">
-            <b>{{ file.fileName }}</b>
+            <b>{{ shownName(file) }}</b>
             <small>{{ kindLabel(file) }} · View</small>
           </span>
         </button>
@@ -168,11 +182,11 @@ function viewFile(file: TripShareFile) {
       class="doc-preview"
     >
       <p class="doc-preview-name">
-        {{ preview.fileName }}
+        {{ shownName(preview) }}
       </p>
       <img
         :src="preview.dataUrl"
-        :alt="preview.fileName"
+        :alt="shownName(preview)"
       >
       <button
         type="button"
@@ -187,7 +201,7 @@ function viewFile(file: TripShareFile) {
       v-if="pendingDelete"
       class="doc-confirm"
     >
-      <p>Delete {{ pendingDelete }}? This cannot be undone.</p>
+      <p>Delete {{ pendingFile ? shownName(pendingFile) : pendingDelete }}? This cannot be undone.</p>
       <div class="sheet-actions">
         <button
           type="button"

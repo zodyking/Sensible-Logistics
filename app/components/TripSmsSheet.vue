@@ -6,6 +6,7 @@ import { shareTripSms } from '~/utils/share-trip-sms'
 import {
   dataUrlToBlob,
   dataUrlToFile,
+  displayShareFileName,
   isImageShareFile,
   listTripShareFilesFromTrips,
   nextAttachmentSelection,
@@ -96,10 +97,17 @@ const namesByTrip = computed(() => {
   return map
 })
 
+function shownName(file: TripShareFile) {
+  return displayShareFileName(file, {
+    containerNumber: props.containerNumber,
+    chassisNumber: props.chassisNumber,
+  })
+}
+
 const selectedFiles = computed(() =>
   attachmentFiles.value
     .filter(file => selectedNames.value.has(file.fileName))
-    .map(file => dataUrlToFile(file.dataUrl, file.fileName)),
+    .map(file => dataUrlToFile(file.dataUrl, shownName(file))),
 )
 
 const attachmentCount = computed(() => selectedFiles.value.length)
@@ -173,6 +181,7 @@ watch(
     const next = await listTripShareFilesFromTrips(ids.split('|').filter(Boolean), namesByTrip.value)
     if (props.open && attachmentTripIds.value.join('|') === ids) applyFiles(next)
   },
+  { immediate: true },
 )
 
 async function share() {
@@ -265,7 +274,7 @@ async function share() {
               class="doc-thumb doc-thumb-file"
               aria-hidden="true"
             >PDF</span>
-            <span class="sms-doc-name">{{ file.fileName }}</span>
+            <span class="sms-doc-name">{{ shownName(file) }}</span>
           </button>
         </label>
       </fieldset>
@@ -274,11 +283,11 @@ async function share() {
         class="doc-preview"
       >
         <p class="doc-preview-name">
-          {{ preview.fileName }}
+          {{ shownName(preview) }}
         </p>
         <img
           :src="preview.dataUrl"
-          :alt="preview.fileName"
+          :alt="shownName(preview)"
         >
         <button
           type="button"
