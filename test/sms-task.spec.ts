@@ -40,19 +40,19 @@ describe('isDispatchMessage', () => {
 describe('resolveWorkDate', () => {
   const today = '2026-08-28'
 
-  it('puts work-for-tomorrow variants on the following day', () => {
-    expect(resolveWorkDate('Work for tomorrow', today)).toBe('2026-08-29')
-    expect(resolveWorkDate('Work for tommorow', today)).toBe('2026-08-29')
-    expect(resolveWorkDate('work for tomorow pickup at the yard', today)).toBe('2026-08-29')
+  it('files work-for-tomorrow on the day the message was added', () => {
+    expect(resolveWorkDate('Work for tomorrow', today)).toBe(today)
+    expect(resolveWorkDate('Work for tommorow', today)).toBe(today)
+    expect(resolveWorkDate('work for tomorow pickup at the yard', today)).toBe(today)
   })
 
   it('keeps work for today on the current calendar day', () => {
     expect(resolveWorkDate('Work for today — two pickups', today)).toBe(today)
   })
 
-  it('maps work-for-weekday to that day, including today', () => {
-    expect(resolveWorkDate('Work for Friday live load', today)).toBe('2026-08-28')
-    expect(resolveWorkDate('Work for Monday pickup', today)).toBe('2026-08-31')
+  it('does not jump to a named weekday', () => {
+    expect(resolveWorkDate('Work for Friday live load', today)).toBe(today)
+    expect(resolveWorkDate('Work for Monday pickup', today)).toBe(today)
   })
 
   it('defaults messages without a day phrase to today', () => {
@@ -76,12 +76,12 @@ describe('classifyDispatchKind', () => {
 })
 
 describe('parseDispatchSms', () => {
-  it('builds a following-day work task from the misspelled phrase', () => {
+  it('files a work-for-tomorrow blob on the day it was added', () => {
     const parsed = parseDispatchSms('Work for tommorow pickup TCLU 1234567 at NJ Yard', '2026-08-28')
     expect(parsed).toMatchObject({
       kind: 'WORK',
-      workDate: '2026-08-29',
-      title: 'Work for Sat, Aug 29',
+      workDate: '2026-08-28',
+      title: 'Work for Fri, Aug 28',
     })
     expect(parsed?.containerNumbers).toContain('TCLU1234567')
   })

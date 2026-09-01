@@ -1,11 +1,25 @@
 /**
- * Tasks page grouping. Manual pastes file on the calendar day they were added;
- * SMS can still land on a parsed work date.
- *
- * Order: today, then upcoming (soonest first), then earlier (newest first).
+ * Tasks belong to the calendar day they were added. Stored `workDate` may
+ * still be a leftover “tomorrow” parse; `receivedAt` is the source of truth.
  */
 
-export function groupTasksByWorkDate<T extends { workDate: string, status: string }>(
+import { toLocalIsoDate } from './trip-days'
+
+export function taskAddedDate(task: {
+  receivedAt?: string | number | Date | null
+  workDate: string
+}): string {
+  return toLocalIsoDate(task.receivedAt) ?? task.workDate
+}
+
+/**
+ * Order: today, then upcoming (soonest first), then earlier (newest first).
+ */
+export function groupTasksByWorkDate<T extends {
+  workDate: string
+  status: string
+  receivedAt?: string | number | Date | null
+}>(
   tasks: readonly T[],
   todayIso: string,
 ): Array<{ iso: string, tasks: T[] }> {
@@ -14,9 +28,10 @@ export function groupTasksByWorkDate<T extends { workDate: string, status: strin
 
   for (const task of tasks) {
     if (task.status === 'DISMISSED') continue
-    const list = map.get(task.workDate) ?? []
+    const iso = taskAddedDate(task)
+    const list = map.get(iso) ?? []
     list.push(task)
-    map.set(task.workDate, list)
+    map.set(iso, list)
   }
 
   const keys = [...map.keys()]

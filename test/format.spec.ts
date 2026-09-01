@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatDayOf, formatDurationBetween } from '../app/utils/format'
+import { formatDayOf, formatDurationBetween, formatWorkDate } from '../app/utils/format'
 
 describe('formatDayOf', () => {
   it('labels the current work day as today', () => {
@@ -9,6 +9,13 @@ describe('formatDayOf', () => {
 
   it('labels other work days with weekday and date', () => {
     expect(formatDayOf('2026-08-31', '2026-09-01')).toBe('Day of Mon, Aug 31')
+  })
+})
+
+describe('formatWorkDate', () => {
+  it('keeps the calendar day in UTC so Eastern does not roll back a day', () => {
+    expect(formatWorkDate('2026-09-02')).toBe('Wed, Sep 2')
+    expect(formatWorkDate('2026-09-01')).toBe('Tue, Sep 1')
   })
 })
 
