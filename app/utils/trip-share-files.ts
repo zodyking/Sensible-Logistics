@@ -7,7 +7,15 @@
  * with an in-memory cache for the current session.
  */
 
+import { formatChassisNumber, formatContainerNumber } from '../../shared/utils/iso6346'
+
 export type TripShareKind = 'photo' | 'document'
+export type ShareTitleKind = 'container' | 'chassis' | 'document'
+
+export type ShareNameInput = {
+  containerNumber?: string | null
+  chassisNumber?: string | null
+}
 
 export interface TripShareFile {
   kind: TripShareKind
@@ -108,28 +116,82 @@ export async function rememberTripShareFile(tripId: string, file: TripShareFile)
   await persist(tripId, current)
 }
 
-export function nextShareTitle(
-  kind: 'container' | 'document',
-  existing: Array<{ fileName: string }>,
-  mimeType: string,
-): string {
-  const stem = kind === 'container' ? 'container image' : 'document image'
-  const ext = extensionForMime(mimeType)
-  const numbered = new RegExp(`^${stem} (\\d+)\\.`, 'i')
-  let max = 0
-  for (const item of existing) {
-    const match = numbered.exec(item.fileName)
-    if (match) max = Math.max(max, Number(match[1]))
-  }
-  return `${stem} ${max + 1}.${ext}`
+function sanitizeStem(value: string): string {
+  return value.replace(/[\\/:*?"<>|]+/g, '').replace(/\s+/g, ' ').trim()
 }
 
-export async function rememberTripPhoto(tripId: string, dataUrl: string): Promise<void> {
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function photoStem(fileName: string): string {
+  return fileName.replace(/\.[^.]+$/, '').replace(/ \d+$/, '')
+}
+
+function isGenericPhotoName(fileName: string): boolean {
+  return /^(container image|document image|container|chassis|scan)\b/i.test(fileName)
+}
+
+function shouldReplacePhoto(item: TripShareFile, stem: string): boolean {
+  if (item.kind !== 'photo') return false
+  const prior = photoStem(item.fileName)
+  if (isGenericPhotoName(item.fileName) || prior === stem) return true
+  const compact = stem.replace(/-\d$/, '')
+  return Boolean(prior) && (stem.startsWith(prior) || compact.startsWith(prior) || prior.startsWith(compact))
+}
+
+/** Container number when present, otherwise the chassis number. */
+export function scanShareStem(names: ShareNameInput = {}): string {
+  const container = sanitizeStem(formatContainerNumber(names.containerNumber ?? '') || String(names.containerNumber ?? ''))
+  if (container) return container
+  const chassis = sanitizeStem(formatChassisNumber(names.chassisNumber ?? '') || String(names.chassisNumber ?? ''))
+  if (chassis) return chassis
+  return 'scan'
+}
+
+export function nextShareTitle(
+  kind: ShareTitleKind,
+  existing: Array<{ fileName: string }>,
+  mimeType: string,
+  names: ShareNameInput = {},
+): string {
+  const ext = extensionForMime(mimeType)
+  if (kind === 'document') {
+    const numbered = /^document (\d+)\./i
+    let max = 0
+    for (const item of existing) {
+      const match = numbered.exec(item.fileName)
+      if (match) max = Math.max(max, Number(match[1]))
+    }
+    return `document ${max + 1}.${ext}`
+  }
+
+  const stem = scanShareStem(names)
+  const exact = `${stem}.${ext}`
+  if (!existing.some(item => item.fileName.toLowerCase() === exact.toLowerCase())) return exact
+  const extra = new RegExp(`^${escapeRegExp(stem)} (\\d+)\\.${escapeRegExp(ext)}$`, 'i')
+  let n = 2
+  for (const item of existing) {
+    const match = extra.exec(item.fileName)
+    if (match) n = Math.max(n, Number(match[1]) + 1)
+  }
+  return `${stem} ${n}.${ext}`
+}
+
+export async function rememberTripPhoto(
+  tripId: string,
+  dataUrl: string,
+  names: ShareNameInput = {},
+): Promise<void> {
   if (!tripId || !dataUrl.startsWith('data:')) return
   const mimeType = mimeFromDataUrl(dataUrl)
-  const current = await listTripShareFiles(tripId)
-  const fileName = nextShareTitle('container', current, mimeType)
-  await rememberTripShareFile(tripId, { kind: 'photo', fileName, mimeType, dataUrl })
+  const current = [...await listTripShareFiles(tripId)]
+  const kind: ShareTitleKind = names.containerNumber?.trim() ? 'container' : names.chassisNumber?.trim() ? 'chassis' : 'container'
+  const stem = scanShareStem(names)
+  const kept = current.filter(item => !shouldReplacePhoto(item, stem))
+  const fileName = nextShareTitle(kind, kept, mimeType, names)
+  kept.push({ kind: 'photo', fileName, mimeType, dataUrl })
+  await persist(tripId, kept)
 }
 
 export function fileToDataUrl(file: File): Promise<string> {
@@ -147,8 +209,20 @@ function uniqueFileName(existing: TripShareFile[], fileName: string): string {
   const base = dot >= 0 ? fileName.slice(0, dot) : fileName
   const ext = dot >= 0 ? fileName.slice(dot) : ''
   let n = 2
-  while (existing.some(item => item.fileName === `${base}-${n}${ext}`)) n += 1
-  return `${base}-${n}${ext}`
+  while (existing.some(item => item.fileName === `${base} ${n}${ext}`)) n += 1
+  return `${base} ${n}${ext}`
+}
+
+export function isImageShareFile(file: { mimeType: string }): boolean {
+  return file.mimeType.startsWith('image/')
+}
+
+export function dataUrlToBlob(dataUrl: string): Blob {
+  const comma = dataUrl.indexOf(',')
+  const meta = comma >= 0 ? dataUrl.slice(0, comma) : ''
+  const payload = comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl
+  const mime = /data:([^;]+)/.exec(meta)?.[1] || 'application/octet-stream'
+  return new Blob([decodeBase64(payload)], { type: mime })
 }
 
 /** Extra photos or PDFs the driver attaches from Trip documents. */
@@ -175,18 +249,23 @@ export async function tripShareFilesAsFiles(tripId: string): Promise<File[]> {
 }
 
 /** Files from one or more trips, with unique names so a swap can attach both boxes. */
-export async function tripShareFilesAsFilesFromTrips(tripIds: Array<string | null | undefined>): Promise<File[]> {
+export async function listTripShareFilesFromTrips(tripIds: Array<string | null | undefined>): Promise<TripShareFile[]> {
   const names: TripShareFile[] = []
-  const files: File[] = []
+  const items: TripShareFile[] = []
   for (const tripId of tripIds) {
     if (!tripId) continue
     for (const stored of await listTripShareFiles(tripId)) {
       const fileName = uniqueFileName(names, stored.fileName)
-      names.push({ ...stored, fileName })
-      files.push(dataUrlToFile(stored.dataUrl, fileName))
+      const item = { ...stored, fileName }
+      names.push(item)
+      items.push(item)
     }
   }
-  return files
+  return items
+}
+
+export async function tripShareFilesAsFilesFromTrips(tripIds: Array<string | null | undefined>): Promise<File[]> {
+  return (await listTripShareFilesFromTrips(tripIds)).map(file => dataUrlToFile(file.dataUrl, file.fileName))
 }
 
 /**

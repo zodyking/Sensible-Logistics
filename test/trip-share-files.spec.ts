@@ -1,19 +1,52 @@
 import { describe, expect, it } from 'vitest'
 
-import { dataUrlToFile, nextShareTitle, nextAttachmentSelection } from '../app/utils/trip-share-files'
+import {
+  dataUrlToFile,
+  nextAttachmentSelection,
+  nextShareTitle,
+  scanShareStem,
+} from '../app/utils/trip-share-files'
 
-describe('nextShareTitle', () => {
-  it('numbers container images from 1', () => {
-    expect(nextShareTitle('container', [], 'image/jpeg')).toBe('container image 1.jpg')
-    expect(nextShareTitle('container', [{ fileName: 'container image 1.jpg' }], 'image/jpeg'))
-      .toBe('container image 2.jpg')
+describe('scanShareStem', () => {
+  it('uses the formatted container number when present', () => {
+    expect(scanShareStem({ containerNumber: 'BSIU8261271', chassisNumber: 'AIMZ481121' }))
+      .toBe('BSIU826127-1')
   })
 
-  it('numbers document images separately', () => {
+  it('falls back to the chassis number', () => {
+    expect(scanShareStem({ chassisNumber: 'AIMZ481121' })).toBe('AIMZ481121')
+  })
+})
+
+describe('nextShareTitle', () => {
+  it('names a container scan after the box number', () => {
+    expect(nextShareTitle('container', [], 'image/jpeg', { containerNumber: 'BSIU8261271' }))
+      .toBe('BSIU826127-1.jpg')
+  })
+
+  it('names a chassis scan after the chassis number', () => {
+    expect(nextShareTitle('chassis', [], 'image/jpeg', { chassisNumber: 'AIMZ481121' }))
+      .toBe('AIMZ481121.jpg')
+  })
+
+  it('does not collide two different boxes', () => {
+    expect(nextShareTitle('container', [{ fileName: 'BSIU826127-1.jpg' }], 'image/jpeg', {
+      containerNumber: 'KOSU4968035',
+    })).toBe('KOSU496803-5.jpg')
+  })
+
+  it('numbers a second scan of the same box', () => {
+    expect(nextShareTitle('container', [{ fileName: 'BSIU826127-1.jpg' }], 'image/jpeg', {
+      containerNumber: 'BSIU8261271',
+    })).toBe('BSIU826127-1 2.jpg')
+  })
+
+  it('numbers documents as document 1, 2, 3…', () => {
+    expect(nextShareTitle('document', [], 'application/pdf')).toBe('document 1.pdf')
     expect(nextShareTitle('document', [
-      { fileName: 'container image 1.jpg' },
-      { fileName: 'document image 1.pdf' },
-    ], 'image/jpeg')).toBe('document image 2.jpg')
+      { fileName: 'BSIU826127-1.jpg' },
+      { fileName: 'document 1.pdf' },
+    ], 'image/jpeg')).toBe('document 2.jpg')
   })
 })
 
