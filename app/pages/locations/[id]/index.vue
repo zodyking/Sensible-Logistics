@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { CONTAINER_TYPE_LABELS, EQUIPMENT_TYPE_SHORT, LOCATION_TYPE_LABELS } from '#shared/utils/domain'
-import { formatContainerNumber } from '#shared/utils/iso6346'
+import { formatChassisNumber, formatContainerNumber } from '#shared/utils/iso6346'
 import { formatPhoneDisplay, toE164 } from '#shared/utils/phone'
 
 const { user } = useUserSession()
@@ -143,7 +143,7 @@ async function confirmDelete() {
         :to="`/locations/${locationId}/add`"
         class="btn-dark mt-4 w-full"
       >
-        Add a container
+        Add Equipment
       </NuxtLink>
 
       <div class="section-label mt-6">
@@ -171,6 +171,7 @@ async function confirmDelete() {
               {{ CONTAINER_TYPE_LABELS[item.containerType] }}
               · {{ EQUIPMENT_TYPE_SHORT[item.equipmentType] }}
               · {{ item.isLoaded ? 'Loaded' : 'Empty' }}
+              <template v-if="item.chassisNumber"> · {{ formatChassisNumber(item.chassisNumber) }}</template>
             </small>
           </span>
           <span
@@ -184,8 +185,31 @@ async function confirmDelete() {
         v-else
         glyph="▣"
         title="No containers on site"
-        description="Drop off from a trip or add a box here."
+        description="Drop off from a trip or add equipment here."
       />
+
+      <template v-if="data.chassis?.length">
+        <div class="section-label mt-6">
+          <span>Chassis · {{ data.chassis.length }}</span>
+        </div>
+        <div class="card rowlist">
+          <NuxtLink
+            v-for="item in data.chassis"
+            :key="item.id"
+            :to="`/chassis/${item.id}`"
+            class="row"
+          >
+            <span class="row-main">
+              <b class="font-mono">{{ formatChassisNumber(item.number) || item.number }}</b>
+              <small>{{ [item.provider, item.sizeCompatibility].filter(Boolean).join(' · ') || 'Available' }}</small>
+            </span>
+            <span
+              class="row-end"
+              aria-hidden="true"
+            >›</span>
+          </NuxtLink>
+        </div>
+      </template>
 
       <BottomSheet
         :open="menuOpen"

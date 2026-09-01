@@ -1,6 +1,7 @@
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq, isNull, sql } from 'drizzle-orm'
 import type { Database, DbExecutor } from '../utils/db'
 import {
+  chassis,
   containerPlacements,
   containers,
   locations,
@@ -8,7 +9,12 @@ import {
 import type { Container, Location } from '../database/schema'
 import { eventExists, recordEvent } from './events'
 import type { AuthContext } from '../utils/session'
-import { validateContainerNumber } from '#shared/utils/iso6346'
+import {
+  formatChassisNumber,
+  isCompleteChassisNumber,
+  normalizeChassisNumber,
+  validateContainerNumber,
+} from '#shared/utils/iso6346'
 import { CONTAINER_TYPES, type ContainerType, type EquipmentType } from '#shared/utils/domain'
 import {
   bboxAround,
@@ -181,7 +187,107 @@ export interface AddContainerAtLocationInput {
   containerType: ContainerType
   equipmentType: EquipmentType
   isLoaded: boolean
+  chassisNumber?: string | null
   placement?: GeoPlacementInput | null
+}
+
+async function findOrCreateChassis(
+  tx: DbExecutor,
+  auth: AuthContext,
+  rawNumber: string,
+) {
+  if (!isCompleteChassisNumber(rawNumber)) {
+    throw createError({
+      statusCode: 422,
+      statusMessage: 'A chassis number is four letters then six digits.',
+    })
+  }
+  const numberNormalized = normalizeChassisNumber(rawNumber)
+  const [existing] = await tx
+    .select()
+    .from(chassis)
+    .where(and(
+      eq(chassis.companyId, auth.companyId),
+      eq(chassis.numberNormalized, numberNormalized),
+      isNull(chassis.deletedAt),
+    ))
+    .limit(1)
+    .for('update')
+
+  if (existing) {
+    if (existing.outOfService) {
+      throw createError({
+        statusCode: 409,
+        statusMessage: `Chassis ${existing.number} is flagged out of service.`,
+      })
+    }
+    return { unit: existing, created: false }
+  }
+
+  const [created] = await tx
+    .insert(chassis)
+    .values({
+      companyId: auth.companyId,
+      number: numberNormalized,
+      numberNormalized,
+      status: 'AVAILABLE',
+    })
+    .returning()
+  return { unit: created!, created: true }
+}
+
+async function parkChassisAtLocation(
+  tx: DbExecutor,
+  auth: AuthContext,
+  input: {
+    unit: typeof chassis.$inferSelect
+    locationId: string
+    containerId: string | null
+    now: Date
+  },
+) {
+  if (input.unit.currentContainerId && input.unit.currentContainerId !== input.containerId) {
+    throw createError({
+      statusCode: 409,
+      statusMessage: 'That chassis is already under another container.',
+    })
+  }
+  if (input.unit.status === 'IN_USE' && !input.containerId) {
+    throw createError({
+      statusCode: 409,
+      statusMessage: 'That chassis is on a live trip. Finish or cancel the movement first.',
+    })
+  }
+
+  await tx
+    .update(chassis)
+    .set({
+      currentContainerId: input.containerId,
+      currentLocationId: input.locationId,
+      status: 'AVAILABLE',
+      updatedAt: input.now,
+    })
+    .where(and(eq(chassis.id, input.unit.id), eq(chassis.companyId, auth.companyId)))
+}
+
+async function followChassisWithContainer(
+  tx: DbExecutor,
+  auth: AuthContext,
+  containerId: string,
+  locationId: string,
+  now: Date,
+) {
+  const [box] = await tx.select().from(containers).where(eq(containers.id, containerId)).limit(1)
+  if (!box?.currentChassisId) return
+  await tx
+    .update(chassis)
+    .set({
+      currentContainerId: containerId,
+      currentLocationId: locationId,
+      status: 'AVAILABLE',
+      updatedAt: now,
+    })
+    .where(and(eq(chassis.id, box.currentChassisId), eq(chassis.companyId, auth.companyId)))
 }
 
 /**
@@ -241,6 +347,10 @@ export async function addContainerAtLocation(
       })
     }
     const now = new Date()
+    const typedChassis = input.chassisNumber?.trim() || ''
+    const reservedChassis = typedChassis
+      ? (await findOrCreateChassis(tx, auth, typedChassis)).unit
+      : null
 
     const [existing] = await tx
       .select()
@@ -298,13 +408,19 @@ export async function addContainerAtLocation(
         actorUserId: auth.userId,
         actorDriverId: auth.driverId,
         locationId: location.id,
+        chassisId: reservedChassis?.id ?? container.currentChassisId ?? null,
         source: auth.role === 'ADMIN' ? 'ADMIN_EDIT' : 'MANUAL',
         yardPosition: {
           latitude: placement.latitude,
           longitude: placement.longitude,
           rotation: placement.rotation,
         },
-        payload: { outcome },
+        payload: {
+          outcome,
+          chassisNumber: reservedChassis
+            ? (formatChassisNumber(reservedChassis.number) || reservedChassis.number)
+            : null,
+        },
       },
       {
         activePoolState: 'AT_LOCATION',
@@ -312,6 +428,7 @@ export async function addContainerAtLocation(
         currentLocationId: location.id,
         activeMovementId: null,
         isLoaded: input.isLoaded,
+        currentChassisId: reservedChassis?.id ?? container.currentChassisId ?? null,
         activatedAt: container.activatedAt ?? now,
         releasedAt: null,
       },
@@ -337,8 +454,118 @@ export async function addContainerAtLocation(
       eventId: input.eventId,
     })
 
+    if (reservedChassis) {
+      if (container.currentChassisId && container.currentChassisId !== reservedChassis.id) {
+        await tx
+          .update(chassis)
+          .set({ currentContainerId: null, status: 'AVAILABLE', updatedAt: now })
+          .where(and(eq(chassis.id, container.currentChassisId), eq(chassis.companyId, auth.companyId)))
+      }
+      await parkChassisAtLocation(tx, auth, {
+        unit: reservedChassis,
+        locationId: location.id,
+        containerId: container.id,
+        now,
+      })
+    }
+    else {
+      await followChassisWithContainer(tx, auth, container.id, location.id, now)
+    }
+
     const [updated] = await tx.select().from(containers).where(eq(containers.id, container.id)).limit(1)
     return { container: updated!, outcome, replayed: false }
+  })
+}
+
+export async function addChassisAtLocation(
+  db: Database,
+  auth: AuthContext,
+  input: { eventId: string, locationId: string, chassisNumber: string },
+): Promise<{ chassis: typeof chassis.$inferSelect, created: boolean, replayed: boolean }> {
+  return db.transaction(async (tx) => {
+    const location = await loadLocation(tx, auth, input.locationId)
+    const now = new Date()
+    const { unit, created } = await findOrCreateChassis(tx, auth, input.chassisNumber)
+
+    if (await eventExists(tx, auth.companyId, input.eventId)) {
+      return { chassis: unit, created: false, replayed: true }
+    }
+
+    await parkChassisAtLocation(tx, auth, {
+      unit,
+      locationId: location.id,
+      containerId: null,
+      now,
+    })
+
+    await recordEvent(tx, {
+      id: input.eventId,
+      companyId: auth.companyId,
+      eventType: 'GATE_IN',
+      actorUserId: auth.userId,
+      actorDriverId: auth.driverId,
+      locationId: location.id,
+      chassisId: unit.id,
+      source: auth.role === 'ADMIN' ? 'ADMIN_EDIT' : 'MANUAL',
+      payload: {
+        outcome: unit.currentLocationId === location.id ? 'PARK' : 'MOVE',
+        chassisNumber: formatChassisNumber(unit.number) || unit.number,
+      },
+    })
+
+    const [updated] = await tx.select().from(chassis).where(eq(chassis.id, unit.id)).limit(1)
+    return { chassis: updated!, created, replayed: false }
+  })
+}
+
+export async function moveContainerToLocation(
+  db: Database,
+  auth: AuthContext,
+  input: { eventId: string, containerId: string, destinationLocationId: string },
+): Promise<{ container: Container, outcome: 'CREATE' | 'REACTIVATE' | 'MOVE', replayed: boolean }> {
+  const [container] = await db.select().from(containers).where(eq(containers.id, input.containerId)).limit(1)
+  if (!container || container.companyId !== auth.companyId || container.deletedAt) {
+    throw createError({ statusCode: 404, statusMessage: 'Container not found.' })
+  }
+  if (container.activePoolState === 'PICKUP_IN_PROGRESS' || container.activePoolState === 'DRIVER_CUSTODY') {
+    throw createError({
+      statusCode: 409,
+      statusMessage: 'A driver currently holds this container. Finish or cancel that movement first.',
+    })
+  }
+  if (container.doNotMove) {
+    throw createError({
+      statusCode: 409,
+      statusMessage: 'This container is flagged do not move.',
+    })
+  }
+  if (!container.currentLocationId) {
+    throw createError({
+      statusCode: 409,
+      statusMessage: 'This container is in transit. Arrive it before moving it between yards.',
+    })
+  }
+  if (container.currentLocationId === input.destinationLocationId) {
+    throw createError({
+      statusCode: 409,
+      statusMessage: 'This container is already at that location.',
+    })
+  }
+
+  let chassisNumber: string | null = null
+  if (container.currentChassisId) {
+    const [unit] = await db.select().from(chassis).where(eq(chassis.id, container.currentChassisId)).limit(1)
+    chassisNumber = unit?.number ?? null
+  }
+
+  return addContainerAtLocation(db, auth, {
+    eventId: input.eventId,
+    locationId: input.destinationLocationId,
+    containerNumber: container.number,
+    containerType: container.containerType,
+    equipmentType: container.equipmentType,
+    isLoaded: container.isLoaded,
+    chassisNumber,
   })
 }
 
