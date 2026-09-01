@@ -19,12 +19,11 @@ const { data: locationData } = await useFetch(() => `/api/locations/${locationId
 
 useHead({ title: 'Add container' })
 
-type Step = 'number' | 'containerType' | 'equipmentType' | 'load' | 'confirm'
+type Step = 'number' | 'containerType' | 'equipmentType' | 'confirm'
 const STEP_TITLES: Record<Step, string> = {
-  number: 'Container number',
+  number: 'Container',
   containerType: 'Container type',
   equipmentType: 'Container size',
-  load: 'Loaded or empty?',
   confirm: 'Confirm container',
 }
 
@@ -54,7 +53,7 @@ const needsClassification = computed(() => resolution.value?.outcome === 'CREATE
 const STEPS = computed<Step[]>(() => {
   const steps: Step[] = ['number']
   if (needsClassification.value) steps.push('containerType', 'equipmentType')
-  steps.push('load', 'confirm')
+  steps.push('confirm')
   return steps
 })
 
@@ -100,7 +99,6 @@ const canAdvance = computed(() => {
         && !readingPhoto.value
     case 'containerType':
     case 'equipmentType':
-    case 'load':
     case 'confirm':
       return true
   }
@@ -219,37 +217,80 @@ async function onPhoto(dataUrl: string) {
           v-if="capturedPhoto"
           :src="capturedPhoto"
         />
-        <div class="card p-4">
-          <p class="mb-4 text-sm text-[var(--color-ink-500)]">
-            Scan the box number, or type it if the photo cannot be read.
-          </p>
-          <label class="field !mb-0">
-            <span>Container number</span>
+        <div class="wiz-hero">
+          <span class="wiz-hero-badge">
+            <EquipmentIcon
+              name="container"
+              :size="60"
+            />
+          </span>
+          <b>Container</b>
+        </div>
+
+        <span class="wiz-label">Container info</span>
+        <div class="wiz-group">
+          <div class="wiz-row">
+            <label
+              class="wiz-row-label"
+              for="add-container-number"
+            >Number</label>
             <ContainerNumberInput
+              id="add-container-number"
               v-model="rawNumber"
               :invalid="showValidation && !validation.structureValid"
               describedby="add-container-validation"
             />
-          </label>
-          <div
-            id="add-container-validation"
-            aria-live="polite"
-          >
-            <p
-              v-if="showValidation && validation.valid"
-              class="banner ok mt-3 mb-0"
-            >
-              <span aria-hidden="true">✓</span>
-              <span><b>{{ formatContainerNumber(normalized) }}</b> ISO 6346 check digit is valid.</span>
-            </p>
-            <p
-              v-else-if="showValidation"
-              class="banner warn mt-3 mb-0"
-            >
-              <span aria-hidden="true">!</span>
-              <span>{{ validation.errors[0] }}</span>
-            </p>
           </div>
+        </div>
+
+        <span class="wiz-label">Container status</span>
+        <div class="wiz-group">
+          <div class="wiz-status">
+            <button
+              type="button"
+              class="wiz-status-btn"
+              :aria-pressed="!isLoaded"
+              @click="isLoaded = false"
+            >
+              <span
+                class="wiz-status-mark"
+                aria-hidden="true"
+              >E</span>
+              <span class="wiz-status-name">Empty</span>
+            </button>
+            <button
+              type="button"
+              class="wiz-status-btn"
+              :aria-pressed="isLoaded"
+              @click="isLoaded = true"
+            >
+              <span
+                class="wiz-status-mark"
+                aria-hidden="true"
+              >L</span>
+              <span class="wiz-status-name">Load</span>
+            </button>
+          </div>
+        </div>
+
+        <div
+          id="add-container-validation"
+          aria-live="polite"
+        >
+          <p
+            v-if="showValidation && validation.valid"
+            class="banner ok mt-3 mb-0"
+          >
+            <span aria-hidden="true">✓</span>
+            <span><b>{{ formatContainerNumber(normalized) }}</b> ISO 6346 check digit is valid.</span>
+          </p>
+          <p
+            v-else-if="showValidation"
+            class="banner warn mt-3 mb-0"
+          >
+            <span aria-hidden="true">!</span>
+            <span>{{ validation.errors[0] }}</span>
+          </p>
         </div>
         <p
           v-if="ocrMessage && !readingPhoto"
@@ -315,29 +356,6 @@ async function onPhoto(dataUrl: string) {
           @click="equipmentType = type"
         >
           {{ PICKUP_EQUIPMENT_SIZE_LABELS[type] }}
-        </button>
-      </div>
-    </template>
-
-    <template v-else-if="step === 'load'">
-      <div class="choice-grid">
-        <button
-          type="button"
-          class="choice-card"
-          :aria-pressed="isLoaded"
-          @click="isLoaded = true"
-        >
-          Loaded
-          <small>Freight is on the box</small>
-        </button>
-        <button
-          type="button"
-          class="choice-card"
-          :aria-pressed="!isLoaded"
-          @click="isLoaded = false"
-        >
-          Empty
-          <small>Bobtail or empty park</small>
         </button>
       </div>
     </template>

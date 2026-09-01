@@ -2,6 +2,7 @@
 import { ACTIVE_POOL_LABELS, CONTAINER_TYPES, CONTAINER_TYPE_LABELS, PICKUP_EQUIPMENT_SIZES, PICKUP_EQUIPMENT_SIZE_LABELS } from '#shared/utils/domain'
 import type { ContainerType, EquipmentType } from '#shared/utils/domain'
 import {
+  formatChassisNumber,
   formatContainerNumber,
   maskContainerInput,
   normalizeContainerNumber,
@@ -12,13 +13,12 @@ import { rememberTripPhoto } from '~/utils/trip-share-files'
 
 useHead({ title: 'Add container' })
 
-type Step = 'equipment' | 'containerType' | 'equipmentType' | 'load' | 'seal' | 'confirm'
+type Step = 'equipment' | 'containerType' | 'equipmentType' | 'seal' | 'confirm'
 
 const STEP_TITLES: Record<Step, string> = {
-  equipment: 'Container number',
+  equipment: 'Container and chassis',
   containerType: 'Container type',
   equipmentType: 'Container size',
-  load: 'Loaded or empty?',
   seal: 'Seal number',
   confirm: 'Hang the container',
 }
@@ -55,7 +55,6 @@ const needsClassification = computed(() => resolution.value?.outcome === 'CREATE
 const STEPS = computed<Step[]>(() => {
   const steps: Step[] = ['equipment']
   if (needsClassification.value) steps.push('containerType', 'equipmentType')
-  steps.push('load')
   if (isLoaded.value) steps.push('seal')
   steps.push('confirm')
   return steps
@@ -66,7 +65,7 @@ const stepIndex = computed(() => Math.max(0, STEPS.value.indexOf(step.value)))
 
 watch(STEPS, (steps) => {
   if (steps.includes(step.value)) return
-  const order: Step[] = ['equipment', 'containerType', 'equipmentType', 'load', 'seal', 'confirm']
+  const order: Step[] = ['equipment', 'containerType', 'equipmentType', 'seal', 'confirm']
   const from = order.indexOf(step.value)
   const following = order.slice(from + 1).find(name => steps.includes(name))
   const previous = [...order.slice(0, Math.max(0, from))].reverse().find(name => steps.includes(name))
@@ -145,7 +144,6 @@ const canAdvance = computed(() => {
         && !readingPhoto.value
     case 'containerType':
     case 'equipmentType':
-    case 'load':
     case 'confirm':
       return true
     case 'seal':
@@ -296,30 +294,78 @@ async function onPhoto(dataUrl: string) {
             v-if="capturedPhoto"
             :src="capturedPhoto"
           />
-          <div class="card p-4">
-            <p class="mb-4 text-sm text-[var(--color-ink-500)]">
-              Chassis {{ chassisNumber || 'on this trip' }} is live. Scan or type the container you are hanging on it.
-            </p>
-            <label
-              class="field !mb-0"
-              for="attach-container"
-            >
-              <span>Container number</span>
-              <div class="field-row">
-                <ContainerNumberInput
-                  id="attach-container"
-                  v-model="rawNumber"
-                  :invalid="containerState === 'error'"
-                />
-                <FieldStatus
-                  :state="containerState"
-                  :detail="containerDetail"
-                  label="container number"
-                />
-              </div>
-              <small class="field-hint">Four letters, six digits, then the boxed check digit.</small>
-            </label>
+          <div class="wiz-hero">
+            <span class="wiz-hero-badge">
+              <EquipmentIcon
+                name="container"
+                :size="60"
+              />
+            </span>
+            <b>Container</b>
           </div>
+
+          <span class="wiz-label">Container info</span>
+          <div class="wiz-group">
+            <div class="wiz-row">
+              <label
+                class="wiz-row-label"
+                for="attach-container"
+              >Number</label>
+              <ContainerNumberInput
+                id="attach-container"
+                v-model="rawNumber"
+                :invalid="containerState === 'error'"
+              />
+              <FieldStatus
+                :state="containerState"
+                :detail="containerDetail || 'Four letters, six digits, then the boxed check digit.'"
+                label="container number"
+              />
+            </div>
+          </div>
+
+          <span class="wiz-label">Container status</span>
+          <div class="wiz-group">
+            <div class="wiz-status">
+              <button
+                type="button"
+                class="wiz-status-btn"
+                :aria-pressed="!isLoaded"
+                @click="isLoaded = false"
+              >
+                <span
+                  class="wiz-status-mark"
+                  aria-hidden="true"
+                >E</span>
+                <span class="wiz-status-name">Empty</span>
+              </button>
+              <button
+                type="button"
+                class="wiz-status-btn"
+                :aria-pressed="isLoaded"
+                @click="isLoaded = true"
+              >
+                <span
+                  class="wiz-status-mark"
+                  aria-hidden="true"
+                >L</span>
+                <span class="wiz-status-name">Load</span>
+              </button>
+            </div>
+          </div>
+
+          <span class="wiz-label">Chassis info</span>
+          <div class="wiz-group">
+            <div class="wiz-row">
+              <span class="wiz-row-label">Number</span>
+              <span class="mono flex-1 text-[var(--color-ink-700)]">
+                {{ chassisNumber ? formatChassisNumber(chassisNumber) : 'On this trip' }}
+              </span>
+            </div>
+          </div>
+          <p class="wiz-hint">
+            This chassis is live on your trip. Scan or type the container you are hanging on it.
+          </p>
 
           <div aria-live="polite">
             <p
@@ -399,29 +445,6 @@ async function onPhoto(dataUrl: string) {
             @click="equipmentType = type"
           >
             {{ PICKUP_EQUIPMENT_SIZE_LABELS[type] }}
-          </button>
-        </div>
-      </template>
-
-      <template v-else-if="step === 'load'">
-        <div class="choice-grid">
-          <button
-            type="button"
-            class="choice-card"
-            :aria-pressed="isLoaded"
-            @click="isLoaded = true"
-          >
-            Loaded
-            <small>Freight is on the box</small>
-          </button>
-          <button
-            type="button"
-            class="choice-card"
-            :aria-pressed="!isLoaded"
-            @click="isLoaded = false"
-          >
-            Empty
-            <small>Hang an empty box</small>
           </button>
         </div>
       </template>

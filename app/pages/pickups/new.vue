@@ -46,7 +46,6 @@ const STEP_TITLES: Record<Step, string> = {
   equipment: 'Container and chassis',
   containerType: 'Container type',
   equipmentType: 'Container size',
-  load: 'Loaded or empty?',
   seal: 'Seal number',
   notes: 'Notes',
   destination: 'Where are you dropping off?',
@@ -469,6 +468,12 @@ function enterUnlisted() {
   void next()
 }
 
+/** A row on the first screen picks the kind and moves on, like a native list. */
+function chooseKind(kind: TripKind) {
+  pickupKind.value = kind
+  void next()
+}
+
 function chooseOrigin(location: { id: string, name: string, containers?: YardBox[] }) {
   originLocationId.value = location.id
   originName.value = location.name
@@ -524,7 +529,6 @@ const canAdvance = computed(() => {
         && !readingPhoto.value
     case 'containerType':
     case 'equipmentType':
-    case 'load':
     case 'notes':
       return true
     case 'seal':
@@ -816,24 +820,43 @@ async function onPhoto(dataUrl: string) {
 
     <!-- ── What are you picking up? ────────────────────────────── -->
     <template v-if="step === 'kind'">
-      <div class="choice-grid">
+      <span class="wiz-label">Create a new pickup</span>
+      <div class="wiz-group">
         <button
           type="button"
-          class="choice-card"
+          class="wiz-pick"
           :aria-pressed="pickupKind === 'CONTAINER'"
-          @click="pickupKind = 'CONTAINER'"
+          @click="chooseKind('CONTAINER')"
         >
-          {{ TRIP_KIND_LABELS.CONTAINER }}
-          <small>Box and chassis</small>
+          <span class="wiz-pick-ico">
+            <EquipmentIcon name="container" />
+          </span>
+          <span class="wiz-pick-main">
+            <b>{{ TRIP_KIND_LABELS.CONTAINER }}</b>
+            <small>Box and chassis</small>
+          </span>
+          <span
+            class="wiz-chev"
+            aria-hidden="true"
+          >›</span>
         </button>
         <button
           type="button"
-          class="choice-card"
+          class="wiz-pick"
           :aria-pressed="pickupKind === 'BARE_CHASSIS'"
-          @click="pickupKind = 'BARE_CHASSIS'"
+          @click="chooseKind('BARE_CHASSIS')"
         >
-          {{ TRIP_KIND_LABELS.BARE_CHASSIS }}
-          <small>Chassis only — add a container later from Home</small>
+          <span class="wiz-pick-ico">
+            <EquipmentIcon name="chassis" />
+          </span>
+          <span class="wiz-pick-main">
+            <b>{{ TRIP_KIND_LABELS.BARE_CHASSIS }}</b>
+            <small>Chassis only — hang a container later from Home</small>
+          </span>
+          <span
+            class="wiz-chev"
+            aria-hidden="true"
+          >›</span>
         </button>
       </div>
     </template>
@@ -1060,14 +1083,25 @@ async function onPhoto(dataUrl: string) {
           v-if="capturedPhoto"
           :src="capturedPhoto"
         />
-        <div class="card p-4">
-          <label
-            v-if="pickupKind === 'CONTAINER'"
-            class="field"
-            for="container-number"
-          >
-            <span>Container number</span>
-            <div class="field-row">
+
+        <div class="wiz-hero">
+          <span class="wiz-hero-badge">
+            <EquipmentIcon
+              :name="pickupKind === 'BARE_CHASSIS' ? 'chassis' : 'container'"
+              :size="60"
+            />
+          </span>
+          <b>{{ TRIP_KIND_LABELS[pickupKind] }}</b>
+        </div>
+
+        <template v-if="pickupKind === 'CONTAINER'">
+          <span class="wiz-label">Container info</span>
+          <div class="wiz-group">
+            <div class="wiz-row">
+              <label
+                class="wiz-row-label"
+                for="container-number"
+              >Number</label>
               <ContainerNumberInput
                 id="container-number"
                 v-model="rawNumber"
@@ -1076,34 +1110,70 @@ async function onPhoto(dataUrl: string) {
               />
               <FieldStatus
                 :state="containerState"
-                :detail="containerDetail"
+                :detail="containerDetail || 'Four letters, six digits, then the boxed check digit.'"
                 label="container number"
               />
             </div>
-            <small class="field-hint">Four letters, six digits, then the boxed check digit.</small>
-          </label>
+          </div>
 
-          <label
-            class="field !mb-0"
-            :class="{ 'mt-5': pickupKind === 'CONTAINER' }"
-            for="chassis-number"
-          >
-            <span>Chassis number</span>
-            <div class="field-row">
-              <ChassisNumberInput
-                id="chassis-number"
-                v-model="chassisNumber"
-                :invalid="chassisState === 'error'"
-              />
-              <FieldStatus
-                :state="chassisState"
-                :detail="chassisDetail"
-                label="chassis number"
-              />
+          <template v-if="!swapMode">
+            <span class="wiz-label">Container status</span>
+            <div class="wiz-group">
+              <div class="wiz-status">
+                <button
+                  type="button"
+                  class="wiz-status-btn"
+                  :aria-pressed="!isLoaded"
+                  @click="isLoaded = false"
+                >
+                  <span
+                    class="wiz-status-mark"
+                    aria-hidden="true"
+                  >E</span>
+                  <span class="wiz-status-name">Empty</span>
+                </button>
+                <button
+                  type="button"
+                  class="wiz-status-btn"
+                  :aria-pressed="isLoaded"
+                  @click="isLoaded = true"
+                >
+                  <span
+                    class="wiz-status-mark"
+                    aria-hidden="true"
+                  >L</span>
+                  <span class="wiz-status-name">Load</span>
+                </button>
+              </div>
             </div>
-            <small class="field-hint">{{ pickupKind === 'BARE_CHASSIS' ? 'Four letters and six digits.' : 'Four letters and six digits. Leave blank if there is no chassis.' }}</small>
-          </label>
+          </template>
+        </template>
+
+        <span class="wiz-label">Chassis info</span>
+        <div class="wiz-group">
+          <div class="wiz-row">
+            <label
+              class="wiz-row-label"
+              for="chassis-number"
+            >Number</label>
+            <ChassisNumberInput
+              id="chassis-number"
+              v-model="chassisNumber"
+              :invalid="chassisState === 'error'"
+            />
+            <FieldStatus
+              :state="chassisState"
+              :detail="chassisDetail || 'Four letters and six digits.'"
+              label="chassis number"
+            />
+          </div>
         </div>
+        <p
+          v-if="pickupKind === 'CONTAINER'"
+          class="wiz-hint"
+        >
+          Leave the chassis blank if you are not taking one.
+        </p>
 
         <div aria-live="polite">
           <p
@@ -1196,30 +1266,6 @@ async function onPhoto(dataUrl: string) {
           @click="equipmentType = type"
         >
           {{ PICKUP_EQUIPMENT_SIZE_LABELS[type] }}
-        </button>
-      </div>
-    </template>
-
-    <!-- ── Load state ──────────────────────────────────────────── -->
-    <template v-else-if="step === 'load'">
-      <div class="choice-grid">
-        <button
-          type="button"
-          class="choice-card"
-          :aria-pressed="isLoaded"
-          @click="isLoaded = true"
-        >
-          Loaded
-          <small>Freight is on the box</small>
-        </button>
-        <button
-          type="button"
-          class="choice-card"
-          :aria-pressed="!isLoaded"
-          @click="isLoaded = false"
-        >
-          Empty
-          <small>Bobtail or empty move</small>
         </button>
       </div>
     </template>
@@ -1370,7 +1416,7 @@ async function onPhoto(dataUrl: string) {
 
     <!-- ── Navigation ──────────────────────────────────────────── -->
     <div
-      v-if="!(step === 'equipment' && readingPhoto)"
+      v-if="step !== 'kind' && !(step === 'equipment' && readingPhoto)"
       class="mt-6 flex gap-3"
     >
       <button

@@ -60,7 +60,7 @@ describe('pickupSteps', () => {
     expect(empty).not.toContain('seal')
   })
 
-  it('asks for type, size, load, and seal only when the number is typed', () => {
+  it('asks for type, size, and seal only when the number is typed', () => {
     const steps = pickupSteps({
       kind: 'CONTAINER',
       fromYard: false,
@@ -71,6 +71,17 @@ describe('pickupSteps', () => {
     expect(steps).toContain('equipment')
     expect(steps).toContain('containerType')
     expect(steps).toContain('seal')
+  })
+
+  it('carries loaded or empty on the equipment screen instead of its own step', () => {
+    const steps = pickupSteps({
+      kind: 'CONTAINER',
+      fromYard: false,
+      manualEntry: true,
+      needsClassification: false,
+      isLoaded: false,
+    })
+    expect(steps).toEqual(['kind', 'location', 'inventory', 'equipment', 'notes', 'destination', 'confirm'])
   })
 
   it('does not show the typewriter path until the driver chooses enter-unlisted', () => {
