@@ -97,8 +97,6 @@ async function continuePickup() {
     <PageHeader
       eyebrow="Capture"
       title="Container and chassis"
-      back-to="/"
-      back-label="Home"
     />
 
     <ScanReadingLoader

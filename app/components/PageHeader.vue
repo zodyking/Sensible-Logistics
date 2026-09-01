@@ -1,16 +1,22 @@
 <script setup lang="ts">
-defineProps<{
+const props = defineProps<{
   eyebrow?: string
   title: string
   backTo?: string
   backLabel?: string
 }>()
+
+const showBack = computed(() => {
+  if (!props.backTo) return false
+  const label = (props.backLabel ?? '').trim().toLowerCase()
+  return props.backTo !== '/' && label !== 'home'
+})
 </script>
 
 <template>
   <div class="mb-1">
     <div
-      v-if="backTo"
+      v-if="showBack"
       class="backbar"
     >
       <NuxtLink

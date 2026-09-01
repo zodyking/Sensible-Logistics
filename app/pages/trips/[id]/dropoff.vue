@@ -109,8 +109,7 @@ async function arrive() {
     <template v-else-if="data">
       <WizardNav
         :title="swapEmpty ? 'Drop the empty' : 'Arrive'"
-        back-to="/"
-        back-label="Home"
+        :show-back="false"
       />
 
       <p

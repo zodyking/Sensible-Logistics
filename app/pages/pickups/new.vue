@@ -816,8 +816,7 @@ async function onPhoto(dataUrl: string) {
   <section class="d-page">
     <WizardNav
       :title="STEP_TITLES[step]"
-      :back-label="stepIndex > 0 ? 'Back' : 'Home'"
-      :back-to="stepIndex > 0 ? undefined : '/'"
+      :show-back="stepIndex > 0"
       @back="back"
     >
       <template
