@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ACTIVE_POOL_LABELS, CONTAINER_TYPES, CONTAINER_TYPE_LABELS, EQUIPMENT_TYPE_SHORT, LOCATION_GLYPH, PICKUP_EQUIPMENT_SIZES, PICKUP_EQUIPMENT_SIZE_LABELS, TRIP_KIND_LABELS } from '#shared/utils/domain'
+import { ACTIVE_POOL_LABELS, CONTAINER_TYPES, CONTAINER_TYPE_LABELS, EQUIPMENT_TYPE_SHORT, PICKUP_EQUIPMENT_SIZES, PICKUP_EQUIPMENT_SIZE_LABELS, TRIP_KIND_LABELS } from '#shared/utils/domain'
 import type { ContainerType, EquipmentType, TripKind } from '#shared/utils/domain'
 import { PICKUP_STEPS, pickupSteps } from '#shared/utils/pickup-steps'
 import type { PickupStep } from '#shared/utils/pickup-steps'
@@ -935,41 +935,42 @@ async function onPhoto(dataUrl: string) {
       </p>
 
       <template v-else-if="originOptions.length">
-        <span class="wiz-label">Pickup location</span>
-        <div class="wiz-group">
-          <button
-            v-for="location in originOptions"
-            :key="location.id"
-            type="button"
-            class="wiz-pick"
-            :aria-pressed="originLocationId === location.id"
-            @click="pickOrigin(location)"
-          >
-            <span
-              class="wiz-pick-ico"
-              aria-hidden="true"
-            >{{ LOCATION_GLYPH[location.type] }}</span>
-            <span class="wiz-pick-main">
-              <b>{{ location.name }}</b>
-              <small>
-                {{ locationAddressLine(location) }}
-                <template v-if="pickupKind === 'BARE_CHASSIS'">
-                  · {{ chassisCountLabel(location.availableChassis) }}
-                </template>
-              </small>
-            </span>
-            <span
-              v-if="originLocationId === location.id"
-              class="wiz-check"
-              aria-hidden="true"
-            >✓</span>
-            <span
-              v-else
-              class="wiz-chev"
-              aria-hidden="true"
-            >›</span>
-          </button>
-        </div>
+        <LocationGroupedList :items="originOptions">
+          <template #default="{ item: location }">
+            <button
+              type="button"
+              class="wiz-pick"
+              :aria-pressed="originLocationId === location.id"
+              @click="pickOrigin(location)"
+            >
+              <span
+                class="wiz-pick-ico"
+                aria-hidden="true"
+              >
+                <LocationIcon :name="location.type" />
+              </span>
+              <span class="wiz-pick-main">
+                <b>{{ location.name }}</b>
+                <small>
+                  {{ locationAddressLine(location) }}
+                  <template v-if="pickupKind === 'BARE_CHASSIS'">
+                    · {{ chassisCountLabel(location.availableChassis) }}
+                  </template>
+                </small>
+              </span>
+              <span
+                v-if="originLocationId === location.id"
+                class="wiz-check"
+                aria-hidden="true"
+              >✓</span>
+              <span
+                v-else
+                class="wiz-chev"
+                aria-hidden="true"
+              >›</span>
+            </button>
+          </template>
+        </LocationGroupedList>
       </template>
 
       <EmptyState
@@ -1402,36 +1403,37 @@ async function onPhoto(dataUrl: string) {
       </p>
 
       <template v-else-if="destinationOptions.length">
-        <span class="wiz-label">Drop-off location</span>
-        <div class="wiz-group">
-          <button
-            v-for="location in destinationOptions"
-            :key="location.id"
-            type="button"
-            class="wiz-pick"
-            :aria-pressed="destinationLocationId === location.id"
-            @click="pickDestination(location)"
-          >
-            <span
-              class="wiz-pick-ico"
-              aria-hidden="true"
-            >{{ LOCATION_GLYPH[location.type] }}</span>
-            <span class="wiz-pick-main">
-              <b>{{ location.name }}</b>
-              <small>{{ locationAddressLine(location) }}</small>
-            </span>
-            <span
-              v-if="destinationLocationId === location.id"
-              class="wiz-check"
-              aria-hidden="true"
-            >✓</span>
-            <span
-              v-else
-              class="wiz-chev"
-              aria-hidden="true"
-            >›</span>
-          </button>
-        </div>
+        <LocationGroupedList :items="destinationOptions">
+          <template #default="{ item: location }">
+            <button
+              type="button"
+              class="wiz-pick"
+              :aria-pressed="destinationLocationId === location.id"
+              @click="pickDestination(location)"
+            >
+              <span
+                class="wiz-pick-ico"
+                aria-hidden="true"
+              >
+                <LocationIcon :name="location.type" />
+              </span>
+              <span class="wiz-pick-main">
+                <b>{{ location.name }}</b>
+                <small>{{ locationAddressLine(location) }}</small>
+              </span>
+              <span
+                v-if="destinationLocationId === location.id"
+                class="wiz-check"
+                aria-hidden="true"
+              >✓</span>
+              <span
+                v-else
+                class="wiz-chev"
+                aria-hidden="true"
+              >›</span>
+            </button>
+          </template>
+        </LocationGroupedList>
       </template>
 
       <EmptyState

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { LOCATION_GLYPH, LOCATION_TYPE_LABELS, LOCATION_TYPES } from '#shared/utils/domain'
+import { LOCATION_TYPE_GROUPS, LOCATION_TYPE_LABELS } from '#shared/utils/domain'
 import type { LocationType } from '#shared/utils/domain'
 import { isPlacedPin } from '#shared/utils/yard-slots'
 import { formatPhoneInput, isBlankOrValidPhone } from '#shared/utils/phone'
@@ -272,35 +272,42 @@ function createAnyway() {
     </div>
 
     <template v-if="step === 'type'">
-      <span class="wiz-label">Create a new location</span>
-      <div class="wiz-group">
-        <button
-          v-for="type in LOCATION_TYPES"
-          :key="type"
-          type="button"
-          class="wiz-pick"
-          :aria-pressed="form.type === type"
-          @click="pickType(type)"
-        >
-          <span
-            class="wiz-pick-ico"
-            aria-hidden="true"
-          >{{ LOCATION_GLYPH[type] }}</span>
-          <span class="wiz-pick-main">
-            <b>{{ LOCATION_TYPE_LABELS[type] }}</b>
-          </span>
-          <span
-            v-if="form.type === type"
-            class="wiz-check"
-            aria-hidden="true"
-          >✓</span>
-          <span
-            v-else
-            class="wiz-chev"
-            aria-hidden="true"
-          >›</span>
-        </button>
-      </div>
+      <template
+        v-for="group in LOCATION_TYPE_GROUPS"
+        :key="group.key"
+      >
+        <span class="wiz-label">{{ group.label }}</span>
+        <div class="wiz-group">
+          <button
+            v-for="type in group.types"
+            :key="type"
+            type="button"
+            class="wiz-pick"
+            :aria-pressed="form.type === type"
+            @click="pickType(type)"
+          >
+            <span
+              class="wiz-pick-ico"
+              aria-hidden="true"
+            >
+              <LocationIcon :name="type" />
+            </span>
+            <span class="wiz-pick-main">
+              <b>{{ LOCATION_TYPE_LABELS[type] }}</b>
+            </span>
+            <span
+              v-if="form.type === type"
+              class="wiz-check"
+              aria-hidden="true"
+            >✓</span>
+            <span
+              v-else
+              class="wiz-chev"
+              aria-hidden="true"
+            >›</span>
+          </button>
+        </div>
+      </template>
     </template>
 
     <template v-else-if="step === 'name'">

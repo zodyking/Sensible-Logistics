@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { LOCATION_GLYPH, LOCATION_TYPE_LABELS } from '#shared/utils/domain'
 import { formatContainerNumber } from '#shared/utils/iso6346'
 
 const { user } = useUserSession()
@@ -58,11 +57,8 @@ async function save() {
   }
 }
 
-function locationAddressLine(location: { addressLine1: string | null, city: string | null, type: keyof typeof LOCATION_TYPE_LABELS }) {
-  const bits = [LOCATION_TYPE_LABELS[location.type]]
-  if (location.addressLine1) bits.push(location.addressLine1)
-  if (location.city) bits.push(location.city)
-  return bits.join(' · ')
+function locationAddressLine(location: { addressLine1: string | null, city: string | null }) {
+  return [location.addressLine1, location.city].filter(Boolean).join(' · ') || '—'
 }
 </script>
 
@@ -126,12 +122,12 @@ function locationAddressLine(location: { addressLine1: string | null, city: stri
         >
       </div>
 
-      <template v-if="destinations.length">
-        <span class="wiz-label">Move to</span>
-        <div class="wiz-group">
+      <LocationGroupedList
+        v-if="destinations.length"
+        :items="destinations"
+      >
+        <template #default="{ item: location }">
           <button
-            v-for="location in destinations"
-            :key="location.id"
             type="button"
             class="wiz-pick"
             :disabled="submitting"
@@ -140,7 +136,9 @@ function locationAddressLine(location: { addressLine1: string | null, city: stri
             <span
               class="wiz-pick-ico"
               aria-hidden="true"
-            >{{ LOCATION_GLYPH[location.type] }}</span>
+            >
+              <LocationIcon :name="location.type" />
+            </span>
             <span class="wiz-pick-main">
               <b>{{ location.name }}</b>
               <small>{{ locationAddressLine(location) }}</small>
@@ -150,8 +148,8 @@ function locationAddressLine(location: { addressLine1: string | null, city: stri
               aria-hidden="true"
             >›</span>
           </button>
-        </div>
-      </template>
+        </template>
+      </LocationGroupedList>
 
       <EmptyState
         v-else

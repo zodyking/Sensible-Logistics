@@ -29,8 +29,11 @@ import {
   EVENT_TYPE_LABELS,
   EVENT_TYPES,
   LOCATION_GLYPH,
+  LOCATION_TYPE_GROUPS,
   LOCATION_TYPE_LABELS,
   LOCATION_TYPES,
+  groupLocationsByType,
+  locationTypeGroup,
   REQUIRED_OFF_DUTY_MINUTES,
   ROLES,
   SHORT_HAUL_LABELS,
@@ -100,6 +103,29 @@ describe('domain vocabulary integrity', () => {
 
   it('keeps LOCATION_TYPES in lockstep with labels and glyphs', () => {
     expectUnionKeysMatch(LOCATION_TYPES, LOCATION_TYPE_LABELS, LOCATION_GLYPH)
+  })
+
+  it('covers every location type in the grouped list headers', () => {
+    const covered = LOCATION_TYPE_GROUPS.flatMap(group => [...group.types])
+    expect([...covered].sort()).toEqual([...LOCATION_TYPES].sort())
+  })
+
+  it('groups marine terminals with rail yards and leaves other types alone', () => {
+    const grouped = groupLocationsByType([
+      { id: '1', type: 'CUSTOMER' as const },
+      { id: '2', type: 'MARINE_TERMINAL' as const },
+      { id: '3', type: 'RAIL_TERMINAL' as const },
+      { id: '4', type: 'COMPANY_YARD' as const },
+      { id: '5', type: 'CUSTOMER' as const, isUncategorized: true },
+    ])
+    expect(grouped.map(group => group.label)).toEqual([
+      'Company yards',
+      'Customers',
+      'Marine terminals / Rail yards',
+      'Uncategorized',
+    ])
+    expect(grouped[2]?.items.map(item => item.id)).toEqual(['2', '3'])
+    expect(locationTypeGroup('RAIL_TERMINAL').key).toBe('terminal')
   })
 
   it('keeps SHORT_HAUL_STATUSES in lockstep with labels', () => {

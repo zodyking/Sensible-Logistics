@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { LOCATION_TYPE_LABELS } from '#shared/utils/domain'
-
 const route = useRoute()
 const tripId = computed(() => String(route.params.id))
 
@@ -98,22 +96,27 @@ async function save() {
         >
       </div>
 
-      <template v-if="locationList?.items.length">
-        <span class="wiz-label">Where is this going?</span>
-        <div class="wiz-group">
+      <LocationGroupedList
+        v-if="locationList?.items.length"
+        :items="locationList.items"
+      >
+        <template #default="{ item: location }">
           <button
-            v-for="location in locationList.items"
-            :key="location.id"
             type="button"
             class="wiz-pick"
             :aria-pressed="selectedId === location.id"
             @click="selectedId = location.id"
           >
+            <span
+              class="wiz-pick-ico"
+              aria-hidden="true"
+            >
+              <LocationIcon :name="location.type" />
+            </span>
             <span class="wiz-pick-main">
               <b>{{ location.name }}</b>
               <small>
-                {{ LOCATION_TYPE_LABELS[location.type] }}
-                <template v-if="location.addressLine1"> · {{ location.addressLine1 }}</template>
+                <template v-if="location.addressLine1">{{ location.addressLine1 }}</template>
               </small>
             </span>
             <span
@@ -127,8 +130,8 @@ async function save() {
               aria-hidden="true"
             >›</span>
           </button>
-        </div>
-      </template>
+        </template>
+      </LocationGroupedList>
 
       <EmptyState
         v-else

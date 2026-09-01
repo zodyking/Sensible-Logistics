@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { LocationType } from '#shared/utils/domain'
-import { LOCATION_GLYPH, LOCATION_TYPE_LABELS, LOCATION_TYPES } from '#shared/utils/domain'
+import { LOCATION_TYPE_LABELS, LOCATION_TYPES } from '#shared/utils/domain'
 
 definePageMeta({ layout: 'admin' })
 useHead({ title: 'Locations & yards · Management' })
@@ -96,11 +96,15 @@ function occupancyPercent(occupancy: number, capacity: number | null): number {
       <button
         v-for="value in LOCATION_TYPES"
         :key="value"
-        class="fchip min-h-11"
+        class="fchip min-h-11 inline-flex items-center gap-1.5"
         :class="{ on: type === value }"
         :aria-pressed="type === value"
         @click="type = value"
       >
+        <LocationIcon
+          :name="value"
+          :size="16"
+        />
         {{ LOCATION_TYPE_LABELS[value] }}
       </button>
     </div>
@@ -179,7 +183,10 @@ function occupancyPercent(occupancy: number, capacity: number | null): number {
                 :to="`/locations/${row.id}`"
                 class="flex min-h-11 items-center gap-2 font-semibold"
               >
-                <span aria-hidden="true">{{ LOCATION_GLYPH[row.type] }}</span>
+                <LocationIcon
+                  :name="row.type"
+                  :size="22"
+                />
                 {{ row.name }}
               </NuxtLink>
             </td>
