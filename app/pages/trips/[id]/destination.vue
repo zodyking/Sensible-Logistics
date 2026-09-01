@@ -73,15 +73,11 @@ async function save() {
     </p>
 
     <template v-else-if="data">
-      <PageHeader
-        eyebrow="Drop-off"
-        title="Where is this going?"
+      <WizardNav
+        title="Drop-off"
         :back-to="`/trips/${tripId}`"
         back-label="Trip"
       />
-      <p class="mb-4 text-sm text-[var(--color-ink-500)]">
-        This updates where Arrive will drop off. It does not finish the trip.
-      </p>
 
       <p
         v-if="errorMessage"
@@ -92,7 +88,7 @@ async function save() {
         <span>{{ errorMessage }}</span>
       </p>
 
-      <div class="searchbar">
+      <div class="searchbar wiz-search">
         <span aria-hidden="true">⌕</span>
         <input
           v-model="search"
@@ -102,38 +98,37 @@ async function save() {
         >
       </div>
 
-      <div
-        v-if="locationList?.items.length"
-        class="card rowlist"
-      >
-        <button
-          v-for="location in locationList.items"
-          :key="location.id"
-          type="button"
-          class="row"
-          :aria-pressed="selectedId === location.id"
-          @click="selectedId = location.id"
-        >
-          <span class="row-main">
-            <b>{{ location.name }}</b>
-            <small>
-              {{ LOCATION_TYPE_LABELS[location.type] }}
-              <template v-if="location.addressLine1"> · {{ location.addressLine1 }}</template>
-            </small>
-          </span>
-          <span class="row-end">
-            <StatusChip
+      <template v-if="locationList?.items.length">
+        <span class="wiz-label">Where is this going?</span>
+        <div class="wiz-group">
+          <button
+            v-for="location in locationList.items"
+            :key="location.id"
+            type="button"
+            class="wiz-pick"
+            :aria-pressed="selectedId === location.id"
+            @click="selectedId = location.id"
+          >
+            <span class="wiz-pick-main">
+              <b>{{ location.name }}</b>
+              <small>
+                {{ LOCATION_TYPE_LABELS[location.type] }}
+                <template v-if="location.addressLine1"> · {{ location.addressLine1 }}</template>
+              </small>
+            </span>
+            <span
               v-if="selectedId === location.id"
-              variant="ok"
-              label="Selected"
-            />
+              class="wiz-check"
+              aria-hidden="true"
+            >✓</span>
             <span
               v-else
+              class="wiz-chev"
               aria-hidden="true"
             >›</span>
-          </span>
-        </button>
-      </div>
+          </button>
+        </div>
+      </template>
 
       <EmptyState
         v-else
@@ -142,14 +137,20 @@ async function save() {
         description="Pick an existing location. Add new ones from More → Customers & locations."
       />
 
-      <button
-        type="button"
-        class="btn-primary-action mt-6"
-        :disabled="!selectedId || saving"
-        @click="save"
-      >
-        {{ saving ? 'Saving…' : 'Save drop-off' }}
-      </button>
+      <p class="wiz-hint">
+        This updates where Arrive will drop off. It does not finish the trip.
+      </p>
+
+      <div class="wiz-actions">
+        <button
+          type="button"
+          class="wiz-next"
+          :disabled="!selectedId || saving"
+          @click="save"
+        >
+          {{ saving ? 'Saving…' : 'Save drop-off' }}
+        </button>
+      </div>
     </template>
   </section>
 </template>

@@ -40,16 +40,16 @@ type YardChassis = {
 }
 
 const STEP_TITLES: Record<Step, string> = {
-  kind: 'What are you picking up?',
-  location: 'Where are you picking up?',
+  kind: 'New pickup',
+  location: 'Pickup location',
   inventory: 'Which container?',
   equipment: 'Container and chassis',
   containerType: 'Container type',
   equipmentType: 'Container size',
-  seal: 'Seal number',
+  seal: 'Seal',
   notes: 'Notes',
-  destination: 'Where are you dropping off?',
-  confirm: 'Confirm pickup',
+  destination: 'Drop-off',
+  confirm: 'Confirm',
 }
 
 const originLocationId = ref<string | null>(null)
@@ -468,11 +468,54 @@ function enterUnlisted() {
   void next()
 }
 
-/** A row on the first screen picks the kind and moves on, like a native list. */
+/**
+ * A tapped row commits its choice and moves on, the way a native list does.
+ * Screens that ask for typing keep the button at the bottom instead.
+ */
 function chooseKind(kind: TripKind) {
   pickupKind.value = kind
   void next()
 }
+
+async function pickOrigin(location: { id: string, name: string, containers?: YardBox[] }) {
+  chooseOrigin(location)
+  await next()
+}
+
+async function pickYardContainer(item: YardContainer) {
+  await selectYardContainer(item)
+  await next()
+}
+
+async function pickYardChassis(item: YardChassis) {
+  selectYardChassis(item)
+  await next()
+}
+
+async function pickContainerType(type: ContainerType) {
+  containerType.value = type
+  await next()
+}
+
+async function pickEquipmentType(type: EquipmentType) {
+  equipmentType.value = type
+  await next()
+}
+
+async function pickDestination(location: { id: string, name: string }) {
+  chooseDestination(location)
+  await next()
+}
+
+/** Steps whose rows advance on tap need no button; the rest do. */
+const TAP_ADVANCE: Step[] = ['kind', 'location', 'inventory', 'containerType', 'equipmentType', 'destination']
+
+const showNext = computed(() => {
+  if (step.value === 'confirm') return false
+  if (!TAP_ADVANCE.includes(step.value)) return true
+  // A claimed trip locks the classification rows, so the button carries the step.
+  return (step.value === 'containerType' || step.value === 'equipmentType') && Boolean(tripId.value)
+})
 
 function chooseOrigin(location: { id: string, name: string, containers?: YardBox[] }) {
   originLocationId.value = location.id
@@ -760,35 +803,28 @@ async function onPhoto(dataUrl: string) {
 
 <template>
   <section class="d-page">
-    <PageHeader
-      :eyebrow="swapMode ? 'Swap 🔁' : 'New pickup'"
+    <WizardNav
       :title="STEP_TITLES[step]"
-      back-to="/"
-      back-label="Home"
-    />
-
-    <div
-      class="stepper"
-      role="progressbar"
-      :aria-valuenow="stepIndex + 1"
-      aria-valuemin="1"
-      :aria-valuemax="STEPS.length"
-      :aria-label="`Step ${stepIndex + 1} of ${STEPS.length}`"
+      :back-label="stepIndex > 0 ? 'Back' : 'Home'"
+      :back-to="stepIndex > 0 ? undefined : '/'"
+      :step="stepIndex"
+      :steps="STEPS.length"
+      @back="back"
     >
-      <span
-        v-for="(name, index) in STEPS"
-        :key="name"
-        class="stepper-step"
-        :class="{ done: index < stepIndex, on: index === stepIndex }"
-      />
-    </div>
+      <template
+        v-if="swapMode"
+        #end
+      >
+        <span class="wiz-tag">Swap</span>
+      </template>
+    </WizardNav>
 
     <p
       v-if="hydrating"
-      class="note"
+      class="wiz-hint"
       role="status"
     >
-      <span>Resuming your pickup…</span>
+      Resuming your pickup…
     </p>
 
     <p
@@ -851,7 +887,7 @@ async function onPhoto(dataUrl: string) {
           </span>
           <span class="wiz-pick-main">
             <b>{{ TRIP_KIND_LABELS.BARE_CHASSIS }}</b>
-            <small>Chassis only — hang a container later from Home</small>
+            <small>Chassis only — hang a container later</small>
           </span>
           <span
             class="wiz-chev"
@@ -863,14 +899,7 @@ async function onPhoto(dataUrl: string) {
 
     <!-- ── Location ────────────────────────────────────────────── -->
     <template v-else-if="step === 'location'">
-      <p
-        v-if="pickupKind === 'BARE_CHASSIS'"
-        class="note"
-      >
-        <span>Every company yard, terminal, and customer. Chassis already parked there are listed next.</span>
-      </p>
-
-      <div class="searchbar">
+      <div class="searchbar wiz-search">
         <span aria-hidden="true">⌕</span>
         <input
           v-model="locationSearch"
@@ -882,10 +911,10 @@ async function onPhoto(dataUrl: string) {
 
       <p
         v-if="locationStatus === 'pending'"
-        class="note"
+        class="wiz-hint"
         role="status"
       >
-        <span>Loading locations…</span>
+        Loading locations…
       </p>
 
       <p
@@ -896,44 +925,43 @@ async function onPhoto(dataUrl: string) {
         Could not load locations. Go back and try again, or add sites from More → Customers & locations.
       </p>
 
-      <div
-        v-else-if="originOptions.length"
-        class="card rowlist"
-      >
-        <button
-          v-for="location in originOptions"
-          :key="location.id"
-          type="button"
-          class="row"
-          :aria-pressed="originLocationId === location.id"
-          @click="chooseOrigin(location)"
-        >
-          <span
-            class="row-ico"
-            aria-hidden="true"
-          >{{ LOCATION_GLYPH[location.type] }}</span>
-          <span class="row-main">
-            <b>{{ location.name }}</b>
-            <small>
-              {{ locationAddressLine(location) }}
-              <template v-if="pickupKind === 'BARE_CHASSIS'">
-                · {{ chassisCountLabel(location.availableChassis) }}
-              </template>
-            </small>
-          </span>
-          <span class="row-end">
-            <StatusChip
+      <template v-else-if="originOptions.length">
+        <span class="wiz-label">Pickup location</span>
+        <div class="wiz-group">
+          <button
+            v-for="location in originOptions"
+            :key="location.id"
+            type="button"
+            class="wiz-pick"
+            :aria-pressed="originLocationId === location.id"
+            @click="pickOrigin(location)"
+          >
+            <span
+              class="wiz-pick-ico"
+              aria-hidden="true"
+            >{{ LOCATION_GLYPH[location.type] }}</span>
+            <span class="wiz-pick-main">
+              <b>{{ location.name }}</b>
+              <small>
+                {{ locationAddressLine(location) }}
+                <template v-if="pickupKind === 'BARE_CHASSIS'">
+                  · {{ chassisCountLabel(location.availableChassis) }}
+                </template>
+              </small>
+            </span>
+            <span
               v-if="originLocationId === location.id"
-              variant="ok"
-              label="Selected"
-            />
+              class="wiz-check"
+              aria-hidden="true"
+            >✓</span>
             <span
               v-else
+              class="wiz-chev"
               aria-hidden="true"
             >›</span>
-          </span>
-        </button>
-      </div>
+          </button>
+        </div>
+      </template>
 
       <EmptyState
         v-else
@@ -945,19 +973,7 @@ async function onPhoto(dataUrl: string) {
 
     <!-- ── Yard inventory ──────────────────────────────────────── -->
     <template v-else-if="step === 'inventory'">
-      <p class="note">
-        <span>
-          {{
-            swapMode
-              ? `Loaded containers at ${originLocation?.name || originName || 'this customer'}. Pick the outbound load.`
-              : pickupKind === 'BARE_CHASSIS'
-                ? `Chassis already at ${originLocation?.name ?? 'this location'}. Pick one to skip typing the number.`
-                : `Containers already at ${originLocation?.name ?? 'this location'}. Pick one to skip typing and classifying it.`
-          }}
-        </span>
-      </p>
-
-      <div class="searchbar">
+      <div class="searchbar wiz-search">
         <span aria-hidden="true">⌕</span>
         <input
           v-model="inventoryQuery"
@@ -969,107 +985,119 @@ async function onPhoto(dataUrl: string) {
 
       <p
         v-if="inventoryPending && !yardContainers.length && !yardChassis.length"
-        class="note"
+        class="wiz-hint"
         role="status"
       >
-        <span>Loading what’s on site…</span>
+        Loading what’s on site…
       </p>
 
-      <div
-        v-if="pickupKind === 'CONTAINER' && yardContainers.length"
-        class="card rowlist"
-      >
-        <button
-          v-for="item in yardContainers"
-          :key="item.id"
-          type="button"
-          class="row"
-          :aria-pressed="selectedYardId === item.id"
-          @click="selectYardContainer(item)"
-        >
-          <span
-            class="row-ico"
-            aria-hidden="true"
-          >▦</span>
-          <span class="row-main">
-            <b>{{ formatContainerNumber(item.numberNormalized || item.number) }}</b>
-            <small>
-              {{ CONTAINER_TYPE_LABELS[item.containerType] }}
-              · {{ EQUIPMENT_TYPE_SHORT[item.equipmentType] }}
-              · {{ item.isLoaded ? 'Loaded' : 'Empty' }}
-              <template v-if="item.chassisNumber"> · {{ formatChassisNumber(item.chassisNumber) }}</template>
-            </small>
-          </span>
-          <span class="row-end">
-            <StatusChip
+      <template v-if="pickupKind === 'CONTAINER' && yardContainers.length">
+        <span class="wiz-label">{{ swapMode ? 'Loaded at this customer' : 'On site now' }}</span>
+        <div class="wiz-group">
+          <button
+            v-for="item in yardContainers"
+            :key="item.id"
+            type="button"
+            class="wiz-pick"
+            :aria-pressed="selectedYardId === item.id"
+            @click="pickYardContainer(item)"
+          >
+            <span class="wiz-pick-ico">
+              <EquipmentIcon
+                name="container"
+                :size="34"
+              />
+            </span>
+            <span class="wiz-pick-main">
+              <b>{{ formatContainerNumber(item.numberNormalized || item.number) }}</b>
+              <small>
+                {{ CONTAINER_TYPE_LABELS[item.containerType] }}
+                · {{ EQUIPMENT_TYPE_SHORT[item.equipmentType] }}
+                · {{ item.isLoaded ? 'Loaded' : 'Empty' }}
+                <template v-if="item.chassisNumber"> · {{ formatChassisNumber(item.chassisNumber) }}</template>
+              </small>
+            </span>
+            <span
               v-if="selectedYardId === item.id"
-              variant="ok"
-              label="Selected"
-            />
+              class="wiz-check"
+              aria-hidden="true"
+            >✓</span>
             <span
               v-else
+              class="wiz-chev"
               aria-hidden="true"
             >›</span>
-          </span>
-        </button>
-      </div>
+          </button>
+        </div>
+      </template>
 
-      <div
-        v-else-if="pickupKind === 'BARE_CHASSIS' && yardChassis.length"
-        class="card rowlist"
-      >
-        <button
-          v-for="item in yardChassis"
-          :key="item.id"
-          type="button"
-          class="row"
-          :aria-pressed="selectedYardId === item.id"
-          @click="selectYardChassis(item)"
-        >
-          <span
-            class="row-ico"
-            aria-hidden="true"
-          >▭</span>
-          <span class="row-main">
-            <b>{{ formatChassisNumber(item.number) }}</b>
-            <small>{{ [item.provider, item.sizeCompatibility].filter(Boolean).join(' · ') || 'Available' }}</small>
-          </span>
-          <span class="row-end">
-            <StatusChip
+      <template v-else-if="pickupKind === 'BARE_CHASSIS' && yardChassis.length">
+        <span class="wiz-label">On site now</span>
+        <div class="wiz-group">
+          <button
+            v-for="item in yardChassis"
+            :key="item.id"
+            type="button"
+            class="wiz-pick"
+            :aria-pressed="selectedYardId === item.id"
+            @click="pickYardChassis(item)"
+          >
+            <span class="wiz-pick-ico">
+              <EquipmentIcon
+                name="chassis"
+                :size="34"
+              />
+            </span>
+            <span class="wiz-pick-main">
+              <b>{{ formatChassisNumber(item.number) }}</b>
+              <small>{{ [item.provider, item.sizeCompatibility].filter(Boolean).join(' · ') || 'Available' }}</small>
+            </span>
+            <span
               v-if="selectedYardId === item.id"
-              variant="ok"
-              label="Selected"
-            />
+              class="wiz-check"
+              aria-hidden="true"
+            >✓</span>
             <span
               v-else
+              class="wiz-chev"
               aria-hidden="true"
             >›</span>
-          </span>
-        </button>
-      </div>
+          </button>
+        </div>
+      </template>
 
       <EmptyState
         v-else-if="!inventoryPending"
         glyph="▦"
         :title="pickupKind === 'BARE_CHASSIS' ? 'No chassis on site' : (swapMode ? 'No loaded containers on site' : 'No containers on site')"
         :description="inventoryQuery.trim()
-          ? (pickupKind === 'BARE_CHASSIS'
-            ? 'Nothing matching that search is parked here.'
-            : 'Nothing matching that search is parked here.')
-          : (pickupKind === 'BARE_CHASSIS'
-            ? 'Add a chassis with the button below if it is not in the yard yet.'
-            : (swapMode
-              ? 'Add the outbound load with the button below if it is not listed yet.'
-              : 'Add a container with the button below if it is not in the yard yet.'))"
+          ? 'Nothing matching that search is parked here.'
+          : 'Add it below if it is not on the list yet.'"
       />
 
-      <button
-        type="button"
-        class="btn-ghost mt-4 w-full"
-        @click="enterUnlisted"
-      >
-        {{ pickupKind === 'BARE_CHASSIS' ? 'Add New Chassis' : 'Add New Container' }}
-      </button>
+      <span class="wiz-label">Not on the list</span>
+      <div class="wiz-group">
+        <button
+          type="button"
+          class="wiz-pick"
+          @click="enterUnlisted"
+        >
+          <span class="wiz-pick-ico">
+            <EquipmentIcon
+              :name="pickupKind === 'BARE_CHASSIS' ? 'chassis' : 'container'"
+              :size="34"
+            />
+          </span>
+          <span class="wiz-pick-main">
+            <b>{{ pickupKind === 'BARE_CHASSIS' ? 'Add a chassis' : 'Add a container' }}</b>
+            <small>Scan or type the number</small>
+          </span>
+          <span
+            class="wiz-chev"
+            aria-hidden="true"
+          >›</span>
+        </button>
+      </div>
     </template>
 
     <!-- ── Container + chassis (one photo) ──────────────────────── -->
@@ -1228,8 +1256,8 @@ async function onPhoto(dataUrl: string) {
 
         <DevicePhotoInput
           v-if="!tripId"
-          class="btn-ghost mt-4 w-full"
-          :label="capturedPhoto ? 'Retake photo' : 'Take photo'"
+          class="btn-ghost mt-5 w-full"
+          :label="capturedPhoto ? 'Retake photo' : 'Scan with the camera'"
           :disabled="readingPhoto"
           @photo="onPhoto"
         />
@@ -1238,79 +1266,107 @@ async function onPhoto(dataUrl: string) {
 
     <!-- ── Container type (new records only) ───────────────────── -->
     <template v-else-if="step === 'containerType'">
-      <div class="choice-grid">
+      <span class="wiz-label">Container type</span>
+      <div class="wiz-group">
         <button
           v-for="type in CONTAINER_TYPES"
           :key="type"
           type="button"
-          class="choice-card"
+          class="wiz-pick"
           :aria-pressed="containerType === type"
           :disabled="Boolean(tripId)"
-          @click="containerType = type"
+          @click="pickContainerType(type)"
         >
-          {{ CONTAINER_TYPE_LABELS[type] }}
+          <span class="wiz-pick-main">
+            <b>{{ CONTAINER_TYPE_LABELS[type] }}</b>
+          </span>
+          <span
+            v-if="containerType === type"
+            class="wiz-check"
+            aria-hidden="true"
+          >✓</span>
+          <span
+            v-else
+            class="wiz-chev"
+            aria-hidden="true"
+          >›</span>
         </button>
       </div>
     </template>
 
     <!-- ── Equipment type (new records only) ───────────────────── -->
     <template v-else-if="step === 'equipmentType'">
-      <div class="choice-grid">
+      <span class="wiz-label">Container size</span>
+      <div class="wiz-group">
         <button
           v-for="type in PICKUP_EQUIPMENT_SIZES"
           :key="type"
           type="button"
-          class="choice-card"
+          class="wiz-pick"
           :aria-pressed="equipmentType === type"
           :disabled="Boolean(tripId)"
-          @click="equipmentType = type"
+          @click="pickEquipmentType(type)"
         >
-          {{ PICKUP_EQUIPMENT_SIZE_LABELS[type] }}
+          <span class="wiz-pick-main">
+            <b>{{ PICKUP_EQUIPMENT_SIZE_LABELS[type] }}</b>
+          </span>
+          <span
+            v-if="equipmentType === type"
+            class="wiz-check"
+            aria-hidden="true"
+          >✓</span>
+          <span
+            v-else
+            class="wiz-chev"
+            aria-hidden="true"
+          >›</span>
         </button>
       </div>
     </template>
 
     <!-- ── Seal ────────────────────────────────────────────────── -->
     <template v-else-if="step === 'seal'">
-      <div class="card p-4">
-        <label class="field !mb-0">
-          <span>Seal number</span>
+      <span class="wiz-label">Seal</span>
+      <div class="wiz-group">
+        <div class="wiz-row">
+          <label
+            class="wiz-row-label"
+            for="seal-number"
+          >Number</label>
           <input
+            id="seal-number"
             v-model="sealNumber"
             class="input mono"
-            placeholder="004512"
+            placeholder="required"
             autocapitalize="characters"
             autocomplete="off"
             required
           >
-          <small class="field-hint">Required for a loaded container.</small>
-        </label>
+        </div>
       </div>
+      <p class="wiz-hint">
+        A loaded container carries its seal on the trip.
+      </p>
     </template>
 
     <!-- ── Notes ───────────────────────────────────────────────── -->
     <template v-else-if="step === 'notes'">
-      <div class="card p-4">
-        <label class="field !mb-0">
-          <span>Notes</span>
+      <span class="wiz-label">Notes</span>
+      <div class="wiz-group">
+        <div class="wiz-row wiz-row-stack">
           <textarea
             v-model="notes"
             class="textarea"
-            placeholder="Damage, exceptions, gate instructions…"
+            placeholder="optional — damage, exceptions, gate instructions…"
+            aria-label="Notes"
           />
-        </label>
+        </div>
       </div>
     </template>
 
     <!-- ── Destination ─────────────────────────────────────────── -->
     <template v-else-if="step === 'destination'">
-      <p class="note">
-        <span>
-          Set the drop-off now so it is on the trip before you leave. You can still change it from Home later.
-        </span>
-      </p>
-
-      <div class="searchbar">
+      <div class="searchbar wiz-search">
         <span aria-hidden="true">⌕</span>
         <input
           v-model="destinationSearch"
@@ -1322,10 +1378,10 @@ async function onPhoto(dataUrl: string) {
 
       <p
         v-if="locationStatus === 'pending'"
-        class="note"
+        class="wiz-hint"
         role="status"
       >
-        <span>Loading locations…</span>
+        Loading locations…
       </p>
 
       <p
@@ -1336,39 +1392,38 @@ async function onPhoto(dataUrl: string) {
         Could not load locations. Go back and try again, or add sites from More → Customers & locations.
       </p>
 
-      <div
-        v-else-if="destinationOptions.length"
-        class="card rowlist"
-      >
-        <button
-          v-for="location in destinationOptions"
-          :key="location.id"
-          type="button"
-          class="row"
-          :aria-pressed="destinationLocationId === location.id"
-          @click="chooseDestination(location)"
-        >
-          <span
-            class="row-ico"
-            aria-hidden="true"
-          >{{ LOCATION_GLYPH[location.type] }}</span>
-          <span class="row-main">
-            <b>{{ location.name }}</b>
-            <small>{{ locationAddressLine(location) }}</small>
-          </span>
-          <span class="row-end">
-            <StatusChip
+      <template v-else-if="destinationOptions.length">
+        <span class="wiz-label">Drop-off location</span>
+        <div class="wiz-group">
+          <button
+            v-for="location in destinationOptions"
+            :key="location.id"
+            type="button"
+            class="wiz-pick"
+            :aria-pressed="destinationLocationId === location.id"
+            @click="pickDestination(location)"
+          >
+            <span
+              class="wiz-pick-ico"
+              aria-hidden="true"
+            >{{ LOCATION_GLYPH[location.type] }}</span>
+            <span class="wiz-pick-main">
+              <b>{{ location.name }}</b>
+              <small>{{ locationAddressLine(location) }}</small>
+            </span>
+            <span
               v-if="destinationLocationId === location.id"
-              variant="ok"
-              label="Selected"
-            />
+              class="wiz-check"
+              aria-hidden="true"
+            >✓</span>
             <span
               v-else
+              class="wiz-chev"
               aria-hidden="true"
             >›</span>
-          </span>
-        </button>
-      </div>
+          </button>
+        </div>
+      </template>
 
       <EmptyState
         v-else
@@ -1393,59 +1448,49 @@ async function onPhoto(dataUrl: string) {
         origin-label="Pickup"
       />
 
-      <p class="note">
-        <span>
-          {{
-            swapMode
-              ? 'Confirming records the load pickup. The empty stays on Home until you Arrive at this customer.'
-              : pickupKind === 'BARE_CHASSIS'
-                ? 'Confirming records the chassis pickup and departure. You can hang a container on it from Home.'
-                : 'Confirming records the pickup and puts the container in transit on this service life.'
-          }}
-        </span>
+      <p class="wiz-hint">
+        {{
+          swapMode
+            ? 'Confirming records the load pickup. The empty stays on Home until you arrive at this customer.'
+            : pickupKind === 'BARE_CHASSIS'
+              ? 'Confirming records the chassis pickup and departure.'
+              : 'Confirming records the pickup and puts the container in transit.'
+        }}
       </p>
+    </template>
 
+    <!-- ── Actions ─────────────────────────────────────────────── -->
+    <div
+      v-if="!(step === 'equipment' && readingPhoto)"
+      class="wiz-actions"
+    >
       <button
-        class="btn-primary-action"
+        v-if="step === 'confirm'"
+        type="button"
+        class="wiz-next"
         :disabled="submitting"
         @click="confirm"
       >
-        {{ submitting ? 'Confirming…' : 'Confirm Pickup' }}
-      </button>
-    </template>
-
-    <!-- ── Navigation ──────────────────────────────────────────── -->
-    <div
-      v-if="step !== 'kind' && !(step === 'equipment' && readingPhoto)"
-      class="mt-6 flex gap-3"
-    >
-      <button
-        v-if="stepIndex > 0"
-        type="button"
-        class="btn-ghost flex-1"
-        @click="back"
-      >
-        Back
+        {{ submitting ? 'Confirming…' : 'Confirm pickup' }}
       </button>
 
       <button
-        v-if="step !== 'confirm'"
+        v-else-if="showNext"
         type="button"
-        class="btn-dark flex-1"
+        class="wiz-next"
         :disabled="!canAdvance || submitting"
         @click="next"
       >
-        {{ submitting ? 'Working…' : 'Continue' }}
+        {{ submitting ? 'Working…' : 'Next' }}
+      </button>
+
+      <button
+        type="button"
+        class="wiz-text-btn danger"
+        @click="abandon"
+      >
+        {{ tripId ? (swapMode ? 'Cancel swap pickup' : 'Cancel this pickup') : 'Discard and go home' }}
       </button>
     </div>
-
-    <button
-      v-if="!(step === 'equipment' && readingPhoto)"
-      type="button"
-      class="mt-4 w-full py-3 text-sm font-semibold text-[var(--color-err-600)]"
-      @click="abandon"
-    >
-      {{ tripId ? (swapMode ? 'Cancel swap pickup' : 'Cancel this pickup') : 'Discard and go home' }}
-    </button>
   </section>
 </template>
