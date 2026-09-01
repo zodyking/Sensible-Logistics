@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { LOCATION_TYPE_LABELS, LOCATION_TYPES } from '#shared/utils/domain'
+import { LOCATION_GLYPH, LOCATION_TYPE_LABELS, LOCATION_TYPES } from '#shared/utils/domain'
 import type { LocationType } from '#shared/utils/domain'
 import { isPlacedPin } from '#shared/utils/yard-slots'
 import { formatPhoneInput, isBlankOrValidPhone } from '#shared/utils/phone'
@@ -19,10 +19,10 @@ const returnTo = computed(() => {
 type Step = 'type' | 'name' | 'phones' | 'address'
 const STEPS: Step[] = ['type', 'name', 'phones', 'address']
 const STEP_TITLES: Record<Step, string> = {
-  type: 'What kind of location?',
-  name: 'What do you call it?',
-  phones: 'How do we reach them?',
-  address: 'Where is it?',
+  type: 'New location',
+  name: 'Name',
+  phones: 'Contact',
+  address: 'Address',
 }
 
 type PlaceHit = {
@@ -151,6 +151,14 @@ function back() {
   if (index > 0) step.value = STEPS[index - 1]!
 }
 
+watch(step, scrollWizardToTop)
+
+/** The kind row commits and moves on, the way a native list does. */
+function pickType(type: LocationType) {
+  form.type = type
+  void next()
+}
+
 const submitting = ref(false)
 const errorMessage = ref('')
 type DuplicateSuggestion = {
@@ -217,28 +225,11 @@ function createAnyway() {
 
 <template>
   <section :class="user?.role === 'ADMIN' ? '' : 'd-page'">
-    <PageHeader
-      eyebrow="Location pool"
+    <WizardNav
       :title="STEP_TITLES[step]"
-      :back-to="returnTo"
-      back-label="Back"
+      :back-to="stepIndex > 0 ? undefined : returnTo"
+      @back="back"
     />
-
-    <div
-      class="stepper"
-      role="progressbar"
-      :aria-valuenow="stepIndex + 1"
-      aria-valuemin="1"
-      :aria-valuemax="STEPS.length"
-      :aria-label="`Step ${stepIndex + 1} of ${STEPS.length}`"
-    >
-      <span
-        v-for="(name, index) in STEPS"
-        :key="name"
-        class="stepper-step"
-        :class="{ done: index < stepIndex, on: index === stepIndex }"
-      />
-    </div>
 
     <p
       v-if="errorMessage"
@@ -281,148 +272,193 @@ function createAnyway() {
     </div>
 
     <template v-if="step === 'type'">
-      <div class="type-grid">
+      <span class="wiz-label">Create a new location</span>
+      <div class="wiz-group">
         <button
           v-for="type in LOCATION_TYPES"
           :key="type"
           type="button"
+          class="wiz-pick"
           :aria-pressed="form.type === type"
-          @click="form.type = type"
+          @click="pickType(type)"
         >
-          <b>{{ LOCATION_TYPE_LABELS[type] }}</b>
+          <span
+            class="wiz-pick-ico"
+            aria-hidden="true"
+          >{{ LOCATION_GLYPH[type] }}</span>
+          <span class="wiz-pick-main">
+            <b>{{ LOCATION_TYPE_LABELS[type] }}</b>
+          </span>
+          <span
+            v-if="form.type === type"
+            class="wiz-check"
+            aria-hidden="true"
+          >✓</span>
+          <span
+            v-else
+            class="wiz-chev"
+            aria-hidden="true"
+          >›</span>
         </button>
       </div>
     </template>
 
     <template v-else-if="step === 'name'">
-      <div class="card p-4">
-        <label class="field !mb-0">
-          <span>Location name</span>
+      <span class="wiz-label">Name</span>
+      <div class="wiz-group">
+        <div class="wiz-row">
+          <label
+            class="wiz-row-label"
+            for="location-name"
+          >Name</label>
           <input
+            id="location-name"
             v-model="form.name"
             class="input"
             :placeholder="form.type === 'CUSTOMER' ? 'Coastal Tile Imports' : 'Port Everglades Terminal 3'"
             autocomplete="off"
           >
-        </label>
+        </div>
       </div>
-      <p class="mt-3 text-sm text-[var(--color-ink-500)]">
+      <p class="wiz-hint">
         Locations are company-wide. Every driver sees this yard, terminal, or customer.
       </p>
     </template>
 
     <template v-else-if="step === 'phones'">
-      <div class="card p-4">
-        <p class="mb-3 text-sm text-[var(--color-ink-500)]">
-          Leave this step blank if you do not have a number.
-        </p>
-        <label class="field">
-          <span>Main number</span>
+      <span class="wiz-label">Phone</span>
+      <div class="wiz-group">
+        <div class="wiz-row">
+          <label
+            class="wiz-row-label"
+            for="location-main-phone"
+          >Main</label>
           <input
+            id="location-main-phone"
             :value="form.mainPhone"
             class="input"
             type="tel"
             inputmode="tel"
             autocomplete="tel"
-            placeholder="(954) 555-0100"
+            placeholder="optional"
             @input="onPhoneInput('mainPhone', $event)"
           >
-          <small class="field-hint">Optional. Company switchboard for this site.</small>
-        </label>
-        <label class="field">
-          <span>Contact name</span>
+        </div>
+      </div>
+
+      <span class="wiz-label">Person on site</span>
+      <div class="wiz-group">
+        <div class="wiz-row">
+          <label
+            class="wiz-row-label"
+            for="location-contact-name"
+          >Name</label>
           <input
+            id="location-contact-name"
             v-model="form.contactName"
             class="input"
             autocomplete="name"
-            placeholder="Gate office, dispatcher, receiving…"
+            placeholder="gate office, dispatcher…"
           >
-        </label>
-        <label class="field !mb-0">
-          <span>Contact number</span>
+        </div>
+        <div class="wiz-row">
+          <label
+            class="wiz-row-label"
+            for="location-contact-phone"
+          >Phone</label>
           <input
+            id="location-contact-phone"
             :value="form.contactPhone"
             class="input"
             type="tel"
             inputmode="tel"
             autocomplete="tel"
-            placeholder="(954) 555-0142"
+            placeholder="optional"
             @input="onPhoneInput('contactPhone', $event)"
           >
-          <small class="field-hint">Optional. Direct line for the person at this location.</small>
-        </label>
+        </div>
       </div>
+      <p class="wiz-hint">
+        Leave this screen blank if you do not have a number.
+      </p>
     </template>
 
     <template v-else-if="step === 'address'">
-      <div class="card p-4">
-        <label class="field !mb-0">
-          <span>Address</span>
+      <span class="wiz-label">Address</span>
+      <div class="wiz-group">
+        <div class="wiz-row">
+          <label
+            class="wiz-row-label"
+            for="location-address"
+          >Street</label>
           <input
+            id="location-address"
             v-model="form.addressQuery"
             class="input"
-            placeholder="Start typing a US street, terminal, or city"
+            placeholder="required"
             autocomplete="off"
             autocapitalize="words"
           >
-          <small class="field-hint">
-            Type the address. Suggestions are optional — you do not have to pick one.
-          </small>
-        </label>
+        </div>
+      </div>
+      <p class="wiz-hint">
+        Type the address. Suggestions are optional — you do not have to pick one.
+      </p>
 
-        <p
-          v-if="searching"
-          class="mt-2 text-sm text-[var(--color-ink-500)]"
-        >
-          Searching…
-        </p>
-        <p
-          v-else-if="suggestError"
-          class="banner warn mt-3 mb-0"
-        >
-          <span aria-hidden="true">!</span>
-          <span>{{ suggestError }}</span>
-        </p>
+      <p
+        v-if="searching"
+        class="wiz-hint"
+        role="status"
+      >
+        Searching…
+      </p>
+      <p
+        v-else-if="suggestError"
+        class="banner warn mt-3"
+      >
+        <span aria-hidden="true">!</span>
+        <span>{{ suggestError }}</span>
+      </p>
 
-        <ul
-          v-if="suggestions.length"
-          class="suggest-list"
+      <template v-if="suggestions.length">
+        <span class="wiz-label">Suggestions</span>
+        <div
+          class="wiz-group"
           role="listbox"
         >
-          <li
+          <button
             v-for="hit in suggestions"
             :key="`${hit.latitude},${hit.longitude},${hit.displayName}`"
+            type="button"
+            class="wiz-pick"
+            role="option"
+            :aria-selected="form.addressQuery === hit.displayName"
+            @click="applySuggestion(hit)"
           >
-            <button
-              type="button"
-              class="suggest-item"
-              role="option"
-              @click="applySuggestion(hit)"
-            >
+            <span class="wiz-pick-main">
               <b>{{ hit.displayName }}</b>
               <small>{{ formatCityStateZip(hit.city, hit.state, hit.postalCode) || 'OpenStreetMap' }}</small>
-            </button>
-          </li>
-        </ul>
-      </div>
+            </span>
+            <span
+              class="wiz-chev"
+              aria-hidden="true"
+            >›</span>
+          </button>
+        </div>
+      </template>
     </template>
 
-    <div class="mt-6 flex gap-3">
-      <button
-        v-if="stepIndex > 0"
-        type="button"
-        class="btn-ghost flex-1"
-        @click="back"
-      >
-        Back
-      </button>
+    <div
+      v-if="step !== 'type'"
+      class="wiz-actions"
+    >
       <button
         type="button"
-        class="btn-dark flex-1"
+        class="wiz-next"
         :disabled="!canAdvance || submitting"
         @click="next"
       >
-        {{ step === 'address' ? (submitting ? 'Saving…' : 'Save location') : 'Continue' }}
+        {{ step === 'address' ? (submitting ? 'Saving…' : 'Save location') : 'Next' }}
       </button>
     </div>
   </section>

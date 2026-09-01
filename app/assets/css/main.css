@@ -2508,28 +2508,6 @@
   .type-swatch.CMA { background: #1d3a57; }
   .type-swatch.ZIM { background: #5b3a9e; }
 
-  .type-grid {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: var(--s2);
-  }
-
-  .type-grid button {
-    min-height: 56px;
-    border-radius: var(--radius-md);
-    border: 1px solid var(--color-line-300);
-    background: #fff;
-    padding: 10px 16px;
-    text-align: left;
-    font-size: var(--text-base);
-  }
-
-  .type-grid button[aria-pressed='true'] {
-    border-color: var(--color-navy-800);
-    background: var(--color-navy-800);
-    color: #fff;
-  }
-
   .suggest-list {
     margin: 10px 0 0;
     padding: 0;
