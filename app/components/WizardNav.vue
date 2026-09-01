@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
- * Wizard chrome: a back affordance on the left, the step name centred, and a
- * hairline of progress underneath. One screen asks one thing, so the title
+ * Wizard chrome: a back affordance on the left, the step name centred, and the
+ * step count kept quiet on the right. One screen asks one thing, so the title
  * carries the question and the body stays free of headings.
  */
 const props = withDefaults(defineProps<{
@@ -17,9 +17,9 @@ const props = withDefaults(defineProps<{
 
 defineEmits<{ back: [] }>()
 
-const percent = computed(() => {
+const count = computed(() => {
   if (!props.steps || props.step === undefined) return null
-  return Math.round(((props.step + 1) / props.steps) * 100)
+  return `${props.step + 1} of ${props.steps}`
 })
 </script>
 
@@ -55,24 +55,15 @@ const percent = computed(() => {
       </h1>
 
       <span class="wiz-nav-end">
-        <slot name="end" />
+        <slot name="end">
+          <span
+            v-if="count"
+            class="wiz-step-count"
+          >{{ count }}</span>
+        </slot>
       </span>
     </div>
 
-    <div
-      v-if="percent !== null"
-      class="wiz-progress"
-      role="progressbar"
-      aria-valuemin="1"
-      :aria-valuenow="(step ?? 0) + 1"
-      :aria-valuemax="steps"
-      :aria-label="`Step ${(step ?? 0) + 1} of ${steps}`"
-    >
-      <span :style="{ width: `${percent}%` }" />
-    </div>
-    <div
-      v-else
-      class="wiz-gap"
-    />
+    <div class="wiz-gap" />
   </div>
 </template>

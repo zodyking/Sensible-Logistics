@@ -1875,17 +1875,11 @@
     color: var(--color-blue-500);
   }
 
-  .wiz-progress {
-    height: 2px;
-    background: var(--color-line-200);
-    margin: 0 calc(-1 * var(--s4)) var(--s5);
-  }
-
-  .wiz-progress span {
-    display: block;
-    height: 100%;
-    background: var(--color-blue-500);
-    transition: width 0.2s ease;
+  .wiz-step-count {
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: var(--color-ink-400);
+    white-space: nowrap;
   }
 
   .wiz-gap {
