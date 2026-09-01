@@ -160,22 +160,20 @@
   .d-app {
     display: flex;
     flex-direction: column;
-    height: 100dvh;
-    max-height: 100dvh;
+    min-height: 100dvh;
     width: 100%;
   }
 
   .d-shell {
-    flex: 1 1 auto;
+    flex: 1 0 auto;
     min-width: 0;
-    min-height: 0;
     width: 100%;
     max-width: 520px;
     margin: 0 auto;
     padding-top: var(--s4);
-    padding-bottom: var(--s4);
+    /* Clears the tab bar, which is pinned to the viewport rather than the page. */
+    padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + var(--s4));
     overflow-x: hidden;
-    overflow-y: auto;
   }
 
   .d-topbar {
@@ -1438,7 +1436,10 @@
 
   /* --- Bottom tab bar --- */
   .tabbar {
-    position: relative;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
     z-index: 200;
     flex-shrink: 0;
     width: 100%;
@@ -5251,13 +5252,13 @@ textarea {
   font-size: max(16px, var(--text-lg));
 }
 
-/* Driver chrome: column fills the viewport; page content scrolls in
-   .d-shell so the tab bar stays put without covering the compose card. */
+/* Driver chrome: the document itself scrolls and the tab bar is pinned to the
+   viewport. A nested scroller sized in dvh drifts on mobile, because the
+   browser resizes dvh as the URL bar collapses while a scroll is in flight. */
 .d-app {
   display: flex;
   flex-direction: column;
-  height: 100dvh;
-  max-height: 100dvh;
+  min-height: 100dvh;
 }
 
 .d-topbar {
@@ -5267,7 +5268,10 @@ textarea {
 }
 
 .tabbar {
-  position: relative;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
   flex-shrink: 0;
 }
 
