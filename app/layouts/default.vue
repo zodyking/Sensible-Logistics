@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
- * Driver operational shell — brand bar, scrolling 520px column, five-tab bar
- * locked to the bottom of the viewport: Home, Trips, Tasks (FAB), Containers, More.
+ * Driver operational shell — brand bar, scrolling column, and a tab bar
+ * teleported to the document body so it stays locked to the viewport.
  */
 const route = useRoute()
 const { user } = useUserSession()
@@ -54,53 +54,55 @@ const tabs: Array<{
       <slot />
     </div>
 
-    <nav
-      class="tabbar"
-      aria-label="Driver navigation"
-    >
-      <NuxtLink
-        v-for="tab in tabs"
-        :key="tab.to"
-        :to="tab.to"
-        class="tab"
-        :class="{ 'on': tab.match(route.path), 'tab-time': tab.fab }"
-        :aria-current="tab.match(route.path) ? 'page' : undefined"
+    <Teleport to="body">
+      <nav
+        class="tabbar"
+        aria-label="Driver navigation"
       >
-        <span
-          v-if="tab.fab"
-          class="time-fab"
-          aria-hidden="true"
+        <NuxtLink
+          v-for="tab in tabs"
+          :key="tab.to"
+          :to="tab.to"
+          class="tab"
+          :class="{ 'on': tab.match(route.path), 'tab-time': tab.fab }"
+          :aria-current="tab.match(route.path) ? 'page' : undefined"
         >
-          <svg
-            viewBox="0 0 24 24"
-            width="26"
-            height="26"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
+          <span
+            v-if="tab.fab"
+            class="time-fab"
+            aria-hidden="true"
           >
-            <path d="M9.4 6.4h10.2" />
-            <path d="M9.4 12h10.2" />
-            <path d="M9.4 17.6h10.2" />
-            <path d="M4.4 6.4l1.35 1.35 2.3-2.7" />
-            <path d="M4.4 12l1.35 1.35 2.3-2.7" />
-            <path d="M4.4 17.6l1.35 1.35 2.3-2.7" />
-          </svg>
-        </span>
-        <span
-          v-else
-          class="t-ico"
-          aria-hidden="true"
-        >
-          <TabIcon
-            v-if="tab.icon"
-            :name="tab.icon"
-          />
-        </span>
-        {{ tab.label }}
-      </NuxtLink>
-    </nav>
+            <svg
+              viewBox="0 0 24 24"
+              width="26"
+              height="26"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M9.4 6.4h10.2" />
+              <path d="M9.4 12h10.2" />
+              <path d="M9.4 17.6h10.2" />
+              <path d="M4.4 6.4l1.35 1.35 2.3-2.7" />
+              <path d="M4.4 12l1.35 1.35 2.3-2.7" />
+              <path d="M4.4 17.6l1.35 1.35 2.3-2.7" />
+            </svg>
+          </span>
+          <span
+            v-else
+            class="t-ico"
+            aria-hidden="true"
+          >
+            <TabIcon
+              v-if="tab.icon"
+              :name="tab.icon"
+            />
+          </span>
+          {{ tab.label }}
+        </NuxtLink>
+      </nav>
+    </Teleport>
   </div>
 </template>

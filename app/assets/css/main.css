@@ -95,7 +95,6 @@
 
   #__nuxt {
     min-height: 100%;
-    height: 100%;
   }
 
   body {
@@ -1440,16 +1439,13 @@
   }
 
   /* --- Bottom tab bar --- */
+  /* Visuals only. Viewport lock lives in the unlayered rule at the file end —
+     do not place this bar with sticky, relative, or a dvh-tall column. */
   .tabbar {
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
     z-index: 200;
-    flex-shrink: 0;
     width: 100%;
-    height: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
-    padding-bottom: env(safe-area-inset-bottom);
+    height: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px));
+    padding-bottom: env(safe-area-inset-bottom, 0px);
     background: #fff;
     border-top: 1px solid var(--color-line-200);
     display: flex;
@@ -5394,27 +5390,18 @@ textarea {
   font-size: max(16px, var(--text-lg));
 }
 
-/* Driver chrome: the document itself scrolls and the tab bar is pinned to the
-   viewport. A nested scroller sized in dvh drifts on mobile, because the
-   browser resizes dvh as the URL bar collapses while a scroll is in flight. */
-.d-app {
-  display: flex;
-  flex-direction: column;
-  min-height: 100dvh;
-}
-
-.d-topbar {
-  position: sticky;
-  top: 0;
-  flex-shrink: 0;
-}
-
+/* Driver tab bar: locked to the viewport. Teleported to body. Never sticky,
+   never relative, never a child of a 100dvh scroller. */
 .tabbar {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  flex-shrink: 0;
+  position: fixed !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  top: auto !important;
+  z-index: 200 !important;
+  width: 100% !important;
+  margin: 0 !important;
+  transform: none !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
