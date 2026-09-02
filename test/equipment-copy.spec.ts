@@ -35,11 +35,19 @@ describe('chassisCopyParts', () => {
 })
 
 describe('sealCopyParts', () => {
-  it('keeps a mixed seal together and splits letters from digits before a dash', () => {
+  it('keeps a mixed seal together and splits letters from digits', () => {
     expect(sealCopyParts('AB12-99')).toEqual([
       { key: 'full', label: 'Full', value: 'AB12-99' },
       { key: 'letters', label: 'Letters', value: 'AB' },
-      { key: 'digits', label: 'Digits', value: '12' },
+      { key: 'digits', label: 'Digits', value: '1299' },
+    ])
+  })
+
+  it('splits a dashed seal into letters and the digit run', () => {
+    expect(sealCopyParts('SEAL-998877')).toEqual([
+      { key: 'full', label: 'Full', value: 'SEAL-998877' },
+      { key: 'letters', label: 'Letters', value: 'SEAL' },
+      { key: 'digits', label: 'Digits', value: '998877' },
     ])
   })
 

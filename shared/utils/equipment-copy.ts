@@ -14,9 +14,8 @@ export type EquipmentCopyPart = {
   value: string
 }
 
-function digitsBeforeDash(raw: string): string {
-  const head = raw.includes('-') ? raw.slice(0, raw.lastIndexOf('-')) : raw
-  return head.replace(/\D/g, '')
+function digitsOnly(raw: string): string {
+  return raw.replace(/\D/g, '')
 }
 
 function lettersOnly(raw: string): string {
@@ -67,7 +66,7 @@ export function chassisCopyParts(input: string | null | undefined): EquipmentCop
 }
 
 /**
- * Seal: Full string, letters only, and digits up to a dash when one is painted.
+ * Seal: Full string, letters only, and digits only.
  */
 export function sealCopyParts(input: string | null | undefined): EquipmentCopyPart[] {
   const raw = (input ?? '').trim()
@@ -75,7 +74,7 @@ export function sealCopyParts(input: string | null | undefined): EquipmentCopyPa
   return uniqueParts([
     { key: 'full', label: 'Full', value: raw },
     { key: 'letters', label: 'Letters', value: lettersOnly(raw) },
-    { key: 'digits', label: 'Digits', value: digitsBeforeDash(raw) },
+    { key: 'digits', label: 'Digits', value: digitsOnly(raw) },
   ])
 }
 
