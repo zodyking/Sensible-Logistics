@@ -5600,6 +5600,46 @@ textarea {
   transform: none;
 }
 
+.yard-view {
+  position: relative;
+  width: 100%;
+  height: min(72vh, 740px);
+  min-height: 320px;
+  background: #e8e4dc;
+  border: 1px solid var(--color-line-200);
+  border-radius: 14px;
+  overflow: hidden;
+  touch-action: none;
+}
+
+.yard-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.1rem;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.yard-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8125rem;
+  color: var(--color-ink-700);
+}
+
+.yard-hint {
+  font-size: 0.75rem;
+  color: var(--color-ink-500);
+}
+
+@media (max-width: 640px) {
+  .yard-view {
+    height: min(62vh, 560px);
+    min-height: 280px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
