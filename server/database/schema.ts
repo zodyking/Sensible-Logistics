@@ -40,6 +40,13 @@ export interface GeoJsonPolygon {
   coordinates: [number, number][][]
 }
 
+/** GeoJSON geometry stored on generated yard features. */
+export type GeoJsonGeometry
+  = | GeoJsonPolygon
+    | { type: 'MultiPolygon', coordinates: [number, number][][][] }
+    | { type: 'LineString', coordinates: [number, number][] }
+    | { type: 'MultiLineString', coordinates: [number, number][][] }
+
 const utc = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' })
 
 /* ============================================================
@@ -146,6 +153,28 @@ export const yardObjectTypeEnum = pgEnum('yard_object_type', [
   'RESTRICTED',
   'PARKING',
 ])
+
+export const yardLayoutStatusEnum = pgEnum('yard_layout_status', [
+  'PENDING',
+  'GENERATING',
+  'READY',
+  'FAILED',
+])
+
+export const yardFeatureTypeEnum = pgEnum('yard_feature_type', [
+  'PAVEMENT',
+  'BUILDING',
+  'ROAD',
+  'DRIVEWAY',
+  'RAIL',
+  'FENCE',
+  'GATE',
+  'VEGETATION',
+])
+
+export const yardFeatureSourceEnum = pgEnum('yard_feature_source', ['OSM', 'ORTHO', 'MANUAL'])
+
+export const yardAssetTypeEnum = pgEnum('yard_asset_type', ['CHASSIS'])
 
 export const documentCategoryEnum = pgEnum('document_category', [
   'EIR',
@@ -394,14 +423,22 @@ export const yardLayouts = pgTable('yard_layouts', {
   version: integer('version').notNull().default(1),
   name: text('name'),
   isCurrent: boolean('is_current').notNull().default(true),
-  /** Yard-plane extents in local units. */
+  /** Yard-plane extents in local metres. */
   planeWidth: real('plane_width').notNull().default(1000),
   planeHeight: real('plane_height').notNull().default(700),
   /** Affine transform between the geographic boundary and the local plane. */
   geoTransform: jsonb('geo_transform').$type<Record<string, number>>(),
   supportsStacking: boolean('supports_stacking').notNull().default(false),
+  boundary: jsonb('boundary').$type<GeoJsonPolygon>(),
+  originLng: real('origin_lng'),
+  originLat: real('origin_lat'),
+  rotationDeg: real('rotation_deg').notNull().default(0),
+  status: yardLayoutStatusEnum('status').notNull().default('PENDING'),
+  generatorVersion: text('generator_version'),
+  errorMessage: text('error_message'),
   createdByUserId: uuid('created_by_user_id'),
   createdAt: utc('created_at').notNull().defaultNow(),
+  updatedAt: utc('updated_at').notNull().defaultNow(),
 }, t => [
   index('yard_layouts_location_idx').on(t.locationId),
   uniqueIndex('yard_layouts_location_version_key').on(t.locationId, t.version),
@@ -423,6 +460,58 @@ export const yardObjects = pgTable('yard_objects', {
   style: jsonb('style').$type<Record<string, unknown>>(),
   createdAt: utc('created_at').notNull().defaultNow(),
 }, t => [index('yard_objects_layout_idx').on(t.layoutId)])
+
+export const yardFeatures = pgTable('yard_features', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  companyId: uuid('company_id').notNull().references(() => companies.id, { onDelete: 'cascade' }),
+  layoutId: uuid('layout_id').notNull().references(() => yardLayouts.id, { onDelete: 'cascade' }),
+  type: yardFeatureTypeEnum('type').notNull(),
+  localGeometry: jsonb('local_geometry').$type<GeoJsonGeometry>().notNull(),
+  geoGeometry: jsonb('geo_geometry').$type<GeoJsonGeometry>().notNull(),
+  source: yardFeatureSourceEnum('source').notNull().default('OSM'),
+  confidence: real('confidence').notNull().default(1),
+  manuallyModified: boolean('manually_modified').notNull().default(false),
+  createdAt: utc('created_at').notNull().defaultNow(),
+  updatedAt: utc('updated_at').notNull().defaultNow(),
+}, t => [
+  index('yard_features_layout_idx').on(t.layoutId),
+  index('yard_features_layout_type_idx').on(t.layoutId, t.type),
+])
+
+export const yardSlots = pgTable('yard_slots', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  companyId: uuid('company_id').notNull().references(() => companies.id, { onDelete: 'cascade' }),
+  layoutId: uuid('layout_id').notNull().references(() => yardLayouts.id, { onDelete: 'cascade' }),
+  code: text('code').notNull(),
+  type: text('type').notNull().default('CONTAINER'),
+  x: real('x').notNull(),
+  y: real('y').notNull(),
+  width: real('width').notNull(),
+  height: real('height').notNull(),
+  rotation: real('rotation').notNull().default(0),
+  manuallyModified: boolean('manually_modified').notNull().default(false),
+  createdAt: utc('created_at').notNull().defaultNow(),
+}, t => [
+  index('yard_slots_layout_idx').on(t.layoutId),
+  uniqueIndex('yard_slots_layout_code_key').on(t.layoutId, t.code),
+])
+
+export const yardAssetPositions = pgTable('yard_asset_positions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  companyId: uuid('company_id').notNull().references(() => companies.id, { onDelete: 'cascade' }),
+  layoutId: uuid('layout_id').notNull().references(() => yardLayouts.id, { onDelete: 'cascade' }),
+  assetType: yardAssetTypeEnum('asset_type').notNull(),
+  assetId: uuid('asset_id').notNull(),
+  x: real('x').notNull(),
+  y: real('y').notNull(),
+  rotation: real('rotation').notNull().default(0),
+  slotId: uuid('slot_id').references(() => yardSlots.id, { onDelete: 'set null' }),
+  updatedAt: utc('updated_at').notNull().defaultNow(),
+  createdAt: utc('created_at').notNull().defaultNow(),
+}, t => [
+  index('yard_asset_positions_layout_idx').on(t.layoutId),
+  uniqueIndex('yard_asset_positions_layout_asset_key').on(t.layoutId, t.assetType, t.assetId),
+])
 
 /* ============================================================
    Equipment
@@ -918,6 +1007,10 @@ export type CompanyMembership = typeof companyMemberships.$inferSelect
 export type Driver = typeof drivers.$inferSelect
 export type Truck = typeof trucks.$inferSelect
 export type Location = typeof locations.$inferSelect
+export type YardLayout = typeof yardLayouts.$inferSelect
+export type YardFeature = typeof yardFeatures.$inferSelect
+export type YardSlot = typeof yardSlots.$inferSelect
+export type YardAssetPosition = typeof yardAssetPositions.$inferSelect
 export type Container = typeof containers.$inferSelect
 export type Chassis = typeof chassis.$inferSelect
 export type Trip = typeof trips.$inferSelect

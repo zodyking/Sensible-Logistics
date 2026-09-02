@@ -150,6 +150,13 @@ async function confirmDelete() {
       >
         Add Equipment
       </NuxtLink>
+      <NuxtLink
+        v-if="!data.location.isUncategorized"
+        :to="`/locations/${locationId}/yard`"
+        class="btn-ghost mt-2 w-full"
+      >
+        Yard
+      </NuxtLink>
 
       <div class="section-label mt-6">
         <span>On site · {{ data.occupancy }}</span>
@@ -221,6 +228,14 @@ async function confirmDelete() {
         title="Location"
         @close="menuOpen = false"
       >
+        <button
+          v-if="!data.location.isUncategorized"
+          type="button"
+          class="menu-row"
+          @click="menuOpen = false; navigateTo(`/locations/${locationId}/yard`)"
+        >
+          Yard
+        </button>
         <button
           type="button"
           class="menu-row"

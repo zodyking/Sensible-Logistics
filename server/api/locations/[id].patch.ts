@@ -7,12 +7,18 @@ import { normalizeHeading } from '#shared/utils/geo'
 import { LOCATION_TYPES } from '#shared/utils/domain'
 import { isValidPhone, toE164 } from '#shared/utils/phone'
 
+const polygonSchema = z.object({
+  type: z.literal('Polygon'),
+  coordinates: z.array(z.array(z.tuple([z.number(), z.number()]))).min(1),
+})
+
 const usPhone = z.string().trim().max(40).nullish().refine(
   value => !value || isValidPhone(value),
   'Enter a 10-digit United States phone number.',
 )
 
 const schema = z.object({
+  boundary: polygonSchema.optional(),
   mapHeading: z.coerce.number().optional(),
   name: z.string().trim().min(1, 'Give the location a name.').max(160).optional(),
   type: z.enum(LOCATION_TYPES).optional(),
@@ -70,6 +76,7 @@ export default defineEventHandler(async (event) => {
       ...(body.mainPhone !== undefined ? { mainPhone: body.mainPhone ? toE164(body.mainPhone) : null } : {}),
       ...(body.contactName !== undefined ? { contactName: body.contactName ?? null } : {}),
       ...(body.contactPhone !== undefined ? { contactPhone: body.contactPhone ? toE164(body.contactPhone) : null } : {}),
+      ...(body.boundary !== undefined ? { boundary: body.boundary } : {}),
       normalizedAddress: normalizeAddress(nextAddress),
       updatedAt: new Date(),
     })
