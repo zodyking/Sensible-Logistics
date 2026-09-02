@@ -1173,11 +1173,7 @@ async function loadSwapSourceTrip(
     throw createError({ statusCode: 409, statusMessage: 'A swap starts from an empty inbound to a customer.' })
   }
   if (!source.destinationLocationId) {
-    throw createError({ statusCode: 409, statusMessage: 'Set a customer destination before swapping.' })
-  }
-  const destination = await loadLocation(tx, auth.companyId, source.destinationLocationId)
-  if (destination.type !== 'CUSTOMER') {
-    throw createError({ statusCode: 409, statusMessage: 'Swap is only available when heading to a customer location.' })
+    throw createError({ statusCode: 409, statusMessage: 'Set a drop-off on this trip before swapping.' })
   }
   if (originLocationId !== source.destinationLocationId) {
     const destIds = await locationIdsAtSameAddress(tx, auth.companyId, source.destinationLocationId)
