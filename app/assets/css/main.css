@@ -723,9 +723,121 @@
     text-align: center;
   }
 
-  .trip-cno a {
+  .trip-cno a,
+  .trip-cno .copy-mark-btn {
     color: inherit;
     text-decoration: none;
+    font: inherit;
+    letter-spacing: inherit;
+  }
+
+  .trip-cno .copy-mark-btn {
+    box-shadow: inset 0 -2px 0 rgb(47 111 167 / 0.28);
+  }
+
+  .copy-mark {
+    position: relative;
+    display: inline-block;
+    max-width: 100%;
+  }
+
+  .copy-mark-btn {
+    appearance: none;
+    background: none;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    max-width: 100%;
+    min-height: 44px;
+    text-align: inherit;
+    color: inherit;
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+  }
+
+  .copy-mark-btn:focus-visible {
+    outline: 3px solid var(--color-blue-400);
+    outline-offset: 2px;
+  }
+
+  .copy-mark-static {
+    display: inline-block;
+  }
+
+  .copy-mark-toast {
+    position: absolute;
+    left: 50%;
+    top: calc(100% + 4px);
+    transform: translateX(-50%);
+    z-index: 5;
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: var(--color-navy-800);
+    color: #fff;
+    font-family: var(--font-body);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+  }
+
+  .copy-mark-toast.err {
+    background: var(--color-err-600);
+  }
+
+  .trip-fact .copy-mark-btn {
+    box-shadow: inset 0 -1px 0 rgb(47 111 167 / 0.28);
+  }
+
+  .trip-fact .copy-mark-toast {
+    left: 0;
+    transform: none;
+  }
+
+  .copy-mark-menu {
+    z-index: 260;
+    background: #fff;
+    border: 1px solid var(--color-line-200);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-2);
+    padding: 6px;
+  }
+
+  .copy-mark-opt {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--s3);
+    width: 100%;
+    min-height: 44px;
+    padding: 8px 10px;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: none;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .copy-mark-opt:hover,
+  .copy-mark-opt:focus-visible {
+    background: var(--color-blue-50);
+  }
+
+  .copy-mark-opt small {
+    flex-shrink: 0;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--color-ink-400);
+  }
+
+  .copy-mark-opt b {
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--color-navy-800);
+    letter-spacing: 0.03em;
   }
 
   .trip-card-head-idle .trip-cno,
@@ -756,7 +868,9 @@
     margin-bottom: 2px;
   }
 
-  .trip-fact b {
+  .trip-fact b,
+  .trip-fact .copy-mark-btn,
+  .trip-fact .copy-mark-static {
     display: block;
     font-size: var(--text-sm);
     font-weight: 600;
