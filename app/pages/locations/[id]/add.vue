@@ -38,12 +38,12 @@ const STEP_TITLES: Record<Step, string> = {
   confirm: 'Confirm',
 }
 
-const kind = ref<TripKind>('CONTAINER')
+const kind = ref<TripKind | null>(null)
 const rawNumber = ref('')
 const chassisNumber = ref('')
-const containerType = ref<ContainerType>('TROPICAL')
-const equipmentType = ref<EquipmentType>('DRY_40')
-const isLoaded = ref(true)
+const containerType = ref<ContainerType | null>(null)
+const equipmentType = ref<EquipmentType | null>(null)
+const isLoaded = ref<boolean | null>(null)
 const submitting = ref(false)
 const errorMessage = ref('')
 const capturedPhoto = ref('')
@@ -134,26 +134,35 @@ const blocked = computed(() => {
 const canAdvance = computed(() => {
   switch (step.value) {
     case 'kind':
-      return true
+      return kind.value === 'CONTAINER' || kind.value === 'BARE_CHASSIS'
     case 'equipment':
       if (kind.value === 'BARE_CHASSIS') {
         return chassisOk.value && !readingPhoto.value
       }
       return validation.value.structureValid
         && chassisOk.value
+        && isLoaded.value !== null
         && !blocked.value
         && !resolving.value
         && Boolean(resolution.value)
         && !readingPhoto.value
     case 'containerType':
+      return Boolean(containerType.value)
     case 'equipmentType':
+      return Boolean(equipmentType.value)
     case 'confirm':
-      return true
+      if (kind.value === 'BARE_CHASSIS') return true
+      return Boolean(containerType.value) && Boolean(equipmentType.value) && isLoaded.value !== null
   }
   return false
 })
 
 function chooseKind(nextKind: TripKind) {
+  if (kind.value !== nextKind) {
+    containerType.value = null
+    equipmentType.value = null
+    isLoaded.value = null
+  }
   kind.value = nextKind
   void next()
 }
@@ -213,6 +222,10 @@ async function confirm() {
       })
     }
     else {
+      if (!containerType.value || !equipmentType.value || isLoaded.value === null) {
+        errorMessage.value = 'Choose container type, size, and empty or load.'
+        return
+      }
       await $fetch(`/api/locations/${locationId.value}/containers`, {
         method: 'POST',
         body: {
@@ -353,7 +366,7 @@ async function onPhoto(dataUrl: string) {
               :size="60"
             />
           </span>
-          <b>{{ TRIP_KIND_LABELS[kind] }}</b>
+          <b>{{ kind ? TRIP_KIND_LABELS[kind] : '' }}</b>
         </div>
 
         <template v-if="kind === 'CONTAINER'">
@@ -379,7 +392,7 @@ async function onPhoto(dataUrl: string) {
               <button
                 type="button"
                 class="wiz-status-btn"
-                :aria-pressed="!isLoaded"
+                :aria-pressed="isLoaded === false"
                 @click="isLoaded = false"
               >
                 <span
@@ -391,7 +404,7 @@ async function onPhoto(dataUrl: string) {
               <button
                 type="button"
                 class="wiz-status-btn"
-                :aria-pressed="isLoaded"
+                :aria-pressed="isLoaded === true"
                 @click="isLoaded = true"
               >
                 <span
@@ -560,9 +573,9 @@ async function onPhoto(dataUrl: string) {
         >
           <span class="wiz-row-label">Box</span>
           <span class="flex-1 text-[var(--color-ink-700)]">
-            {{ CONTAINER_TYPE_LABELS[containerType] }}
-            · {{ pickupEquipmentSizeLabel(equipmentType) }}
-            · {{ isLoaded ? 'Loaded' : 'Empty' }}
+            {{ containerType ? CONTAINER_TYPE_LABELS[containerType] : '—' }}
+            · {{ equipmentType ? pickupEquipmentSizeLabel(equipmentType) : '—' }}
+            · {{ isLoaded === true ? 'Loaded' : 'Empty' }}
           </span>
         </div>
         <div
@@ -587,7 +600,7 @@ async function onPhoto(dataUrl: string) {
         v-if="step === 'confirm'"
         type="button"
         class="wiz-next"
-        :disabled="submitting"
+        :disabled="submitting || !canAdvance"
         @click="confirm"
       >
         {{ submitting ? 'Saving…' : 'Save equipment' }}

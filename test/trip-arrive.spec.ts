@@ -66,4 +66,18 @@ describe('describeArrival', () => {
       retainChassis: false,
     })).toBe('The chassis is parked here. This trip ends.')
   })
+
+  it('does not assume chassis stay or unhook before the driver chooses', () => {
+    expect(describeArrival({
+      kind: 'CONTAINER',
+      locationType: 'COMPANY_YARD',
+      hasChassis: true,
+    })).toBe('Yard stop. The container stays here. This trip ends.')
+
+    expect(describeArrival({
+      kind: 'BARE_CHASSIS',
+      hasChassis: true,
+      retainChassis: null,
+    })).toBe('This trip ends here.')
+  })
 })
