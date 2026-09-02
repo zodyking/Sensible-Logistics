@@ -40,6 +40,7 @@ export default defineEventHandler(async (event) => {
       createdAt: containerEvents.createdAt,
       source: containerEvents.source,
       notes: containerEvents.notes,
+      payload: containerEvents.payload,
       tripId: containerEvents.tripId,
       locationName: locations.name,
       locationType: locations.type,
@@ -60,7 +61,10 @@ export default defineEventHandler(async (event) => {
     .orderBy(desc(containerEvents.occurredAt), desc(containerEvents.createdAt))
     .limit(400)
 
-  const timeline = sliceCurrentServiceLife(events)
+  const timeline = sliceCurrentServiceLife(events).map(entry => ({
+    ...entry,
+    chassisNumber: record!.number,
+  }))
 
   return {
     chassis: record,

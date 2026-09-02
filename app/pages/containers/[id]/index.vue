@@ -6,6 +6,7 @@ import {
   EQUIPMENT_TYPE_SHORT,
 } from '#shared/utils/domain'
 import { formatChassisNumber, formatContainerNumber } from '#shared/utils/iso6346'
+import { visibleTimelineEntries } from '#shared/utils/timeline'
 
 const route = useRoute()
 const { user } = useUserSession()
@@ -75,15 +76,16 @@ const flags = computed(() => {
 
 const serviceCaption = computed(() => {
   const life = data.value?.serviceLife
-  if (!life) return 'Pickups and drop-offs for the current service life.'
+  if (!life) return 'Pickups, drop-offs, and chassis changes for the current service life.'
   if (life.status === 'COMPLETE' && life.completedAt) {
     return `Service life complete · returned ${formatDateTime(life.completedAt)}`
   }
   if (life.startedAt) {
     return `Open service life · started ${formatDateTime(life.startedAt)}`
   }
-  return 'Pickups and drop-offs for the current service life.'
+  return 'Pickups, drop-offs, and chassis changes for the current service life.'
 })
+const timeline = computed(() => visibleTimelineEntries(data.value?.timeline ?? []))
 </script>
 
 <template>
@@ -195,15 +197,15 @@ const serviceCaption = computed(() => {
         </p>
 
         <EventTimeline
-          v-if="data.timeline.length"
-          kind="service"
-          :entries="data.timeline"
+          v-if="timeline.length"
+          subject="container"
+          :entries="timeline"
         />
         <EmptyState
           v-else
           glyph="⇄"
-          title="No pickups or drop-offs yet"
-          description="This record only lists pickups and drop-offs for the current service life — from a Marine Terminal or Rail Yard origin until return to a terminal."
+          title="No pickups, drop-offs, or chassis changes yet"
+          description="This record lists pickups, drop-offs, and chassis hang or unhang for the current service life."
         />
 
         <div

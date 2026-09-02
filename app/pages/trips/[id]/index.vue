@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { formatContainerNumber } from '#shared/utils/iso6346'
 import { tripSmsAction } from '#shared/utils/trip-sms'
+import { visibleTimelineEntries } from '#shared/utils/timeline'
 
 const route = useRoute()
 const tripId = computed(() => String(route.params.id))
@@ -18,6 +19,7 @@ const durationLabel = computed(() => formatDurationBetween(pickupStamp.value, dr
 const smsOpen = ref(false)
 const contactsOpen = ref(false)
 const canSendSms = computed(() => Boolean(tripSmsAction(data.value?.trip.status)))
+const timeline = computed(() => visibleTimelineEntries(data.value?.timeline ?? []))
 </script>
 
 <template>
@@ -168,16 +170,16 @@ const canSendSms = computed(() => Boolean(tripSmsAction(data.value?.trip.status)
       </div>
 
       <div
-        v-if="data.timeline.length"
+        v-if="timeline.length"
         class="card"
       >
-        <EventTimeline :entries="data.timeline" />
+        <EventTimeline :entries="timeline" />
       </div>
 
       <EmptyState
         v-else
         glyph="⇄"
-        title="No events yet"
+        title="No pickups, drop-offs, or chassis changes yet"
       />
 
       <TripSmsSheet

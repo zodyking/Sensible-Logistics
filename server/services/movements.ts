@@ -440,6 +440,14 @@ export async function confirmPickup(
         .update(chassisTable)
         .set({ currentContainerId: trip.containerId, status: 'IN_USE', updatedAt: now })
         .where(and(eq(chassisTable.id, chassisId), eq(chassisTable.companyId, auth.companyId)))
+      await recordChassisHang(tx, auth, {
+        containerId: trip.containerId,
+        chassisId,
+        tripId: trip.id,
+        locationId: trip.originLocationId,
+        kind: 'ATTACH',
+        now,
+      })
     }
 
     // The pickup vacates the origin slot, so any live placement is closed out.
@@ -822,6 +830,14 @@ export async function completeDropoff(
             updatedAt: now,
           })
           .where(and(eq(chassisTable.id, trip.chassisId), eq(chassisTable.companyId, auth.companyId)))
+        await recordChassisHang(tx, auth, {
+          containerId: trip.containerId,
+          chassisId: trip.chassisId,
+          tripId: trip.id,
+          locationId: input.destinationLocationId,
+          kind: 'DETACH',
+          now,
+        })
       }
     }
 
@@ -1078,6 +1094,14 @@ export async function attachContainerToTrip(
       .update(chassisTable)
       .set({ currentContainerId: claim.container.id, status: 'IN_USE', updatedAt: now })
       .where(and(eq(chassisTable.id, trip.chassisId), eq(chassisTable.companyId, auth.companyId)))
+    await recordChassisHang(tx, auth, {
+      containerId: claim.container.id,
+      chassisId: trip.chassisId,
+      tripId: trip.id,
+      locationId: trip.originLocationId,
+      kind: 'ATTACH',
+      now,
+    })
 
     const [updatedTrip] = await tx
       .update(trips)
@@ -1315,4 +1339,30 @@ async function assertChassisAvailable(
       },
     })
   }
+}
+
+async function recordChassisHang(
+  tx: DbExecutor,
+  auth: AuthContext,
+  input: {
+    containerId: string | null
+    chassisId: string
+    tripId?: string | null
+    locationId?: string | null
+    kind: 'ATTACH' | 'DETACH'
+    now: Date
+  },
+): Promise<void> {
+  await recordEvent(tx, {
+    id: crypto.randomUUID(),
+    companyId: auth.companyId,
+    containerId: input.containerId,
+    eventType: input.kind === 'ATTACH' ? 'CHASSIS_ATTACH' : 'CHASSIS_DETACH',
+    occurredAt: input.now,
+    actorUserId: auth.userId,
+    actorDriverId: auth.driverId,
+    tripId: input.tripId ?? null,
+    locationId: input.locationId ?? null,
+    chassisId: input.chassisId,
+  })
 }
