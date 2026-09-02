@@ -1,8 +1,12 @@
 <script setup lang="ts">
-import { EVENT_GLYPH, EVENT_TYPE_LABELS } from '#shared/utils/domain'
 import type { EventType, LocationType } from '#shared/utils/domain'
 import { formatChassisNumber, formatContainerNumber } from '#shared/utils/iso6346'
-import { SERVICE_RECORD_LABELS, dropoffCompletesServiceLife, isServiceRecordEvent } from '#shared/utils/service-life'
+import {
+  driverTimelineTitle,
+  timelineNodeKind,
+  timelineNote,
+  visibleTimelineEntries,
+} from '#shared/utils/timeline'
 
 interface TimelineEntry {
   id: string
@@ -18,42 +22,31 @@ interface TimelineEntry {
   containerNumber?: string | null
   actorFirstName?: string | null
   actorLastName?: string | null
+  payload?: Record<string, unknown> | null
 }
 
 const props = withDefaults(defineProps<{
   entries: TimelineEntry[]
-  /** Pickup/drop-off labels for an equipment service record. */
-  kind?: 'service' | 'default'
+  /** Hide the marking that already titles this record. */
+  subject?: 'trip' | 'container' | 'chassis'
 }>(), {
-  kind: 'default',
+  subject: 'trip',
 })
 
-function title(entry: TimelineEntry) {
-  if (props.kind === 'service' && isServiceRecordEvent(entry.eventType)) {
-    return SERVICE_RECORD_LABELS[entry.eventType]
-  }
-  return EVENT_TYPE_LABELS[entry.eventType] ?? entry.eventType
+const rows = computed(() => visibleTimelineEntries(props.entries))
+
+function actorName(entry: TimelineEntry) {
+  return [entry.actorFirstName, entry.actorLastName].filter(Boolean).join(' ')
 }
 
-/** Immutable history reads newest-first; the rail marks the first and last. */
-function nodeClass(entry: TimelineEntry, index: number) {
-  if (entry.eventType === 'DROPOFF_CONFIRMED' && dropoffCompletesServiceLife(entry.locationType)) return 'final'
-  if (entry.eventType === 'RELEASED' || (entry.eventType === 'DROPOFF_CONFIRMED' && props.kind !== 'service')) return 'final'
-  if (entry.eventType === 'DAMAGE_REPORTED' || entry.eventType === 'PICKUP_CANCELLED') return 'alert'
-  if (index === props.entries.length - 1) return 'start'
-  return ''
+function chassisLabel(entry: TimelineEntry) {
+  if (!entry.chassisNumber) return ''
+  return formatChassisNumber(entry.chassisNumber) || entry.chassisNumber
 }
 
-function meta(entry: TimelineEntry) {
-  const actor = [entry.actorFirstName, entry.actorLastName].filter(Boolean).join(' ')
-  return [
-    formatDateTime(entry.occurredAt),
-    entry.locationName,
-    actor || null,
-    entry.chassisNumber ? `Chassis ${formatChassisNumber(entry.chassisNumber) || entry.chassisNumber}` : null,
-    entry.containerNumber ? formatContainerNumber(entry.containerNumber) || entry.containerNumber : null,
-    entry.tripReference,
-  ].filter(Boolean).join(' · ')
+function containerLabel(entry: TimelineEntry) {
+  if (!entry.containerNumber) return ''
+  return formatContainerNumber(entry.containerNumber) || entry.containerNumber
 }
 
 /** Delayed entry stays visible rather than being hidden behind occurredAt. */
@@ -66,33 +59,74 @@ function isDelayed(entry: TimelineEntry) {
 </script>
 
 <template>
-  <ol class="timeline list-none">
+  <p
+    v-if="!rows.length"
+    class="tl-empty"
+  >
+    No pickups, drop-offs, or chassis changes yet.
+  </p>
+  <ol
+    v-else
+    class="timeline list-none"
+  >
     <li
-      v-for="(entry, index) in entries"
+      v-for="entry in rows"
       :key="entry.id"
       class="tl-item"
     >
       <span
         class="tl-node"
-        :class="nodeClass(entry, index)"
+        :class="timelineNodeKind(entry.eventType)"
         aria-hidden="true"
-      >{{ EVENT_GLYPH[entry.eventType] ?? '•' }}</span>
-      <div class="tl-title">
-        {{ title(entry) }}
+      />
+      <div class="tl-body">
+        <div class="tl-title">
+          {{ driverTimelineTitle(entry.eventType) }}
+        </div>
+        <div class="tl-when">
+          {{ formatDateTime(entry.occurredAt) }}
+        </div>
+        <div
+          v-if="entry.locationName"
+          class="tl-line"
+        >
+          {{ entry.locationName }}
+        </div>
+        <div
+          v-if="subject !== 'chassis' && chassisLabel(entry)"
+          class="tl-line mono"
+        >
+          Chassis {{ chassisLabel(entry) }}
+        </div>
+        <div
+          v-if="subject === 'chassis' && containerLabel(entry)"
+          class="tl-line mono"
+        >
+          Container {{ containerLabel(entry) }}
+        </div>
+        <div
+          v-if="subject !== 'trip' && entry.tripReference"
+          class="tl-line"
+        >
+          {{ entry.tripReference }}
+        </div>
+        <div
+          v-if="actorName(entry)"
+          class="tl-line tl-who"
+        >
+          {{ actorName(entry) }}
+        </div>
+        <p
+          v-if="timelineNote(entry.notes)"
+          class="tl-note"
+        >
+          {{ timelineNote(entry.notes) }}
+        </p>
+        <span
+          v-if="isDelayed(entry)"
+          class="chip warn mt-2"
+        >Recorded late</span>
       </div>
-      <div class="tl-meta">
-        {{ meta(entry) }}
-      </div>
-      <p
-        v-if="entry.notes"
-        class="mt-1 text-xs text-[var(--color-ink-700)]"
-      >
-        {{ entry.notes }}
-      </p>
-      <span
-        v-if="isDelayed(entry)"
-        class="chip warn mt-2"
-      >Recorded late</span>
     </li>
   </ol>
 </template>

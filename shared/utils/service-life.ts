@@ -9,22 +9,16 @@
 
 import type { ContainerStatus, EventType, LocationType } from './domain'
 
-/** Pickup / drop-off events that belong on an equipment record. */
+/** Confirmed pickup / drop-off events that belong on an equipment record. */
 export const SERVICE_RECORD_EVENT_TYPES = [
-  'PICKUP_STARTED',
   'PICKUP_CONFIRMED',
-  'PICKUP_CANCELLED',
-  'DROPOFF_STARTED',
   'DROPOFF_CONFIRMED',
 ] as const
 
 export type ServiceRecordEventType = (typeof SERVICE_RECORD_EVENT_TYPES)[number]
 
 export const SERVICE_RECORD_LABELS: Record<ServiceRecordEventType, string> = {
-  PICKUP_STARTED: 'Pickup started',
   PICKUP_CONFIRMED: 'Picked up',
-  PICKUP_CANCELLED: 'Pickup cancelled',
-  DROPOFF_STARTED: 'Drop-off started',
   DROPOFF_CONFIRMED: 'Dropped off',
 }
 
@@ -96,15 +90,24 @@ function occurredTime(value: Date | string): number {
 }
 
 const EVENT_ORDER: Record<ServiceRecordEventType, number> = {
-  PICKUP_STARTED: 0,
-  PICKUP_CONFIRMED: 1,
-  DROPOFF_STARTED: 2,
-  DROPOFF_CONFIRMED: 3,
-  PICKUP_CANCELLED: 4,
+  PICKUP_CONFIRMED: 0,
+  DROPOFF_CONFIRMED: 1,
+}
+
+/** Newest-first rail: movement first, then hang/unhang at the same stamp. */
+const DISPLAY_ORDER: Record<string, number> = {
+  DROPOFF_CONFIRMED: 0,
+  CHASSIS_DETACH: 1,
+  PICKUP_CONFIRMED: 2,
+  CHASSIS_ATTACH: 3,
 }
 
 function eventOrder(eventType: EventType): number {
   return isServiceRecordEvent(eventType) ? EVENT_ORDER[eventType] : 99
+}
+
+function displayOrder(eventType: EventType): number {
+  return DISPLAY_ORDER[eventType] ?? 50
 }
 
 function compareEvents(a: ServiceLifeEvent, b: ServiceLifeEvent): number {
@@ -118,7 +121,11 @@ function compareEvents(a: ServiceLifeEvent, b: ServiceLifeEvent): number {
  */
 export function sliceCurrentServiceLife<T extends ServiceLifeEvent>(events: T[]): T[] {
   const movement = events
-    .filter(event => isServiceRecordEvent(event.eventType))
+    .filter(event =>
+      isServiceRecordEvent(event.eventType)
+      || event.eventType === 'CHASSIS_ATTACH'
+      || event.eventType === 'CHASSIS_DETACH',
+    )
     .slice()
     .sort(compareEvents)
 
@@ -135,25 +142,10 @@ export function sliceCurrentServiceLife<T extends ServiceLifeEvent>(events: T[])
   if (current.length) lives.push(current)
 
   const latest = lives.at(-1) ?? []
-  return collapsePickupPairs(latest).reverse()
-}
-
-/**
- * A confirmed pickup replaces the "started" row for the same trip so the
- * record reads as pickups and drop-offs, not status chatter.
- */
-function collapsePickupPairs<T extends ServiceLifeEvent>(chronological: T[]): T[] {
-  const confirmedTrips = new Set(
-    chronological
-      .filter(event => event.eventType === 'PICKUP_CONFIRMED' && event.tripId)
-      .map(event => event.tripId as string),
-  )
-
-  return chronological.filter(event => !(
-    event.eventType === 'PICKUP_STARTED'
-    && event.tripId
-    && confirmedTrips.has(event.tripId)
-  ))
+  return latest.sort((a, b) => {
+    const byTime = occurredTime(b.occurredAt) - occurredTime(a.occurredAt)
+    return byTime !== 0 ? byTime : displayOrder(a.eventType) - displayOrder(b.eventType)
+  })
 }
 
 export interface ServiceLifeSummary {
@@ -165,6 +157,7 @@ export interface ServiceLifeSummary {
 
 export function summarizeServiceLife(eventsNewestFirst: ServiceLifeEvent[]): ServiceLifeSummary {
   const chronological = eventsNewestFirst
+    .filter(event => event.eventType === 'PICKUP_CONFIRMED' || event.eventType === 'DROPOFF_CONFIRMED')
     .slice()
     .sort(compareEvents)
 

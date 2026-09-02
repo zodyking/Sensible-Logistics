@@ -53,7 +53,8 @@ describe('service-life location rules', () => {
   it('keeps only pickup and drop-off event types on the record', () => {
     expect(isServiceRecordEvent('PICKUP_CONFIRMED')).toBe(true)
     expect(isServiceRecordEvent('DROPOFF_CONFIRMED')).toBe(true)
-    expect(isServiceRecordEvent('PICKUP_CANCELLED')).toBe(true)
+    expect(isServiceRecordEvent('PICKUP_STARTED')).toBe(false)
+    expect(isServiceRecordEvent('PICKUP_CANCELLED')).toBe(false)
     expect(isServiceRecordEvent('ACTIVATED')).toBe(false)
     expect(isServiceRecordEvent('LOADED')).toBe(false)
     expect(isServiceRecordEvent('CHASSIS_ATTACH')).toBe(false)
@@ -64,7 +65,7 @@ describe('service-life location rules', () => {
 })
 
 describe('sliceCurrentServiceLife', () => {
-  it('drops status-style events and hides pickup-started once confirmed', () => {
+  it('drops status-style events including pickup-started', () => {
     const sliced = sliceCurrentServiceLife([
       event('DROPOFF_CONFIRMED', '2026-08-27T18:00:00Z', 'COMPANY_YARD'),
       event('ARRIVED', '2026-08-27T17:55:00Z', 'COMPANY_YARD'),
@@ -78,10 +79,11 @@ describe('sliceCurrentServiceLife', () => {
     expect(sliced.map(item => item.eventType)).toEqual([
       'DROPOFF_CONFIRMED',
       'PICKUP_CONFIRMED',
+      'CHASSIS_ATTACH',
     ])
   })
 
-  it('keeps a cancelled pickup on the open service life', () => {
+  it('drops cancelled pickups from the service record', () => {
     const sliced = sliceCurrentServiceLife([
       event('PICKUP_CANCELLED', '2026-08-27T19:11:00Z', 'COMPANY_YARD', 'trip-b'),
       event('PICKUP_STARTED', '2026-08-27T19:11:00Z', 'COMPANY_YARD', 'trip-b'),
@@ -90,10 +92,24 @@ describe('sliceCurrentServiceLife', () => {
     ])
 
     expect(sliced.map(item => item.eventType)).toEqual([
-      'PICKUP_CANCELLED',
-      'PICKUP_STARTED',
       'DROPOFF_CONFIRMED',
       'PICKUP_CONFIRMED',
+    ])
+  })
+
+  it('keeps chassis hang and unhang on the current service life', () => {
+    const sliced = sliceCurrentServiceLife([
+      event('DROPOFF_CONFIRMED', '2026-08-27T18:00:00Z', 'COMPANY_YARD'),
+      event('CHASSIS_DETACH', '2026-08-27T18:00:00Z', 'COMPANY_YARD'),
+      event('PICKUP_CONFIRMED', '2026-08-27T16:00:00Z', 'MARINE_TERMINAL'),
+      event('CHASSIS_ATTACH', '2026-08-27T16:00:00Z', 'MARINE_TERMINAL'),
+    ])
+
+    expect(sliced.map(item => item.eventType)).toEqual([
+      'DROPOFF_CONFIRMED',
+      'CHASSIS_DETACH',
+      'PICKUP_CONFIRMED',
+      'CHASSIS_ATTACH',
     ])
   })
 

@@ -59,13 +59,16 @@ export default defineEventHandler(async (event) => {
         eventType: containerEvents.eventType,
         occurredAt: containerEvents.occurredAt,
         notes: containerEvents.notes,
+        payload: containerEvents.payload,
         locationName: locations.name,
+        chassisNumber: chassis.number,
         actorFirstName: users.firstName,
         actorLastName: users.lastName,
       })
       .from(containerEvents)
       .leftJoin(locations, eq(locations.id, containerEvents.locationId))
       .leftJoin(users, eq(users.id, containerEvents.actorUserId))
+      .leftJoin(chassis, eq(chassis.id, containerEvents.chassisId))
       .where(and(eq(containerEvents.companyId, auth.companyId), eq(containerEvents.tripId, id)))
       .orderBy(desc(containerEvents.occurredAt))
       .limit(100),
