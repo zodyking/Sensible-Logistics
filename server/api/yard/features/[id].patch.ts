@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
-import { yardFeatures, yardLayouts, type GeoJsonGeometry } from '../../../../database/schema'
-import { assertTenant, requireAuth } from '../../../../utils/session'
+import { yardFeatures, yardLayouts, type GeoJsonGeometry } from '../../../database/schema'
+import { assertTenant, requireAuth } from '../../../utils/session'
 import { geometryToGeo, type YardLayoutOrigin } from '#shared/utils/yard-plan'
 
 const schema = z.object({

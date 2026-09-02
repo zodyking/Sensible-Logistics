@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
-import { yardSlots } from '../../../../database/schema'
-import { assertTenant, requireAuth } from '../../../../utils/session'
+import { yardSlots } from '../../../database/schema'
+import { assertTenant, requireAuth } from '../../../utils/session'
 
 const schema = z.object({
   x: z.number(),
