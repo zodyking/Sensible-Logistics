@@ -126,6 +126,7 @@ const inventoryPending = ref(false)
 const inventoryQuery = ref('')
 
 watch(originLocationId, async (id) => {
+  if (swapMode.value) return
   selectedYardId.value = null
   manualEntry.value = false
   inventoryQuery.value = ''
@@ -141,7 +142,7 @@ watch(originLocationId, async (id) => {
   errorMessage.value = ''
   try {
     const detail = await $fetch(`/api/locations/${id}`)
-    if (detail.containers?.length) originContainers.value = detail.containers
+    originContainers.value = detail.containers ?? []
   }
   catch (error) {
     if (!originContainers.value.length) {
@@ -149,9 +150,7 @@ watch(originLocationId, async (id) => {
     }
   }
   try {
-    inventory.value = await $fetch(`/api/locations/${id}/inventory`, {
-      query: swapMode.value ? { sameAddress: '1' } : undefined,
-    })
+    inventory.value = await $fetch(`/api/locations/${id}/inventory`)
     if (!originContainers.value.length && inventory.value.containers.length) {
       originContainers.value = inventory.value.containers
     }
@@ -333,32 +332,27 @@ async function hydrateFromTrip(id: string) {
 
 async function loadSwapSource(id: string) {
   hydrating.value = true
+  inventoryPending.value = true
   errorMessage.value = ''
   try {
-    const data = await $fetch(`/api/trips/${id}`)
-    if (data.trip.isLoaded || data.trip.kind === 'BARE_CHASSIS') {
-      errorMessage.value = 'Swap is only available on an empty inbound to a customer.'
-      return
-    }
-    if (!data.destination?.id) {
-      errorMessage.value = 'Set a customer destination before swapping.'
-      return
-    }
-    if (data.destination.type && data.destination.type !== 'CUSTOMER') {
-      errorMessage.value = 'Swap is only available when heading to a customer location.'
-      return
-    }
-    swapOfTripId.value = data.trip.id
+    const site = await $fetch(`/api/trips/${id}/swap-site`)
+    swapOfTripId.value = id
     pickupKind.value = 'CONTAINER'
     isLoaded.value = true
-    originLocationId.value = data.destination.id
-    originName.value = data.destination.name ?? ''
+    originLocationId.value = site.destination.id
+    originName.value = site.destination.name ?? ''
+    originContainers.value = site.containers ?? []
+    inventory.value = {
+      containers: site.containers ?? [],
+      chassis: site.chassis ?? [],
+    }
     step.value = 'inventory'
   }
   catch (error) {
-    errorMessage.value = apiErrorMessage(error, 'Could not start the swap.')
+    errorMessage.value = apiErrorMessage(error, 'Could not load equipment at the drop-off.')
   }
   finally {
+    inventoryPending.value = false
     hydrating.value = false
   }
 }
@@ -1039,7 +1033,7 @@ async function onPhoto(dataUrl: string) {
       </p>
 
       <template v-if="pickupKind === 'CONTAINER' && yardContainers.length">
-        <span class="wiz-label">{{ swapMode ? 'At this customer' : 'On site now' }}</span>
+        <span class="wiz-label">{{ swapMode ? (originName ? `On site at ${originName}` : 'On site at drop-off') : 'On site now' }}</span>
         <div class="wiz-group">
           <button
             v-for="item in yardContainers"
@@ -1116,10 +1110,12 @@ async function onPhoto(dataUrl: string) {
       <EmptyState
         v-else-if="!inventoryPending"
         glyph="▦"
-        :title="pickupKind === 'BARE_CHASSIS' ? 'No chassis on site' : (swapMode ? 'No containers at this customer' : 'No containers on site')"
+        :title="pickupKind === 'BARE_CHASSIS' ? 'No chassis on site' : 'No containers on site'"
         :description="inventoryQuery.trim()
           ? 'Nothing matching that search is parked here.'
-          : 'Add it below if it is not on the list yet.'"
+          : (swapMode
+            ? 'This is the same list as the drop-off location equipment page. Add it below if it is not there yet.'
+            : 'Add it below if it is not on the list yet.')"
       />
 
       <span class="wiz-label">Not on the list</span>

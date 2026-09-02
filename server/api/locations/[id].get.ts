@@ -1,14 +1,16 @@
-import { and, eq, isNull, sql } from 'drizzle-orm'
-import { containerPlacements, containers, chassis, locations } from '../../database/schema'
-import { displayContainers, mapContainerFromRow } from '../../services/placements'
+import { eq } from 'drizzle-orm'
+import { locations } from '../../database/schema'
+import { listOnSiteChassis, listOnSiteContainers } from '../../services/location-equipment'
+import { locationIdsAtSameAddress } from '../../services/location-sites'
 import { assertTenant, requireAuth } from '../../utils/session'
 import { countContainersByType, emptyTypeCounts } from '#shared/utils/domain'
-import type { GeoJsonPolygon } from '#shared/utils/geo'
 
 /** One location plus the active-pool containers currently sitting on its map. */
 export default defineEventHandler(async (event) => {
   const auth = await requireAuth(event)
   const id = getRouterParam(event, 'id')
+  const query = getQuery(event)
+  const sameAddress = query.sameAddress === '1' || query.sameAddress === 'true'
 
   if (!id) {
     throw createError({ statusCode: 400, statusMessage: 'Location id is required.' })
@@ -22,73 +24,12 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, statusMessage: 'Location not found.' })
   }
 
-  const items = await db
-    .select({
-      id: containers.id,
-      number: containers.number,
-      numberNormalized: containers.numberNormalized,
-      equipmentType: containers.equipmentType,
-      containerType: containers.containerType,
-      isLoaded: containers.isLoaded,
-      containerStatus: containers.containerStatus,
-      sealNumber: containers.sealNumber,
-      currentChassisId: containers.currentChassisId,
-      chassisNumber: chassis.number,
-      x: containerPlacements.x,
-      y: containerPlacements.y,
-      rotation: containerPlacements.rotation,
-      latitude: containerPlacements.latitude,
-      longitude: containerPlacements.longitude,
-    })
-    .from(containers)
-    .leftJoin(
-      containerPlacements,
-      and(
-        eq(containerPlacements.containerId, containers.id),
-        eq(containerPlacements.locationId, id),
-        isNull(containerPlacements.supersededAt),
-      ),
-    )
-    .leftJoin(chassis, eq(chassis.id, containers.currentChassisId))
-    .where(and(
-      eq(containers.companyId, auth.companyId),
-      eq(containers.currentLocationId, id),
-      sql`${containers.activePoolState} <> 'INACTIVE'`,
-    ))
-    .orderBy(containers.numberNormalized)
+  const locationIds = sameAddress
+    ? await locationIdsAtSameAddress(db, auth.companyId, id)
+    : [id]
 
-  const mapped = displayContainers(
-    items.map(item => mapContainerFromRow({
-      ...item,
-      boundary: location!.boundary as GeoJsonPolygon | null,
-      locationLatitude: location!.latitude,
-      locationLongitude: location!.longitude,
-    })),
-    {
-      latitude: location!.latitude ? Number(location!.latitude) : null,
-      longitude: location!.longitude ? Number(location!.longitude) : null,
-      mapHeading: location!.mapHeading ?? 0,
-      boundary: location!.boundary as GeoJsonPolygon | null,
-    },
-  )
-
-  const chassisRows = await db
-    .select({
-      id: chassis.id,
-      number: chassis.number,
-      provider: chassis.provider,
-      sizeCompatibility: chassis.sizeCompatibility,
-      status: chassis.status,
-    })
-    .from(chassis)
-    .where(and(
-      eq(chassis.companyId, auth.companyId),
-      eq(chassis.currentLocationId, id),
-      isNull(chassis.deletedAt),
-      eq(chassis.outOfService, false),
-      isNull(chassis.currentContainerId),
-    ))
-    .orderBy(chassis.numberNormalized)
+  const mapped = await listOnSiteContainers(db, auth.companyId, locationIds, location!)
+  const chassisRows = await listOnSiteChassis(db, auth.companyId, locationIds)
 
   return {
     location: {
