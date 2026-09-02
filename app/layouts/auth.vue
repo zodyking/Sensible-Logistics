@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /**
  * Signed-out shell — brand bar, scrolling form column, and a credit footer
- * teleported to the document body so it stays locked to the viewport.
+ * that is layout chrome (not page content). The shell is locked to the
+ * visual viewport; only `.auth-main` scrolls.
  */
 const { appName } = useRuntimeConfig().public
 </script>

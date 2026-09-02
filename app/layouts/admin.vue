@@ -74,7 +74,7 @@ async function signOut() {
       </template>
     </nav>
 
-    <div class="min-w-0">
+    <div class="a-body">
       <header class="a-topbar">
         <button
           class="a-menu-btn min-h-11 px-2 text-lg"
