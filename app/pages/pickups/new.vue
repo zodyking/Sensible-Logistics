@@ -3,6 +3,7 @@ import { ACTIVE_POOL_LABELS, CONTAINER_TYPES, CONTAINER_TYPE_LABELS, EQUIPMENT_T
 import type { ContainerType, EquipmentType, TripKind } from '#shared/utils/domain'
 import { PICKUP_STEPS, pickupSteps } from '#shared/utils/pickup-steps'
 import type { PickupStep } from '#shared/utils/pickup-steps'
+import { mergeSiteContainers, visiblePickupSiteContainers } from '#shared/utils/pickup-inventory'
 import { filterLocations } from '#shared/utils/location-search'
 import {
   formatChassisNumber,
@@ -165,26 +166,14 @@ watch(originLocationId, async (id) => {
 })
 
 const yardContainers = computed(() => {
-  const extra = new Map((inventory.value?.containers ?? []).map(item => [item.id, item]))
-  const base = originContainers.value.length
-    ? originContainers.value.map((item) => {
-        const more = extra.get(item.id)
-        return {
-          ...item,
-          sealNumber: more?.sealNumber ?? item.sealNumber ?? null,
-          currentChassisId: more?.currentChassisId ?? item.currentChassisId ?? null,
-          chassisNumber: more?.chassisNumber ?? item.chassisNumber ?? null,
-        }
-      })
-    : (inventory.value?.containers ?? [])
+  const base = mergeSiteContainers(originContainers.value, inventory.value?.containers ?? [])
   const needle = inventoryQuery.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
   const searched = needle
     ? base.filter(item =>
         (item.numberNormalized || item.number).toUpperCase().replace(/[^A-Z0-9]/g, '').includes(needle),
       )
     : base
-  if (!swapMode.value) return searched
-  return searched.filter(item => item.isLoaded)
+  return visiblePickupSiteContainers(searched, { swap: swapMode.value })
 })
 
 const yardChassis = computed(() => {
@@ -1048,7 +1037,7 @@ async function onPhoto(dataUrl: string) {
       </p>
 
       <template v-if="pickupKind === 'CONTAINER' && yardContainers.length">
-        <span class="wiz-label">{{ swapMode ? 'Loaded at this customer' : 'On site now' }}</span>
+        <span class="wiz-label">{{ swapMode ? 'At this customer' : 'On site now' }}</span>
         <div class="wiz-group">
           <button
             v-for="item in yardContainers"
@@ -1125,7 +1114,7 @@ async function onPhoto(dataUrl: string) {
       <EmptyState
         v-else-if="!inventoryPending"
         glyph="▦"
-        :title="pickupKind === 'BARE_CHASSIS' ? 'No chassis on site' : (swapMode ? 'No loaded containers on site' : 'No containers on site')"
+        :title="pickupKind === 'BARE_CHASSIS' ? 'No chassis on site' : (swapMode ? 'No containers at this customer' : 'No containers on site')"
         :description="inventoryQuery.trim()
           ? 'Nothing matching that search is parked here.'
           : 'Add it below if it is not on the list yet.'"
