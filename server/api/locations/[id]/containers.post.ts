@@ -17,7 +17,7 @@ const schema = z.object({
   }).nullish(),
 })
 
-/** Record a container on this location's OpenStreetMap fence. */
+/** Record a container at this location. A map pin is optional. */
 export default defineEventHandler(async (event) => {
   const auth = await requireAuth(event)
   const locationId = getRouterParam(event, 'id')
