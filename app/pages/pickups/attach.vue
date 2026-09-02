@@ -39,9 +39,9 @@ const canAttach = computed(() =>
 )
 
 const rawNumber = ref('')
-const containerType = ref<ContainerType>('TROPICAL')
-const equipmentType = ref<EquipmentType>('DRY_40')
-const isLoaded = ref(true)
+const containerType = ref<ContainerType | null>(null)
+const equipmentType = ref<EquipmentType | null>(null)
+const isLoaded = ref<boolean | null>(null)
 const sealNumber = ref('')
 
 function resolveNumber(number: string) {
@@ -55,7 +55,7 @@ const needsClassification = computed(() => resolution.value?.outcome === 'CREATE
 const STEPS = computed<Step[]>(() => {
   const steps: Step[] = ['equipment']
   if (needsClassification.value) steps.push('containerType', 'equipmentType')
-  if (isLoaded.value) steps.push('seal')
+  if (isLoaded.value === true) steps.push('seal')
   steps.push('confirm')
   return steps
 })
@@ -139,14 +139,17 @@ const canAdvance = computed(() => {
   switch (step.value) {
     case 'equipment':
       return validation.value.structureValid
+        && isLoaded.value !== null
         && !blockedByConflict.value
         && !resolving.value
         && Boolean(resolution.value)
         && !readingPhoto.value
     case 'containerType':
+      return Boolean(containerType.value)
     case 'equipmentType':
+      return Boolean(equipmentType.value)
     case 'confirm':
-      return true
+      return Boolean(containerType.value) && Boolean(equipmentType.value) && isLoaded.value !== null
     case 'seal':
       return Boolean(sealNumber.value.trim())
   }
@@ -179,6 +182,14 @@ function back() {
 
 async function attach() {
   if (!tripId.value || submitting.value) return
+  if (isLoaded.value === null) {
+    errorMessage.value = 'Choose empty or load.'
+    return
+  }
+  if (!containerType.value || !equipmentType.value) {
+    errorMessage.value = 'Choose container type and size.'
+    return
+  }
   if (isLoaded.value && !sealNumber.value.trim()) {
     errorMessage.value = 'Enter a seal number for a loaded container.'
     step.value = 'seal'
@@ -338,7 +349,7 @@ async function onPhoto(dataUrl: string) {
               <button
                 type="button"
                 class="wiz-status-btn"
-                :aria-pressed="!isLoaded"
+                :aria-pressed="isLoaded === false"
                 @click="isLoaded = false"
               >
                 <span
@@ -350,7 +361,7 @@ async function onPhoto(dataUrl: string) {
               <button
                 type="button"
                 class="wiz-status-btn"
-                :aria-pressed="isLoaded"
+                :aria-pressed="isLoaded === true"
                 @click="isLoaded = true"
               >
                 <span
@@ -534,7 +545,7 @@ async function onPhoto(dataUrl: string) {
           v-if="step === 'confirm'"
           type="button"
           class="wiz-next"
-          :disabled="submitting"
+          :disabled="submitting || !canAdvance"
           @click="attach"
         >
           {{ submitting ? 'Saving…' : 'Add container to chassis' }}

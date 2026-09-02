@@ -57,15 +57,15 @@ const destinationLocationId = ref<string | null>(null)
 const originName = ref('')
 const destinationName = ref('')
 const originContainers = ref<YardBox[]>([])
-const pickupKind = ref<TripKind>('CONTAINER')
+const pickupKind = ref<TripKind | null>(null)
 const selectedYardId = ref<string | null>(null)
 const manualEntry = ref(false)
 const rawNumber = ref('')
-const containerType = ref<ContainerType>('TROPICAL')
-const equipmentType = ref<EquipmentType>('DRY_40')
+const containerType = ref<ContainerType | null>(null)
+const equipmentType = ref<EquipmentType | null>(null)
 const chassisId = ref<string | null>(null)
 const chassisNumber = ref('')
-const isLoaded = ref(true)
+const isLoaded = ref<boolean | null>(null)
 const sealNumber = ref('')
 const notes = ref('')
 
@@ -206,9 +206,6 @@ watch(pickupKind, (kind) => {
     STEP_TITLES.equipment = kind === 'BARE_CHASSIS' ? 'Chassis' : 'Container and chassis'
     STEP_TITLES.inventory = kind === 'BARE_CHASSIS' ? 'Which chassis?' : 'Which container?'
   }
-  selectedYardId.value = null
-  manualEntry.value = false
-  inventoryQuery.value = ''
 })
 
 rawNumber.value = maskContainerInput(String(route.query.number ?? ''))
@@ -462,6 +459,9 @@ function enterUnlisted() {
   if (pickupKind.value === 'CONTAINER') {
     rawNumber.value = ''
     resolution.value = null
+    containerType.value = null
+    equipmentType.value = null
+    isLoaded.value = swapMode.value ? true : null
   }
   else {
     chassisId.value = null
@@ -475,6 +475,14 @@ function enterUnlisted() {
  * Screens that ask for typing keep the button at the bottom instead.
  */
 function chooseKind(kind: TripKind) {
+  if (pickupKind.value !== kind && !swapMode.value) {
+    containerType.value = null
+    equipmentType.value = null
+    isLoaded.value = null
+    selectedYardId.value = null
+    manualEntry.value = false
+    inventoryQuery.value = ''
+  }
   pickupKind.value = kind
   void next()
 }
@@ -568,12 +576,15 @@ const canAdvance = computed(() => {
       }
       return validation.value.structureValid
         && chassisOk.value
+        && (swapMode.value || isLoaded.value !== null)
         && !blockedByConflict.value
         && !resolving.value
         && Boolean(resolution.value)
         && !readingPhoto.value
     case 'containerType':
+      return Boolean(containerType.value)
     case 'equipmentType':
+      return Boolean(equipmentType.value)
     case 'notes':
       return true
     case 'seal':
@@ -582,6 +593,12 @@ const canAdvance = computed(() => {
       return Boolean(destinationLocationId.value) && destinationLocationId.value !== originLocationId.value
     case 'confirm':
       return Boolean(destinationLocationId.value)
+        && pickupKind.value != null
+        && (pickupKind.value !== 'CONTAINER' || (
+          Boolean(containerType.value)
+          && Boolean(equipmentType.value)
+          && (swapMode.value || isLoaded.value !== null)
+        ))
   }
   return false
 })
@@ -660,8 +677,16 @@ function back() {
 }
 
 async function startPickup() {
+  if (!pickupKind.value) {
+    errorMessage.value = 'Choose container or chassis.'
+    return
+  }
   if (pickupKind.value === 'BARE_CHASSIS' && !chassisId.value) {
     errorMessage.value = 'Enter a chassis number.'
+    return
+  }
+  if (pickupKind.value === 'CONTAINER' && (!containerType.value || !equipmentType.value)) {
+    errorMessage.value = 'Choose container type and size.'
     return
   }
   submitting.value = true
@@ -716,7 +741,11 @@ async function startPickup() {
 
 async function confirm() {
   if (!tripId.value || submitting.value) return
-  if (pickupKind.value === 'CONTAINER' && (swapMode.value || isLoaded.value) && !sealNumber.value.trim()) {
+  if (pickupKind.value === 'CONTAINER' && !swapMode.value && isLoaded.value === null) {
+    errorMessage.value = 'Choose empty or load.'
+    return
+  }
+  if (pickupKind.value === 'CONTAINER' && (swapMode.value || isLoaded.value === true) && !sealNumber.value.trim()) {
     errorMessage.value = 'Enter a seal number for a loaded container.'
     step.value = 'seal'
     return
@@ -742,8 +771,8 @@ async function confirm() {
         eventId: crypto.randomUUID(),
         chassisId: chassisId.value,
         destinationLocationId: destinationLocationId.value,
-        isLoaded: pickupKind.value === 'CONTAINER' ? (swapMode.value || isLoaded.value) : false,
-        sealNumber: pickupKind.value === 'CONTAINER' && (swapMode.value || isLoaded.value) ? (sealNumber.value.trim() || null) : null,
+        isLoaded: pickupKind.value === 'CONTAINER' ? (swapMode.value || isLoaded.value === true) : false,
+        sealNumber: pickupKind.value === 'CONTAINER' && (swapMode.value || isLoaded.value === true) ? (sealNumber.value.trim() || null) : null,
         notes: notes.value || null,
       },
     })
@@ -1146,7 +1175,7 @@ async function onPhoto(dataUrl: string) {
               :size="60"
             />
           </span>
-          <b>{{ TRIP_KIND_LABELS[pickupKind] }}</b>
+          <b>{{ pickupKind ? TRIP_KIND_LABELS[pickupKind] : '' }}</b>
         </div>
 
         <template v-if="pickupKind === 'CONTAINER'">
@@ -1178,7 +1207,7 @@ async function onPhoto(dataUrl: string) {
                 <button
                   type="button"
                   class="wiz-status-btn"
-                  :aria-pressed="!isLoaded"
+                  :aria-pressed="isLoaded === false"
                   @click="isLoaded = false"
                 >
                   <span
@@ -1190,7 +1219,7 @@ async function onPhoto(dataUrl: string) {
                 <button
                   type="button"
                   class="wiz-status-btn"
-                  :aria-pressed="isLoaded"
+                  :aria-pressed="isLoaded === true"
                   @click="isLoaded = true"
                 >
                   <span
@@ -1496,7 +1525,7 @@ async function onPhoto(dataUrl: string) {
         v-if="step === 'confirm'"
         type="button"
         class="wiz-next"
-        :disabled="submitting"
+        :disabled="submitting || !canAdvance"
         @click="confirm"
       >
         {{ submitting ? 'Confirming…' : 'Confirm pickup' }}

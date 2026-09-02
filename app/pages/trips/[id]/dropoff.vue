@@ -10,18 +10,12 @@ const { data, error, status } = await useFetch(() => `/api/trips/${tripId.value}
 useHead({ title: 'Arrive' })
 
 const destinationLocationId = ref<string | null>(null)
-const retainChassis = ref(true)
+const retainChassis = ref<boolean | null>(null)
 const notes = ref('')
 const locationSearch = ref('')
 const pickingLocation = ref(false)
 const submitting = ref(false)
 const errorMessage = ref('')
-
-watch(data, (value) => {
-  if (value?.destination?.id && !destinationLocationId.value) {
-    destinationLocationId.value = value.destination.id
-  }
-}, { immediate: true })
 
 const { data: locationList } = await useFetch('/api/locations', {
   query: computed(() => ({ q: locationSearch.value || undefined, limit: 50 })),
@@ -54,7 +48,11 @@ const outcome = computed(() => describeArrival({
   retainChassis: retainChassis.value,
 }))
 
-const canArrive = computed(() => Boolean(destinationLocationId.value) && !submitting.value)
+const canArrive = computed(() =>
+  Boolean(destinationLocationId.value)
+  && !submitting.value
+  && (!hasChassis.value || retainChassis.value !== null),
+)
 
 function chooseLocation(id: string) {
   destinationLocationId.value = id
@@ -64,6 +62,7 @@ function chooseLocation(id: string) {
 
 async function arrive() {
   if (!canArrive.value || !destinationLocationId.value) return
+  if (hasChassis.value && retainChassis.value === null) return
   submitting.value = true
   errorMessage.value = ''
   try {
@@ -72,7 +71,7 @@ async function arrive() {
       body: {
         eventId: crypto.randomUUID(),
         destinationLocationId: destinationLocationId.value,
-        retainChassis: retainChassis.value,
+        retainChassis: retainChassis.value === true,
         notes: notes.value || null,
       },
     })
@@ -131,7 +130,7 @@ async function arrive() {
         :chassis-number="data.chassis?.number"
         :seal-number="data.trip.sealNumber"
         :origin-name="data.origin?.name"
-        :destination-name="selectedLocation?.name"
+        :destination-name="selectedLocation?.name ?? data.destination?.name"
         :status="data.trip.status"
       />
 
@@ -212,21 +211,50 @@ async function arrive() {
       </template>
 
       <template v-if="hasChassis">
-        <span class="wiz-label">Chassis</span>
+        <span class="wiz-label">{{ data.trip.kind === 'BARE_CHASSIS' ? 'This chassis' : 'Chassis' }}</span>
         <div class="wiz-group">
-          <div class="wiz-row wiz-row-toggle">
-            <span class="wiz-row-label">
-              {{ data.trip.kind === 'BARE_CHASSIS' ? 'Keep this chassis with you?' : 'Keep the chassis attached?' }}
+          <button
+            type="button"
+            class="wiz-pick"
+            :aria-pressed="retainChassis === true"
+            @click="retainChassis = true"
+          >
+            <span class="wiz-pick-main">
+              <b>{{ data.trip.kind === 'BARE_CHASSIS' ? 'Keep with you' : 'Keep attached' }}</b>
+              <small>{{ data.trip.kind === 'BARE_CHASSIS' ? 'Stay assigned after this stop' : 'Chassis stays on the box' }}</small>
             </span>
-            <button
-              type="button"
-              class="wiz-switch"
-              role="switch"
-              :aria-checked="retainChassis"
-              :aria-label="data.trip.kind === 'BARE_CHASSIS' ? 'Keep this chassis with you' : 'Keep the chassis attached'"
-              @click="retainChassis = !retainChassis"
-            />
-          </div>
+            <span
+              v-if="retainChassis === true"
+              class="wiz-check"
+              aria-hidden="true"
+            >✓</span>
+            <span
+              v-else
+              class="wiz-chev"
+              aria-hidden="true"
+            >›</span>
+          </button>
+          <button
+            type="button"
+            class="wiz-pick"
+            :aria-pressed="retainChassis === false"
+            @click="retainChassis = false"
+          >
+            <span class="wiz-pick-main">
+              <b>{{ data.trip.kind === 'BARE_CHASSIS' ? 'Park here' : 'Unhook' }}</b>
+              <small>{{ data.trip.kind === 'BARE_CHASSIS' ? 'Leave the chassis at this location' : 'Chassis stays at this location' }}</small>
+            </span>
+            <span
+              v-if="retainChassis === false"
+              class="wiz-check"
+              aria-hidden="true"
+            >✓</span>
+            <span
+              v-else
+              class="wiz-chev"
+              aria-hidden="true"
+            >›</span>
+          </button>
         </div>
       </template>
 

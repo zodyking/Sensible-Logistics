@@ -95,6 +95,36 @@ describe('pickupSteps', () => {
     expect(steps).toEqual(['kind', 'location', 'inventory', 'notes', 'destination', 'confirm'])
   })
 
+  it('omits the seal until the driver marks the box as loaded', () => {
+    const unset = pickupSteps({
+      kind: 'CONTAINER',
+      fromYard: false,
+      manualEntry: true,
+      needsClassification: true,
+      isLoaded: null,
+    })
+    const unsetKind = pickupSteps({
+      kind: null,
+      fromYard: false,
+      manualEntry: false,
+      needsClassification: false,
+      isLoaded: null,
+    })
+    expect(unset).not.toContain('seal')
+    expect(unset).toEqual([
+      'kind',
+      'location',
+      'inventory',
+      'equipment',
+      'containerType',
+      'equipmentType',
+      'notes',
+      'destination',
+      'confirm',
+    ])
+    expect(unsetKind).toEqual(['kind', 'location', 'inventory', 'notes', 'destination', 'confirm'])
+  })
+
   it('starts a swap at on-site inventory and still ends at destination then confirm', () => {
     const yard = pickupSteps({
       kind: 'CONTAINER',

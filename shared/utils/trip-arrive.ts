@@ -6,7 +6,7 @@ export interface ArriveContext {
   swapPairTripId?: string | null
   locationType?: LocationType | null
   hasChassis?: boolean
-  retainChassis?: boolean
+  retainChassis?: boolean | null
 }
 
 /** Empty inbound of a customer swap — Arrive completes it and leaves the load. */
@@ -25,7 +25,11 @@ export function isSwapEmptyArrival(input: ArriveContext): boolean {
  */
 export function describeArrival(input: ArriveContext): string {
   const chassis = input.hasChassis
-    ? (input.retainChassis ? ' Chassis stays on the box.' : ' Chassis is unhooked here.')
+    ? (input.retainChassis === true
+        ? ' Chassis stays on the box.'
+        : input.retainChassis === false
+          ? ' Chassis is unhooked here.'
+          : '')
     : ''
 
   if (isSwapEmptyArrival(input)) {
@@ -33,9 +37,13 @@ export function describeArrival(input: ArriveContext): string {
   }
 
   if (input.kind === 'BARE_CHASSIS') {
-    return input.retainChassis
-      ? 'The chassis stays assigned at this location. This trip ends.'
-      : 'The chassis is parked here. This trip ends.'
+    if (input.retainChassis === true) {
+      return 'The chassis stays assigned at this location. This trip ends.'
+    }
+    if (input.retainChassis === false) {
+      return 'The chassis is parked here. This trip ends.'
+    }
+    return 'This trip ends here.'
   }
 
   switch (input.locationType) {

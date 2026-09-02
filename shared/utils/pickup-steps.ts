@@ -23,11 +23,11 @@ export type PickupStep = (typeof PICKUP_STEPS)[number]
  * always last before confirm so it is not left to Home.
  */
 export function pickupSteps(input: {
-  kind: TripKind
+  kind: TripKind | null
   fromYard: boolean
   manualEntry: boolean
   needsClassification: boolean
-  isLoaded: boolean
+  isLoaded: boolean | null
   /** Second pickup of a load while an empty is still inbound to a customer. */
   swap?: boolean
 }): PickupStep[] {
@@ -39,7 +39,7 @@ export function pickupSteps(input: {
         steps.push('containerType', 'equipmentType')
       }
     }
-    if (input.kind === 'CONTAINER' && input.isLoaded && (input.manualEntry || input.fromYard)) {
+    if (input.kind === 'CONTAINER' && input.isLoaded === true && (input.manualEntry || input.fromYard)) {
       steps.push('seal')
     }
     steps.push('notes', 'destination', 'confirm')
@@ -55,7 +55,7 @@ export function pickupSteps(input: {
     }
   }
 
-  if (input.kind === 'CONTAINER' && input.isLoaded && (input.manualEntry || input.fromYard)) {
+  if (input.kind === 'CONTAINER' && input.isLoaded === true && (input.manualEntry || input.fromYard)) {
     steps.push('seal')
   }
 
