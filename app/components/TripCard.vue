@@ -68,7 +68,21 @@ const loadLabel = computed(() => !isBareChassis.value && props.isLoaded ? 'Loade
 
       <div class="trip-cno">
         <slot name="number">
-          {{ titleNumber }}
+          <CopyMarking
+            v-if="isBareChassis && chassisNumber"
+            kind="chassis"
+            :value="chassisNumber"
+            :display="displayChassis"
+          />
+          <CopyMarking
+            v-else-if="containerNumber"
+            kind="container"
+            :value="containerNumber"
+            :display="displayContainer"
+          />
+          <template v-else>
+            {{ titleNumber }}
+          </template>
         </slot>
       </div>
 
@@ -79,11 +93,22 @@ const loadLabel = computed(() => !isBareChassis.value && props.isLoaded ? 'Loade
         </div>
         <div class="trip-fact">
           <small>Chassis</small>
-          <b>{{ displayChassis }}</b>
+          <CopyMarking
+            v-if="chassisNumber"
+            kind="chassis"
+            :value="chassisNumber"
+            :display="displayChassis"
+          />
+          <b v-else>{{ displayChassis }}</b>
         </div>
         <div class="trip-fact">
           <small>Seal</small>
-          <b>{{ !isBareChassis && sealNumber ? sealNumber : '—' }}</b>
+          <CopyMarking
+            v-if="!isBareChassis && sealNumber"
+            kind="seal"
+            :value="sealNumber"
+          />
+          <b v-else>—</b>
         </div>
       </div>
 
