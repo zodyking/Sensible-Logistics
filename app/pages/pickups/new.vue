@@ -149,7 +149,9 @@ watch(originLocationId, async (id) => {
     }
   }
   try {
-    inventory.value = await $fetch(`/api/locations/${id}/inventory`)
+    inventory.value = await $fetch(`/api/locations/${id}/inventory`, {
+      query: swapMode.value ? { sameAddress: '1' } : undefined,
+    })
     if (!originContainers.value.length && inventory.value.containers.length) {
       originContainers.value = inventory.value.containers
     }
