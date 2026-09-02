@@ -30,6 +30,12 @@ describe('isPlacedPin', () => {
   })
 })
 
+describe('locationOrigin', () => {
+  it('is absent when the location has no pin and no fence', () => {
+    expect(locationOrigin({ latitude: null, longitude: null })).toBeNull()
+  })
+})
+
 describe('suggested yard slots', () => {
   const location = {
     latitude: 40.67,

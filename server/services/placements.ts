@@ -303,8 +303,10 @@ async function followChassisWithContainer(
 }
 
 /**
- * Drop a container onto a location map without a trip — used when a box is
- * already on site and just needs to be recorded on the fence.
+ * Record a container at a location without a trip — used when a box is
+ * already on site. A map pin is written when the location has coordinates
+ * or a fence; otherwise the box is still recorded on site, same as a
+ * drop-off without a place step.
  */
 export async function addContainerAtLocation(
   db: Database,
@@ -352,12 +354,6 @@ export async function addContainerAtLocation(
       input.equipmentType,
       input.placement,
     )
-    if (!placement) {
-      throw createError({
-        statusCode: 422,
-        statusMessage: 'This location has no map pin yet. Edit the address before adding a container.',
-      })
-    }
     const now = new Date()
     const typedChassis = input.chassisNumber?.trim() || ''
     const reservedChassis = typedChassis
@@ -422,11 +418,13 @@ export async function addContainerAtLocation(
         locationId: location.id,
         chassisId: reservedChassis?.id ?? container.currentChassisId ?? null,
         source: auth.role === 'ADMIN' ? 'ADMIN_EDIT' : 'MANUAL',
-        yardPosition: {
-          latitude: placement.latitude,
-          longitude: placement.longitude,
-          rotation: placement.rotation,
-        },
+        yardPosition: placement
+          ? {
+              latitude: placement.latitude,
+              longitude: placement.longitude,
+              rotation: placement.rotation,
+            }
+          : null,
         payload: {
           outcome,
           chassisNumber: reservedChassis
@@ -459,12 +457,14 @@ export async function addContainerAtLocation(
       })
     }
 
-    await writePlacement(tx, auth, {
-      containerId: container.id,
-      location,
-      placement,
-      eventId: input.eventId,
-    })
+    if (placement) {
+      await writePlacement(tx, auth, {
+        containerId: container.id,
+        location,
+        placement,
+        eventId: input.eventId,
+      })
+    }
 
     if (reservedChassis) {
       if (container.currentChassisId && container.currentChassisId !== reservedChassis.id) {
