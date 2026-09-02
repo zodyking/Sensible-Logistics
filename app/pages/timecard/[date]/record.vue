@@ -29,7 +29,7 @@ function printRecord() {
 </script>
 
 <template>
-  <div class="min-h-dvh bg-[var(--color-paper-100)] p-4 pb-16">
+  <div class="min-h-svh bg-[var(--color-paper-100)] p-4 pb-16">
     <div class="no-print mx-auto mb-4 flex max-w-[760px] gap-3">
       <NuxtLink
         :to="backTo"
