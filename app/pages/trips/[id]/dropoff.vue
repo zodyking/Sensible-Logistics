@@ -17,6 +17,13 @@ const pickingLocation = ref(false)
 const submitting = ref(false)
 const errorMessage = ref('')
 
+/** The drop-off was chosen on the pickup; arriving confirms it, it does not re-ask. */
+watch(data, (value) => {
+  if (value?.destination?.id && !destinationLocationId.value) {
+    destinationLocationId.value = value.destination.id
+  }
+}, { immediate: true })
+
 const { data: locationList } = await useFetch('/api/locations', {
   query: computed(() => ({ q: locationSearch.value || undefined, limit: 50 })),
 })

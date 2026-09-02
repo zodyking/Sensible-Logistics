@@ -3,7 +3,7 @@ import { ACTIVE_POOL_LABELS, CONTAINER_TYPES, CONTAINER_TYPE_LABELS, EQUIPMENT_T
 import type { ContainerType, EquipmentType, TripKind } from '#shared/utils/domain'
 import { PICKUP_STEPS, pickupSteps } from '#shared/utils/pickup-steps'
 import type { PickupStep } from '#shared/utils/pickup-steps'
-import { mergeSiteContainers, visiblePickupSiteContainers } from '#shared/utils/pickup-inventory'
+import { mergeSiteContainers } from '#shared/utils/pickup-inventory'
 import { filterLocations } from '#shared/utils/location-search'
 import {
   formatChassisNumber,
@@ -91,6 +91,7 @@ const STEPS = computed<Step[]>(() => pickupSteps({
   needsClassification: needsClassification.value,
   isLoaded: isLoaded.value,
   swap: swapMode.value,
+  destinationKnown: Boolean(destinationLocationId.value),
 }))
 
 const step = ref<Step>(swapMode.value ? 'inventory' : 'kind')
@@ -169,12 +170,10 @@ watch(originLocationId, async (id) => {
 const yardContainers = computed(() => {
   const base = mergeSiteContainers(originContainers.value, inventory.value?.containers ?? [])
   const needle = inventoryQuery.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
-  const searched = needle
-    ? base.filter(item =>
-        (item.numberNormalized || item.number).toUpperCase().replace(/[^A-Z0-9]/g, '').includes(needle),
-      )
-    : base
-  return visiblePickupSiteContainers(searched, { swap: swapMode.value })
+  if (!needle) return base
+  return base.filter(item =>
+    (item.numberNormalized || item.number).toUpperCase().replace(/[^A-Z0-9]/g, '').includes(needle),
+  )
 })
 
 const yardChassis = computed(() => {
@@ -288,6 +287,20 @@ const chassisDetail = computed(() =>
 const tripId = ref<string | null>(null)
 const existingTripId = ref<string | null>(null)
 const hydrating = ref(false)
+const savedDestinationId = ref<string | null>(null)
+
+/** A swap returns the load to the yard the empty came from. */
+async function applySwapReturnLeg(pairTripId: string) {
+  try {
+    const pair = await $fetch(`/api/trips/${pairTripId}`)
+    if (!pair.trip.originLocationId) return
+    destinationLocationId.value = pair.trip.originLocationId
+    destinationName.value = pair.origin?.name ?? ''
+  }
+  catch {
+    // Without the pair the driver picks the drop-off, as on a plain pickup.
+  }
+}
 
 async function hydrateFromTrip(id: string) {
   hydrating.value = true
@@ -301,6 +314,7 @@ async function hydrateFromTrip(id: string) {
     tripId.value = data.trip.id
     originLocationId.value = data.trip.originLocationId
     destinationLocationId.value = data.trip.destinationLocationId
+    savedDestinationId.value = data.trip.destinationLocationId
     originName.value = data.origin?.name ?? ''
     destinationName.value = data.destination?.name ?? ''
     pickupKind.value = data.trip.kind === 'BARE_CHASSIS' ? 'BARE_CHASSIS' : 'CONTAINER'
@@ -316,11 +330,12 @@ async function hydrateFromTrip(id: string) {
       isLoaded.value = true
       STEP_TITLES.inventory = 'Which load?'
       STEP_TITLES.equipment = 'Load and chassis'
+      if (!destinationLocationId.value) await applySwapReturnLeg(data.trip.swapPairTripId)
     }
     sealNumber.value = data.trip.sealNumber ?? ''
     notes.value = data.trip.driverNotes ?? ''
     manualEntry.value = true
-    step.value = data.trip.destinationLocationId ? 'confirm' : 'destination'
+    step.value = destinationLocationId.value ? 'confirm' : 'destination'
   }
   catch (error) {
     errorMessage.value = apiErrorMessage(error, 'Could not resume that pickup.')
@@ -341,6 +356,10 @@ async function loadSwapSource(id: string) {
     isLoaded.value = true
     originLocationId.value = site.destination.id
     originName.value = site.destination.name ?? ''
+    if (site.returnTo) {
+      destinationLocationId.value = site.returnTo.id
+      destinationName.value = site.returnTo.name ?? ''
+    }
     originContainers.value = site.containers ?? []
     inventory.value = {
       containers: site.containers ?? [],
@@ -611,6 +630,24 @@ async function attachChassis() {
   return true
 }
 
+/** Keep the trip row's drop-off current, whether it was picked or inherited. */
+async function saveDestination() {
+  if (!tripId.value || !destinationLocationId.value) return true
+  if (savedDestinationId.value === destinationLocationId.value) return true
+  try {
+    await $fetch(`/api/trips/${tripId.value}/destination`, {
+      method: 'POST',
+      body: { destinationLocationId: destinationLocationId.value },
+    })
+    savedDestinationId.value = destinationLocationId.value
+    return true
+  }
+  catch (error) {
+    errorMessage.value = apiErrorMessage(error, 'Could not save the drop-off.')
+    return false
+  }
+}
+
 async function next() {
   errorMessage.value = ''
 
@@ -639,18 +676,7 @@ async function next() {
     if (errorMessage.value) return
   }
 
-  if (step.value === 'destination' && tripId.value && destinationLocationId.value) {
-    try {
-      await $fetch(`/api/trips/${tripId.value}/destination`, {
-        method: 'POST',
-        body: { destinationLocationId: destinationLocationId.value },
-      })
-    }
-    catch (error) {
-      errorMessage.value = apiErrorMessage(error, 'Could not save the drop-off.')
-      return
-    }
-  }
+  if (!await saveDestination()) return
 
   const index = stepIndex.value
   if (index < STEPS.value.length - 1) step.value = STEPS.value[index + 1]!
@@ -1113,9 +1139,7 @@ async function onPhoto(dataUrl: string) {
         :title="pickupKind === 'BARE_CHASSIS' ? 'No chassis on site' : 'No containers on site'"
         :description="inventoryQuery.trim()
           ? 'Nothing matching that search is parked here.'
-          : (swapMode
-            ? 'This is the same list as the drop-off location equipment page. Add it below if it is not there yet.'
-            : 'Add it below if it is not on the list yet.')"
+          : 'Add it below if it is not on the list yet.'"
       />
 
       <span class="wiz-label">Not on the list</span>
