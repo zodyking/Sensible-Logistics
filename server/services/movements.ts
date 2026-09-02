@@ -13,6 +13,7 @@ import type { Container, Location, Trip } from '../database/schema'
 import { claimContainerForPickup, nextTripReference, releasePickupClaim } from './activePool'
 import { eventExists, recordEvent } from './events'
 import { resolvePlacement, writePlacement, type GeoPlacementInput } from './placements'
+import { locationIdsAtSameAddress } from './location-sites'
 import type { AuthContext } from '../utils/session'
 import { formatContainerNumber, normalizeContainerNumber } from '#shared/utils/iso6346'
 import type { ContainerStatus, TripKind } from '#shared/utils/domain'
@@ -1179,7 +1180,10 @@ async function loadSwapSourceTrip(
     throw createError({ statusCode: 409, statusMessage: 'Swap is only available when heading to a customer location.' })
   }
   if (originLocationId !== source.destinationLocationId) {
-    throw createError({ statusCode: 409, statusMessage: 'Pick up the load at the customer you are heading to.' })
+    const destIds = await locationIdsAtSameAddress(tx, auth.companyId, source.destinationLocationId)
+    if (!destIds.includes(originLocationId)) {
+      throw createError({ statusCode: 409, statusMessage: 'Pick up the load at the customer you are heading to.' })
+    }
   }
   return source
 }
