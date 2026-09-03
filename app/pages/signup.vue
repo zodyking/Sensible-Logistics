@@ -98,6 +98,9 @@ async function resend() {
 
 <template>
   <div v-if="submittedEmail">
+    <div class="auth-logo">
+      <BrandLogo />
+    </div>
     <AuthHeader
       title="Confirm your email"
       subtitle="Almost there"
@@ -173,6 +176,9 @@ async function resend() {
   </div>
 
   <div v-else>
+    <div class="auth-logo">
+      <BrandLogo />
+    </div>
     <AuthHeader
       title="Create your account"
       subtitle="Driver self-registration"
