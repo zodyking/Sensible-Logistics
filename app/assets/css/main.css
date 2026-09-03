@@ -112,7 +112,7 @@
     min-height: 100%;
   }
 
-  /* Layout shells cover the visual viewport and scroll internally, so the
+  /* Layout shells cover the viewport and scroll internally, so the
      document behind them must not rubber-band a gap under the tab bar. */
   html:has(.d-app),
   html:has(.auth-app),
@@ -5661,21 +5661,29 @@ textarea {
   font-size: max(16px, var(--text-lg));
 }
 
-/* App shells fill the visual viewport (--app-height / --app-top from the
-   client plugin). The tab bar and credit footer are flex/grid chrome of
-   these shells, not `position: fixed` overlays and not scrolling content. */
+/* App shells fill the layout viewport from the first paint. Do not size
+   them with a JS pixel height while idle — visualViewport.height races
+   iOS Safari and leaves a gap under the tab bar until a later resize.
+   `.keyboard-open` (client plugin) is the only time we switch to the
+   visual viewport, so the focused field stays above the keyboard. */
 .d-app,
 .auth-app,
 .a-shell {
   position: fixed;
-  top: var(--app-top, 0px);
-  left: 0;
-  right: 0;
-  height: var(--app-height, 100dvh);
+  inset: 0;
   width: 100%;
+  height: auto;
   overflow: hidden;
   margin: 0;
   transform: none;
+}
+
+html.keyboard-open .d-app,
+html.keyboard-open .auth-app,
+html.keyboard-open .a-shell {
+  top: var(--app-top, 0px);
+  bottom: auto;
+  height: var(--app-height, 100dvh);
 }
 
 .yard-view {

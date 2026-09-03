@@ -1,22 +1,46 @@
+import { appShellFrame } from '#shared/utils/viewport-chrome'
+
 /**
- * Bind the app shell to the visual viewport.
+ * Size the app shell to the layout viewport by default (CSS `inset: 0`).
  *
- * iOS Safari’s layout viewport is taller than the area the driver actually
- * sees. A `position: fixed; bottom: 0` tab bar then sits on that short box
- * and leaves a scrollable gap under it. `--app-height` / `--app-top` size
- * the shell to what is on screen, including URL-bar show/hide.
+ * iOS Safari’s visualViewport.height is often a few dozen pixels short on
+ * the first paint and during URL-bar animation. Writing that value into
+ * `--app-height` leaves a white gap under the tab bar until a later resize
+ * “corrects” it. Only override the CSS frame when the soft keyboard is open.
  */
 export default defineNuxtPlugin(() => {
   const root = document.documentElement
 
   const sync = () => {
-    const viewport = window.visualViewport
-    root.style.setProperty('--app-height', `${viewport?.height ?? window.innerHeight}px`)
-    root.style.setProperty('--app-top', `${viewport?.offsetTop ?? 0}px`)
+    const visual = window.visualViewport
+    const frame = appShellFrame(
+      window.innerHeight,
+      visual ? { height: visual.height, offsetTop: visual.offsetTop } : null,
+    )
+    if (frame.height == null) {
+      root.classList.remove('keyboard-open')
+      root.style.removeProperty('--app-height')
+      root.style.removeProperty('--app-top')
+      return
+    }
+    root.classList.add('keyboard-open')
+    root.style.setProperty('--app-height', `${frame.height}px`)
+    root.style.setProperty('--app-top', `${frame.top}px`)
+  }
+
+  const syncSoon = () => {
+    requestAnimationFrame(() => {
+      sync()
+      requestAnimationFrame(sync)
+    })
   }
 
   sync()
-  window.visualViewport?.addEventListener('resize', sync)
-  window.visualViewport?.addEventListener('scroll', sync)
-  window.addEventListener('orientationchange', sync)
+  window.visualViewport?.addEventListener('resize', syncSoon)
+  window.visualViewport?.addEventListener('scroll', syncSoon)
+  window.addEventListener('resize', syncSoon)
+  window.addEventListener('orientationchange', syncSoon)
+  window.addEventListener('pageshow', syncSoon)
+  window.addEventListener('focusin', syncSoon)
+  window.addEventListener('focusout', syncSoon)
 })
