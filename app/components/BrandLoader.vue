@@ -1,5 +1,5 @@
 <script setup lang="ts">
-const { open, caption } = useBrandLoader()
+const { open, leaving, caption } = useBrandLoader()
 </script>
 
 <template>
@@ -7,18 +7,17 @@ const { open, caption } = useBrandLoader()
     <div
       v-if="open"
       class="brand-loader"
+      :class="{ leaving }"
       role="status"
       aria-live="polite"
       aria-busy="true"
     >
-      <div class="brand-loader-panel">
-        <BrandLogo />
+      <div class="brand-loader-stage">
         <span
-          class="brand-loader-bar"
+          class="brand-loader-glow"
           aria-hidden="true"
-        >
-          <i />
-        </span>
+        />
+        <BrandLogo />
         <p
           v-if="caption"
           class="brand-loader-caption"
