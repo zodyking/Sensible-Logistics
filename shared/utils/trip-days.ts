@@ -79,6 +79,27 @@ export function countDayWork(trips: DayWorkTrip[], iso: string): DayWorkCounts {
   return { swaps: swapKeys.size, pickups, dropoffs }
 }
 
+/** Timestamp used to order a trip inside a local day. Drop-off wins on the drop day. */
+export function tripDayStamp(trip: TripDayStamps, iso: string): number {
+  const dropIso = toLocalIsoDate(trip.droppedOffAt)
+  const pickupIso = tripPickupDay(trip)
+  if (dropIso === iso && trip.droppedOffAt) {
+    return toDate(trip.droppedOffAt)?.getTime() ?? 0
+  }
+  if (pickupIso === iso) {
+    return toDate(trip.pickedUpAt ?? trip.createdAt)?.getTime() ?? 0
+  }
+  return toDate(trip.pickedUpAt ?? trip.createdAt)?.getTime() ?? 0
+}
+
+/**
+ * Top-down work-day order: earliest trip first so the day reads start → finish.
+ * Latest-first (the old list) is the reverse of how the driver worked the day.
+ */
+export function sortTripsForDay<T extends TripDayStamps>(trips: readonly T[], iso: string): T[] {
+  return [...trips].sort((a, b) => tripDayStamp(a, iso) - tripDayStamp(b, iso))
+}
+
 export function formatDayWorkSummary(counts: DayWorkCounts): string {
   const parts: string[] = []
   if (counts.swaps) parts.push(counts.swaps === 1 ? '1 swap' : `${counts.swaps} swaps`)

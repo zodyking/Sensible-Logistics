@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { groupTasksByWorkDate, taskAddedDate } from '../shared/utils/task-days'
+import { concatenateDayWork, groupTasksByWorkDate, taskAddedDate } from '../shared/utils/task-days'
 
 describe('taskAddedDate', () => {
   it('uses receivedAt, not a leftover tomorrow workDate', () => {
@@ -39,5 +39,38 @@ describe('groupTasksByWorkDate', () => {
     const groups = groupTasksByWorkDate([later, earlier], '2026-09-01')
     expect(groups.map(group => group.iso)).toEqual(['2026-09-01', '2026-09-02', '2026-08-30'])
     expect(groups[0]).toEqual({ iso: '2026-09-01', tasks: [] })
+  })
+})
+
+describe('concatenateDayWork', () => {
+  it('flattens every task’s pull list into one list', () => {
+    const steps = concatenateDayWork([
+      {
+        id: 'a',
+        title: 'Work for Wed, Sep 2',
+        rawText: 'Pickup TCLU',
+        receivedAt: '2026-09-02T08:00:00.000Z',
+        workDate: '2026-09-02',
+        status: 'DONE',
+        steps: [
+          { id: 's1', text: 'Pickup TCLU at NJ Yard', done: true },
+          { id: 's2', text: 'Drop Coastal Tile', done: false },
+        ],
+      },
+      {
+        id: 'b',
+        title: 'Live load Queens',
+        rawText: 'Live load Queens',
+        receivedAt: '2026-09-02T09:00:00.000Z',
+        workDate: '2026-09-02',
+        status: 'OPEN',
+      },
+    ])
+    expect(steps.map(step => step.text)).toEqual([
+      'Pickup TCLU at NJ Yard',
+      'Drop Coastal Tile',
+      'Live load Queens',
+    ])
+    expect(steps[2]!.done).toBe(false)
   })
 })

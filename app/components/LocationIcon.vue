@@ -3,8 +3,8 @@ import type { LocationType } from '#shared/utils/domain'
 
 /**
  * Location-type marks for lists and pickers. Each silhouette is a different
- * shape so a driver can tell a yard from a customer from a port or rail gate
- * without reading the label.
+ * shape so a driver can tell a parking-lot yard from a customer, port, or
+ * rail gate without reading the label.
  */
 withDefaults(defineProps<{
   name: LocationType
@@ -22,24 +22,21 @@ withDefaults(defineProps<{
     fill="currentColor"
     aria-hidden="true"
   >
-    <!-- Warehouse: peaked roof, roll door -->
+    <!-- Company yard: parking-lot P -->
     <template v-if="name === 'COMPANY_YARD'">
-      <path d="M4 14.2 16 6.4 28 14.2v1.8H4Z" />
-      <path d="M6.2 16.4h19.6V26H6.2Z" />
       <rect
-        x="12.4"
-        y="19.2"
-        width="7.2"
-        height="6.8"
-        rx="0.6"
+        x="3.4"
+        y="3.4"
+        width="25.2"
+        height="25.2"
+        rx="4"
         fill="none"
         stroke="currentColor"
-        stroke-width="1.6"
+        stroke-width="2"
       />
       <path
-        d="M13.6 21.2h4.8M13.6 23.2h4.8M13.6 25.2h4.8"
-        stroke="currentColor"
-        stroke-width="1.2"
+        fill-rule="evenodd"
+        d="M11 24.2V7.8h6.7c3.35 0 5.5 2.05 5.5 5.2 0 3.15-2.15 5.2-5.5 5.2H14.15V24.2H11Zm3.15-13.95v4.85h3.3c1.7 0 2.7-1.05 2.7-2.42 0-1.38-1-2.43-2.7-2.43h-3.3Z"
       />
     </template>
 

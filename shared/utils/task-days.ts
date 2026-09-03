@@ -3,6 +3,7 @@
  * still be a leftover “tomorrow” parse; `receivedAt` is the source of truth.
  */
 
+import type { TaskStep } from './task-steps'
 import { toLocalIsoDate } from './trip-days'
 
 export function taskAddedDate(task: {
@@ -44,4 +45,37 @@ export function groupTasksByWorkDate<T extends {
   return order
     .filter((iso, index) => map.has(iso) && order.indexOf(iso) === index)
     .map(iso => ({ iso, tasks: map.get(iso) ?? [] }))
+}
+
+export interface DayWorkTask {
+  id: string
+  title: string
+  rawText: string
+  sender?: string | null
+  receivedAt: string | number | Date
+  workDate: string
+  status: string
+  steps?: Array<{ id: string, text: string, done: boolean }>
+}
+
+/** Flatten every work instruction for a day into one pull list. */
+export function concatenateDayWork(tasks: readonly DayWorkTask[]): TaskStep[] {
+  const steps: TaskStep[] = []
+  for (const task of tasks) {
+    if (task.steps?.length) {
+      for (const step of task.steps) {
+        steps.push({ id: step.id, text: step.text, done: step.done })
+      }
+      continue
+    }
+    const text = task.rawText.trim()
+    if (text) {
+      steps.push({
+        id: task.id,
+        text,
+        done: task.status === 'DONE',
+      })
+    }
+  }
+  return steps
 }
