@@ -11,7 +11,7 @@ export async function notifyEmailChanged(input: {
   oldEmail: string
   newEmail: string
 }): Promise<void> {
-  const appName = String(useRuntimeConfig().public.appName || 'Driver Portal')
+  const appName = String(useRuntimeConfig().public.appName || 'Gantry')
   const subject = `Your ${appName} email was updated`
   const text = [
     `Hi ${input.firstName},`,
