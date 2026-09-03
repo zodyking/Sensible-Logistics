@@ -3,11 +3,9 @@
  * Admin management shell — persistent left nav on desktop, drawer on mobile.
  * Denser than the driver experience and deliberately dashboard-free (spec 3).
  */
-import { resolveProductName } from '#shared/utils/brand'
-
 const route = useRoute()
 const { user, clear } = useUserSession()
-const appName = computed(() => resolveProductName(useRuntimeConfig().public.appName))
+const { appName } = useRuntimeConfig().public
 const drawerOpen = ref(false)
 
 const nav = [

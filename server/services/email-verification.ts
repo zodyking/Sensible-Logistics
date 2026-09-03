@@ -2,7 +2,6 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { and, desc, eq, gt, isNull } from 'drizzle-orm'
 import { emailVerificationTokens, users } from '../database/schema'
 import type { DbExecutor } from '../utils/db'
-import { resolveProductName } from '#shared/utils/brand'
 import { appBaseUrl, useMail } from './mail'
 
 /**
@@ -126,7 +125,7 @@ export async function consumeEmailVerification(
 
 function buildMessage(firstName: string, link: string, expiresAt: Date) {
   const hours = Math.round(TOKEN_TTL_MINUTES / 60)
-  const appName = resolveProductName(useRuntimeConfig().public.appName)
+  const appName = String(useRuntimeConfig().public.appName || 'Yard Manager')
   const subject = `Confirm your ${appName} email`
 
   const text = [
