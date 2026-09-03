@@ -2,7 +2,7 @@
 /**
  * Driver operational shell — brand bar, scrolling content column, and a
  * tab bar that is layout chrome (not page content). The shell is locked to
- * the visual viewport; only `.d-shell` scrolls.
+ * the layout viewport (`inset: 0`); only `.d-shell` scrolls.
  */
 const route = useRoute()
 const { user } = useUserSession()

@@ -2,7 +2,7 @@
 /**
  * Signed-out shell — brand bar, scrolling form column, and a credit footer
  * that is layout chrome (not page content). The shell is locked to the
- * visual viewport; only `.auth-main` scrolls.
+ * layout viewport (`inset: 0`); only `.auth-main` scrolls.
  */
 const { appName } = useRuntimeConfig().public
 </script>
