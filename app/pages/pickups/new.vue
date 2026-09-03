@@ -662,7 +662,9 @@ async function next() {
   if (!await saveDestination()) return
 
   const index = stepIndex.value
-  if (index < STEPS.value.length - 1) step.value = STEPS.value[index + 1]!
+  if (index >= STEPS.value.length - 1) return
+  const following = STEPS.value[index + 1]!
+  step.value = swapMode.value && following === 'destination' ? 'confirm' : following
 }
 
 function back() {
@@ -1414,8 +1416,8 @@ async function onPhoto(dataUrl: string) {
       </div>
     </template>
 
-    <!-- ── Destination ─────────────────────────────────────────── -->
-    <template v-else-if="step === 'destination'">
+    <!-- ── Destination (plain pickup only — swap never picks a location) ── -->
+    <template v-else-if="step === 'destination' && !swapMode">
       <div class="searchbar wiz-search">
         <span aria-hidden="true">⌕</span>
         <input
