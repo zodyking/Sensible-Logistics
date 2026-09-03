@@ -1,6 +1,13 @@
 <script setup lang="ts">
 import type { GeoJsonPolygon } from '#shared/utils/geo'
-import { bboxFromPolygon, headingDelta, normalizeHeading, parsePin, polygonFromRing } from '#shared/utils/geo'
+import {
+  bboxFromPolygon,
+  headingDelta,
+  isPlausibleYardFence,
+  normalizeHeading,
+  parsePin,
+  polygonFromRing,
+} from '#shared/utils/geo'
 import { formatAddressSearchQuery } from '#shared/utils/us-address'
 import { loadLeaflet, observeMapSize, waitForMapSize } from '~/utils/leaflet-map'
 import { OSM_ATTRIBUTION, osmTileUrl } from '~/utils/map-tiles'
@@ -76,16 +83,21 @@ function paintFence() {
   if (!map || !L) return
   fenceLayer?.remove()
   fenceLayer = null
-  if (drawing.value) return
+  if (drawing.value || !isPlausibleYardFence(props.boundary)) return
   const ring = props.boundary?.coordinates?.[0]
   if (!ring?.length) return
-  fenceLayer = L.polygon(ring.map(([lng, lat]) => [lat, lng] as [number, number]), {
-    color: '#F0A422',
-    weight: 2,
-    fillColor: '#F0A422',
-    fillOpacity: 0.14,
-    interactive: false,
-  }).addTo(map)
+  try {
+    fenceLayer = L.polygon(ring.map(([lng, lat]) => [lat, lng] as [number, number]), {
+      color: '#F0A422',
+      weight: 2,
+      fillColor: '#F0A422',
+      fillOpacity: 0.14,
+      interactive: false,
+    }).addTo(map)
+  }
+  catch {
+    fenceLayer = null
+  }
 }
 
 function paintDraft() {
@@ -111,10 +123,19 @@ function paintDraft() {
   }
 }
 
+function mapIsLoaded(): boolean {
+  return Boolean(map && (map as unknown as { _loaded?: boolean })._loaded)
+}
+
 function applyHeading(value: number) {
-  if (!map) return
+  if (!map || !mapIsLoaded()) return
   applyingHeading = true
-  map.setBearing(normalizeHeading(value))
+  try {
+    map.setBearing(normalizeHeading(value))
+  }
+  catch {
+    // leaflet-rotate throws if a view has not been set yet.
+  }
   applyingHeading = false
 }
 
@@ -127,19 +148,25 @@ function onRotate() {
 
 function applySiteView(site: { latitude: number, longitude: number } | null = sitePin.value) {
   if (!map) return
+  const pin = site ?? { latitude: US_CENTER[0], longitude: US_CENTER[1] }
+  const zoom = site ? YARD_ZOOM : 4
+  try {
+    map.setView([pin.latitude, pin.longitude], zoom, { animate: false })
+  }
+  catch {
+    return
+  }
   const box = bboxFromPolygon(props.boundary)
-  if (box) {
+  if (!box || !isPlausibleYardFence(props.boundary)) return
+  try {
     map.fitBounds(
       [[box.south, box.west], [box.north, box.east]],
       { animate: false, padding: [40, 40], maxZoom: 19 },
     )
-    return
   }
-  if (site) {
-    map.setView([site.latitude, site.longitude], YARD_ZOOM, { animate: false })
-    return
+  catch {
+    // Keep the address view when Leaflet cannot fit a stored fence.
   }
-  map.setView(US_CENTER, 4, { animate: false })
 }
 
 async function geocodeAddress(): Promise<{ latitude: number, longitude: number } | null> {
@@ -169,25 +196,36 @@ async function resolveSite(): Promise<{ latitude: number, longitude: number } | 
  * to the street this yields a quad that hugs the roadway, not a north-up box.
  */
 function captureFence(): GeoJsonPolygon | null {
-  if (!map || !L) return null
-  const size = map.getSize()
-  if (!size.x || !size.y) return null
-  const ix = size.x * FRAME_INSET
-  const iy = size.y * FRAME_INSET
-  const corners: Array<[number, number]> = [
-    [ix, iy],
-    [size.x - ix, iy],
-    [size.x - ix, size.y - iy],
-    [ix, size.y - iy],
-  ]
-  const vertices = corners.map(([x, y]) => {
-    const latlng = map!.containerPointToLatLng(L!.point(x, y))
-    return [latlng.lng, latlng.lat] as [number, number]
-  })
-  const polygon = polygonFromRing(vertices)
-  if (!polygon) return null
-  emit('update:boundary', polygon)
-  return polygon
+  if (!map || !L || !mapIsLoaded() || !ready.value) return null
+  try {
+    const size = map.getSize()
+    if (!size.x || !size.y) return null
+    const ix = size.x * FRAME_INSET
+    const iy = size.y * FRAME_INSET
+    const corners: Array<[number, number]> = [
+      [ix, iy],
+      [size.x - ix, iy],
+      [size.x - ix, size.y - iy],
+      [ix, size.y - iy],
+    ]
+    const vertices = corners.map(([x, y]) => {
+      const latlng = map!.containerPointToLatLng(L!.point(x, y))
+      return [latlng.lng, latlng.lat] as [number, number]
+    })
+    const polygon = polygonFromRing(vertices)
+    if (!polygon) return null
+    if (!isPlausibleYardFence(polygon)) {
+      errorMessage.value = 'Zoom in until the gold frame hugs the usable yard, then set the fence.'
+      return null
+    }
+    errorMessage.value = ''
+    emit('update:boundary', polygon)
+    return polygon
+  }
+  catch {
+    errorMessage.value = 'Wait for the map to finish loading, then set the fence.'
+    return null
+  }
 }
 
 function onMapClick(event: import('leaflet').LeafletMouseEvent) {
@@ -224,6 +262,11 @@ function finishDraw() {
     draftPoints.value.map(([lat, lng]) => [lng, lat]),
   )
   if (!polygon || !map) return
+  if (!isPlausibleYardFence(polygon)) {
+    errorMessage.value = 'That zone is too large or too small. Tap the corners of the usable yard.'
+    return
+  }
+  errorMessage.value = ''
   emit('update:boundary', polygon)
   drawing.value = false
   draftPoints.value = []
@@ -249,26 +292,24 @@ async function boot() {
       zoomControl: true,
       attributionControl: true,
       rotate: true,
-      bearing: normalizeHeading(props.heading),
       touchRotate: true,
       rotateControl: false,
       shiftKeyRotate: true,
-      center: site ? [site.latitude, site.longitude] : US_CENTER,
-      zoom: site ? YARD_ZOOM : 4,
     })
+    applySiteView(site)
     L.tileLayer(osmTileUrl(), {
       maxZoom: 22,
       attribution: OSM_ATTRIBUTION,
     }).addTo(map)
     draftLayer = L.layerGroup().addTo(map)
     map.on('rotate', onRotate)
-    applySiteView(site)
     paintFence()
     paintPin()
-    ready.value = true
     map.invalidateSize()
     applySiteView(site)
     applyHeading(props.heading)
+    ready.value = true
+    errorMessage.value = ''
     stopSizeWatch = observeMapSize(mapEl.value, () => {
       if (cancelled || !map) return
       map.invalidateSize()
@@ -276,7 +317,8 @@ async function boot() {
   }
   catch (error) {
     if (!cancelled) {
-      errorMessage.value = error instanceof Error ? error.message : 'Map failed to load.'
+      errorMessage.value = 'Map failed to load. Go back and open Draw yard again.'
+      console.warn('[LocationMapEditor]', error)
     }
   }
 }
