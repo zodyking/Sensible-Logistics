@@ -11,7 +11,7 @@ const locationId = computed(() => String(route.params.id))
 const { data, error, status, refresh } = await useFetch(() => `/api/locations/${locationId.value}`)
 useHead({ title: () => `Generate yard · ${data.value?.location.name ?? 'Location'}` })
 
-const editor = ref<{ captureFence: () => GeoJsonPolygon | null } | null>(null)
+const editor = ref<{ captureFence: () => GeoJsonPolygon | null, recenter: () => void } | null>(null)
 const heading = ref(0)
 const boundary = ref<GeoJsonPolygon | null>(null)
 const submitting = ref(false)
@@ -139,6 +139,14 @@ async function generate() {
       </ClientOnly>
 
       <div class="wiz-actions">
+        <button
+          v-if="boundary"
+          type="button"
+          class="btn-dark w-full"
+          @click="boundary = null; editor?.recenter()"
+        >
+          Redraw zone
+        </button>
         <button
           type="button"
           class="wiz-next"
