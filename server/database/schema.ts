@@ -671,6 +671,21 @@ export const trips = pgTable('trips', {
   index('trips_swap_pair_idx').on(t.swapPairTripId),
 ])
 
+/** Driver-confirmed deadhead between two trips whose places do not chain. */
+export const tripGaps = pgTable('trip_gaps', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  companyId: uuid('company_id').notNull().references(() => companies.id, { onDelete: 'cascade' }),
+  driverId: uuid('driver_id').notNull().references(() => drivers.id, { onDelete: 'cascade' }),
+  priorTripId: uuid('prior_trip_id').notNull().references(() => trips.id, { onDelete: 'cascade' }),
+  nextTripId: uuid('next_trip_id').notNull().references(() => trips.id, { onDelete: 'cascade' }),
+  resolution: text('resolution').notNull().default('BOBTAIL'),
+  createdAt: utc('created_at').notNull().defaultNow(),
+  updatedAt: utc('updated_at').notNull().defaultNow(),
+}, t => [
+  uniqueIndex('trip_gaps_pair_key').on(t.priorTripId, t.nextTripId),
+  index('trip_gaps_driver_idx').on(t.driverId),
+])
+
 export const tripStops = pgTable('trip_stops', {
   id: uuid('id').primaryKey().defaultRandom(),
   companyId: uuid('company_id').notNull().references(() => companies.id, { onDelete: 'cascade' }),
@@ -1014,6 +1029,7 @@ export type YardAssetPosition = typeof yardAssetPositions.$inferSelect
 export type Container = typeof containers.$inferSelect
 export type Chassis = typeof chassis.$inferSelect
 export type Trip = typeof trips.$inferSelect
+export type TripGapRecord = typeof tripGaps.$inferSelect
 export type ContainerEvent = typeof containerEvents.$inferSelect
 export type ContainerPlacement = typeof containerPlacements.$inferSelect
 export type DocumentRecord = typeof documents.$inferSelect
