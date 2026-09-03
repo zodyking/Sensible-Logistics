@@ -40,7 +40,7 @@ services:
       # a leftover PORT=3000 in Dokploy would collide with the panel if published.
       PORT: "3847"
       HOST: ${HOST:-0.0.0.0}
-      NUXT_PUBLIC_APP_NAME: ${NUXT_PUBLIC_APP_NAME:-Sensible Logistics Solutions LLC}
+      NUXT_PUBLIC_APP_NAME: ${NUXT_PUBLIC_APP_NAME:-Gantry}
       # Public origin used to build email verification links.
       NUXT_APP_URL: ${NUXT_APP_URL:?set NUXT_APP_URL}
       # Outbound SMTP — required for driver email verification.

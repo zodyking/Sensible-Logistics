@@ -3,11 +3,12 @@
  * Credit bar for signed-out screens. Rendered as layout chrome at the
  * bottom of `.auth-app`, not inside the scrolling form column.
  */
+const { appName } = useRuntimeConfig().public
 </script>
 
 <template>
   <footer class="app-footer">
-    <p>Driver Portal</p>
+    <p>{{ appName }}</p>
     <p class="app-footer-by">
       Created by
       <a
