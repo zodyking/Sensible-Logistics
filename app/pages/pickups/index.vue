@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { countDayWork, formatDayWorkSummary, sortTripsForDay, tripOccursOnDay, tripPickupDay, toLocalIsoDate } from '#shared/utils/trip-days'
 import { taskAddedDate } from '#shared/utils/task-days'
+import { findTripGaps, resolutionMap, type GapResolution, type TripGap } from '#shared/utils/trip-gaps'
 
 useHead({ title: 'My Trips' })
 
@@ -9,7 +10,7 @@ const dayFilter = ref<'all' | 'today'>('all')
 const cursor = ref(new Date())
 const selectedIso = ref(toLocalIsoDate(new Date()) ?? '')
 
-const { data, status, error } = await useFetch('/api/trips', {
+const { data, status, error, refresh } = await useFetch('/api/trips', {
   query: { scope: 'mine', limit: 200 },
 })
 const { data: taskData } = await useFetch('/api/tasks')
@@ -17,6 +18,8 @@ const { data: taskData } = await useFetch('/api/tasks')
 const todayIso = computed(() => toLocalIsoDate(new Date()) ?? '')
 
 const trips = computed(() => data.value?.items ?? [])
+const gaps = computed(() => findTripGaps(trips.value))
+const resolutions = computed(() => resolutionMap(data.value?.gapResolutions))
 const historyTasks = computed(() =>
   (taskData.value?.tasks ?? []).filter(task => task.status !== 'DISMISSED'),
 )
@@ -159,6 +162,7 @@ const selectedDayTrips = computed(() =>
 )
 
 const selectedDayTasks = computed(() => tasksByDate.value.get(selectedIso.value) ?? [])
+const gapError = ref('')
 
 function shiftMonth(delta: number) {
   const next = new Date(cursor.value)
@@ -174,6 +178,24 @@ function selectDay(iso: string) {
     if (next.getFullYear() !== cursor.value.getFullYear() || next.getMonth() !== cursor.value.getMonth()) {
       cursor.value = next
     }
+  }
+}
+
+async function resolveGap(gap: TripGap, resolution: GapResolution) {
+  gapError.value = ''
+  try {
+    await $fetch('/api/trips/gaps', {
+      method: 'POST',
+      body: {
+        priorTripId: gap.priorTripId,
+        nextTripId: gap.nextTripId,
+        resolution,
+      },
+    })
+    await refresh()
+  }
+  catch (err) {
+    gapError.value = apiErrorMessage(err)
   }
 }
 
@@ -264,6 +286,14 @@ function calendarDayLabel(cell: { iso: string, hasTrip: boolean, selected: boole
     </p>
 
     <template v-else>
+      <p
+        v-if="gapError"
+        class="banner err"
+        role="alert"
+      >
+        <span aria-hidden="true">✕</span>
+        <span>{{ gapError }}</span>
+      </p>
       <div
         class="trips-list-wrap"
         :class="{ off: view !== 'list' }"
@@ -296,22 +326,11 @@ function calendarDayLabel(cell: { iso: string, hasTrip: boolean, selected: boole
                 :tasks="day.tasks"
                 :work-date="day.iso"
               />
-              <TripListCard
-                v-for="trip in day.items"
-                :id="trip.id"
-                :key="trip.id"
-                :status="trip.status"
-                :kind="trip.kind"
-                :container-number="trip.containerNumber"
-                :container-type="trip.containerType"
-                :chassis-number="trip.chassisNumber"
-                :reference="trip.reference"
-                :origin-name="trip.originName"
-                :destination-name="trip.destinationName"
-                :picked-up-at="trip.pickedUpAt"
-                :dropped-off-at="trip.droppedOffAt"
-                :is-loaded="trip.isLoaded"
-                :created-at="trip.createdAt"
+              <TripHistoryRows
+                :trips="day.items"
+                :gaps="gaps"
+                :resolutions="resolutions"
+                @resolve="resolveGap"
               />
             </div>
           </div>
@@ -388,22 +407,11 @@ function calendarDayLabel(cell: { iso: string, hasTrip: boolean, selected: boole
             :work-date="selectedIso"
           />
 
-          <TripListCard
-            v-for="trip in selectedDayTrips"
-            :id="trip.id"
-            :key="trip.id"
-            :status="trip.status"
-            :kind="trip.kind"
-            :container-number="trip.containerNumber"
-            :container-type="trip.containerType"
-            :chassis-number="trip.chassisNumber"
-            :reference="trip.reference"
-            :origin-name="trip.originName"
-            :destination-name="trip.destinationName"
-            :picked-up-at="trip.pickedUpAt"
-            :dropped-off-at="trip.droppedOffAt"
-            :is-loaded="trip.isLoaded"
-            :created-at="trip.createdAt"
+          <TripHistoryRows
+            :trips="selectedDayTrips"
+            :gaps="gaps"
+            :resolutions="resolutions"
+            @resolve="resolveGap"
           />
 
           <EmptyState

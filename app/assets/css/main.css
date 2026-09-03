@@ -3623,6 +3623,33 @@
     color: var(--color-ink-500);
   }
 
+  .trip-move.is-static {
+    cursor: default;
+  }
+
+  .trip-move.is-static:active {
+    background: #fff;
+  }
+
+  .trip-move.bobtail .trip-move-rail {
+    background: var(--color-navy-700);
+  }
+
+  .trip-move-top b svg {
+    flex-shrink: 0;
+    color: var(--color-navy-800);
+  }
+
+  .trip-gap-actions {
+    margin-top: 10px;
+  }
+
+  .trip-gap-actions .btn-dark,
+  .trip-gap-actions .btn-ghost {
+    width: 100%;
+    min-height: 44px;
+  }
+
   .trip-row {
     display: flex;
     align-items: center;

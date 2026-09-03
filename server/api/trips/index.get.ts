@@ -1,8 +1,9 @@
 import { aliasedTable, and, desc, eq, inArray, ne } from 'drizzle-orm'
 import { z } from 'zod'
-import { chassis, containers, locations, trips } from '../../database/schema'
+import { chassis, containers, locations, tripGaps, trips } from '../../database/schema'
 import { requireAuth } from '../../utils/session'
 import { TRIP_STATUSES } from '#shared/utils/domain'
+import type { GapResolution } from '#shared/utils/trip-gaps'
 
 const querySchema = z.object({
   status: z.enum(TRIP_STATUSES).optional(),
@@ -47,6 +48,8 @@ export default defineEventHandler(async (event) => {
       chassisNumber: chassis.number,
       kind: trips.kind,
       swapPairTripId: trips.swapPairTripId,
+      originLocationId: trips.originLocationId,
+      destinationLocationId: trips.destinationLocationId,
       originName: origin.name,
       destinationName: destination.name,
     })
@@ -59,5 +62,27 @@ export default defineEventHandler(async (event) => {
     .orderBy(desc(trips.createdAt))
     .limit(query.limit)
 
-  return { items }
+  const tripIds = items.map(item => item.id)
+  const gapResolutions = tripIds.length
+    ? await db
+        .select({
+          priorTripId: tripGaps.priorTripId,
+          nextTripId: tripGaps.nextTripId,
+          resolution: tripGaps.resolution,
+        })
+        .from(tripGaps)
+        .where(and(
+          eq(tripGaps.companyId, auth.companyId),
+          inArray(tripGaps.nextTripId, tripIds),
+        ))
+    : []
+
+  return {
+    items,
+    gapResolutions: gapResolutions.map(row => ({
+      priorTripId: row.priorTripId,
+      nextTripId: row.nextTripId,
+      resolution: (row.resolution === 'BOBTAIL' ? 'BOBTAIL' : 'MISSING') as GapResolution,
+    })),
+  }
 })
