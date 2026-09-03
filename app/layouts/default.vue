@@ -50,8 +50,11 @@ const tabs: Array<{
       </div>
     </header>
 
-    <div class="d-shell">
-      <slot />
+    <div class="d-stage">
+      <div class="d-shell">
+        <slot />
+      </div>
+      <BrandLoader />
     </div>
 
     <nav
