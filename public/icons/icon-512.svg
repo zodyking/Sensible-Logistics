@@ -1,18 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Container Tracker">
-  <rect width="512" height="512" rx="96" fill="#0C1E30"/>
-  <g transform="translate(106 150)">
-    <rect x="0" y="0" width="300" height="212" rx="10" fill="#F0A02A"/>
-    <g fill="#0C1E30" opacity="0.85">
-      <rect x="26" y="26" width="14" height="160" rx="4"/>
-      <rect x="60" y="26" width="14" height="160" rx="4"/>
-      <rect x="94" y="26" width="14" height="160" rx="4"/>
-      <rect x="128" y="26" width="14" height="160" rx="4"/>
-      <rect x="162" y="26" width="14" height="160" rx="4"/>
-      <rect x="196" y="26" width="14" height="160" rx="4"/>
-      <rect x="230" y="26" width="14" height="160" rx="4"/>
-      <rect x="264" y="26" width="14" height="160" rx="4"/>
-    </g>
-    <rect x="0" y="0" width="300" height="24" rx="10" fill="#0C1E30" opacity="0.2"/>
-    <rect x="0" y="188" width="300" height="24" rx="10" fill="#0C1E30" opacity="0.2"/>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Gantry">
+  <rect width="512" height="512" fill="#FFD400"/>
+  <circle cx="314" cy="228" r="112" fill="#5BB4D4"/>
+  <path d="M276 144c40 18 70 56 77 98 6 35-5 70-26 96" fill="none" stroke="#0C1E30" stroke-width="20" stroke-linecap="round"/>
+  <path d="M100 330 110 196c3-22 19-38 41-38h80c14 0 25 10 27 24l14 134c2 16-10 29-26 29H126c-16 0-28-12-26-27z" fill="#0C1E30"/>
+  <path d="M138 214h106M140 262h102M144 308h96" stroke="#FFD400" stroke-width="10" stroke-linecap="round"/>
+  <circle cx="154" cy="358" r="22" fill="#0C1E30"/>
+  <circle cx="256" cy="358" r="22" fill="#0C1E30"/>
+  <text x="256" y="458" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="58" font-weight="700" fill="#0C1E30">Sensible</text>
 </svg>
