@@ -4,8 +4,10 @@
  * tab bar that is layout chrome (not page content). The shell is locked to
  * the layout viewport (`inset: 0`); only `.d-shell` scrolls.
  */
+import { resolveProductName } from '#shared/utils/brand'
+
 const route = useRoute()
-const { appName } = useRuntimeConfig().public
+const appName = computed(() => resolveProductName(useRuntimeConfig().public.appName))
 
 const pendingSync = useState('pending-sync', () => 0)
 

@@ -1,4 +1,5 @@
 import tailwindcss from '@tailwindcss/vite'
+import { PRODUCT_NAME, resolveProductName } from './shared/utils/brand'
 
 export default defineNuxtConfig({
 
@@ -82,7 +83,7 @@ export default defineNuxtConfig({
     s3AccessKeyId: '',
     s3SecretAccessKey: '',
     public: {
-      appName: 'Yard Manager',
+      appName: resolveProductName(process.env.NUXT_PUBLIC_APP_NAME),
       mapTilesUrl: '',
       mapSatelliteUrl: '',
       geocoderUrl: '',
@@ -124,9 +125,9 @@ export default defineNuxtConfig({
     manifest: {
       // Baked in at build time — the manifest is a static file, so changing the
       // env var afterwards requires a rebuild.
-      name: process.env.NUXT_PUBLIC_APP_NAME || 'Yard Manager',
-      short_name: process.env.NUXT_PUBLIC_PWA_SHORT_NAME || 'Yard Manager',
-      description: process.env.NUXT_PUBLIC_PWA_DESCRIPTION || 'Yard Manager — driver and yard operations',
+      name: resolveProductName(process.env.NUXT_PUBLIC_APP_NAME),
+      short_name: resolveProductName(process.env.NUXT_PUBLIC_PWA_SHORT_NAME),
+      description: process.env.NUXT_PUBLIC_PWA_DESCRIPTION || `${PRODUCT_NAME} — driver and yard operations`,
       theme_color: '#0C1E30',
       background_color: '#EDF0F2',
       display: 'standalone',

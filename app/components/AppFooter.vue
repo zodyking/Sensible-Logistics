@@ -3,7 +3,9 @@
  * Credit bar for signed-out screens. Rendered as layout chrome at the
  * bottom of `.auth-app`, not inside the scrolling form column.
  */
-const { appName } = useRuntimeConfig().public
+import { resolveProductName } from '#shared/utils/brand'
+
+const appName = computed(() => resolveProductName(useRuntimeConfig().public.appName))
 </script>
 
 <template>
