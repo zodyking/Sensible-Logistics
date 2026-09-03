@@ -125,7 +125,7 @@ describe('pickupSteps', () => {
     expect(unsetKind).toEqual(['kind', 'location', 'inventory', 'notes', 'destination', 'confirm'])
   })
 
-  it('starts a swap at on-site inventory and still ends at destination then confirm', () => {
+  it('starts a swap at on-site inventory and never asks for a location', () => {
     const yard = pickupSteps({
       kind: 'CONTAINER',
       fromYard: true,
@@ -133,6 +133,7 @@ describe('pickupSteps', () => {
       needsClassification: false,
       isLoaded: true,
       swap: true,
+      destinationKnown: true,
     })
     const typed = pickupSteps({
       kind: 'CONTAINER',
@@ -141,12 +142,37 @@ describe('pickupSteps', () => {
       needsClassification: true,
       isLoaded: true,
       swap: true,
+      destinationKnown: true,
     })
-    expect(yard).toEqual(['inventory', 'seal', 'notes', 'destination', 'confirm'])
+    expect(yard).toEqual(['inventory', 'seal', 'notes', 'confirm'])
     expect(typed[0]).toBe('inventory')
     expect(typed).not.toContain('kind')
     expect(typed).not.toContain('location')
-    expect(typed).not.toContain('load')
-    expect(typed.slice(-2)).toEqual(['destination', 'confirm'])
+    expect(typed).not.toContain('destination')
+    expect(typed.slice(-2)).toEqual(['notes', 'confirm'])
+  })
+
+  it('asks a swap for the drop-off only when the return leg is unknown', () => {
+    const steps = pickupSteps({
+      kind: 'CONTAINER',
+      fromYard: true,
+      manualEntry: false,
+      needsClassification: false,
+      isLoaded: true,
+      swap: true,
+    })
+    expect(steps).toEqual(['inventory', 'seal', 'notes', 'destination', 'confirm'])
+  })
+
+  it('keeps the drop-off step on a plain pickup even when one is already set', () => {
+    const steps = pickupSteps({
+      kind: 'CONTAINER',
+      fromYard: true,
+      manualEntry: false,
+      needsClassification: false,
+      isLoaded: true,
+      destinationKnown: true,
+    })
+    expect(steps.slice(-2)).toEqual(['destination', 'confirm'])
   })
 })

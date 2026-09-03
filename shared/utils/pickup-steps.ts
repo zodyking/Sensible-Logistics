@@ -30,6 +30,8 @@ export function pickupSteps(input: {
   isLoaded: boolean | null
   /** Second pickup of a load while an empty is still inbound to a customer. */
   swap?: boolean
+  /** A swap runs the empty's leg in reverse, so both ends are already set. */
+  destinationKnown?: boolean
 }): PickupStep[] {
   if (input.swap) {
     const steps: PickupStep[] = ['inventory']
@@ -42,7 +44,9 @@ export function pickupSteps(input: {
     if (input.kind === 'CONTAINER' && input.isLoaded === true && (input.manualEntry || input.fromYard)) {
       steps.push('seal')
     }
-    steps.push('notes', 'destination', 'confirm')
+    steps.push('notes')
+    if (!input.destinationKnown) steps.push('destination')
+    steps.push('confirm')
     return steps
   }
 
