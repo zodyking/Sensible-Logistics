@@ -1,5 +1,8 @@
 <script setup lang="ts">
+import { BRAND_LOADER_MIN_MS } from '~/composables/useBrandLoader'
+
 const { open, leaving, caption } = useBrandLoader()
+const label = computed(() => caption.value || 'Saving')
 </script>
 
 <template>
@@ -17,13 +20,22 @@ const { open, leaving, caption } = useBrandLoader()
         aria-hidden="true"
       />
       <BrandLogo />
-      <p
-        v-if="caption"
-        class="brand-loader-caption"
-      >
-        {{ caption }}
+      <p class="brand-loader-caption">
+        {{ label }}
       </p>
-      <span class="sr-only">{{ caption || 'Loading' }}</span>
+      <div
+        class="brand-loader-bar"
+        role="progressbar"
+        :aria-label="label"
+        aria-valuemin="0"
+        aria-valuemax="100"
+      >
+        <span
+          class="brand-loader-bar-fill"
+          :style="{ animationDuration: `${BRAND_LOADER_MIN_MS}ms` }"
+        />
+      </div>
+      <span class="sr-only">{{ label }}</span>
     </div>
   </div>
 </template>

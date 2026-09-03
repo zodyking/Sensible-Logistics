@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { BRAND_LOADER_MIN_MS, brandLoaderRemainMs } from '../app/composables/useBrandLoader'
+import { BRAND_LOADER_MIN_MS, BRAND_LOADER_SAVE_CAPTION, brandLoaderRemainMs } from '../app/composables/useBrandLoader'
 
 describe('brand loader hold', () => {
   it('holds the mark for at least five seconds', () => {
@@ -13,5 +13,9 @@ describe('brand loader hold', () => {
 
   it('does not add extra hold when the save already took long enough', () => {
     expect(brandLoaderRemainMs(1000, 6500)).toBeLessThanOrEqual(0)
+  })
+
+  it('labels save flows as Saving', () => {
+    expect(BRAND_LOADER_SAVE_CAPTION).toBe('Saving')
   })
 })

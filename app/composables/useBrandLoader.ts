@@ -1,6 +1,9 @@
 /** Full play of the logo animation. Keep the mark up at least this long. */
 export const BRAND_LOADER_MIN_MS = 5000
 
+/** Caption under the mark after a pickup, arrival, or add-equipment save. */
+export const BRAND_LOADER_SAVE_CAPTION = 'Saving'
+
 /** Extra hold so the mark stays up through a fast save and route change. */
 export function brandLoaderRemainMs(started: number, now: number, minMs = BRAND_LOADER_MIN_MS) {
   return minMs - (now - started)
@@ -43,7 +46,7 @@ export function useBrandLoader() {
     work: () => Promise<T>,
     opts?: { caption?: string, minMs?: number },
   ): Promise<T> {
-    present(opts?.caption ?? '')
+    present(opts?.caption ?? BRAND_LOADER_SAVE_CAPTION)
     const started = Date.now()
     try {
       const result = await work()
