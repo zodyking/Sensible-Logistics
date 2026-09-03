@@ -761,24 +761,27 @@ async function confirm() {
   submitting.value = true
 
   try {
-    await $fetch(`/api/trips/${tripId.value}/confirm`, {
-      method: 'POST',
-      body: {
-        eventId: crypto.randomUUID(),
-        chassisId: chassisId.value,
-        destinationLocationId: destinationLocationId.value,
-        isLoaded: pickupKind.value === 'CONTAINER' ? (swapMode.value || isLoaded.value === true) : false,
-        sealNumber: pickupKind.value === 'CONTAINER' && (swapMode.value || isLoaded.value === true) ? (sealNumber.value.trim() || null) : null,
-        notes: notes.value || null,
-      },
-    })
-    if (capturedPhoto.value) {
-      await rememberTripPhoto(tripId.value, capturedPhoto.value, {
-        containerNumber: pickupKind.value === 'CONTAINER' ? normalized.value : null,
-        chassisNumber: chassisNumber.value,
+    const { withLoader } = useBrandLoader()
+    await withLoader(async () => {
+      await $fetch(`/api/trips/${tripId.value}/confirm`, {
+        method: 'POST',
+        body: {
+          eventId: crypto.randomUUID(),
+          chassisId: chassisId.value,
+          destinationLocationId: destinationLocationId.value,
+          isLoaded: pickupKind.value === 'CONTAINER' ? (swapMode.value || isLoaded.value === true) : false,
+          sealNumber: pickupKind.value === 'CONTAINER' && (swapMode.value || isLoaded.value === true) ? (sealNumber.value.trim() || null) : null,
+          notes: notes.value || null,
+        },
       })
-    }
-    await navigateTo('/')
+      if (capturedPhoto.value) {
+        await rememberTripPhoto(tripId.value, capturedPhoto.value, {
+          containerNumber: pickupKind.value === 'CONTAINER' ? normalized.value : null,
+          chassisNumber: chassisNumber.value,
+        })
+      }
+      await navigateTo('/')
+    })
   }
   catch (error) {
     errorMessage.value = apiErrorMessage(error, 'Could not confirm the pickup.')

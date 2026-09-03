@@ -43,16 +43,19 @@ async function arrive() {
   submitting.value = true
   errorMessage.value = ''
   try {
-    await $fetch(`/api/trips/${tripId.value}/dropoff`, {
-      method: 'POST',
-      body: {
-        eventId: crypto.randomUUID(),
-        destinationLocationId: destination.value.id,
-        retainChassis: retainChassis.value === true,
-        notes: notes.value || null,
-      },
+    const { withLoader } = useBrandLoader()
+    await withLoader(async () => {
+      await $fetch(`/api/trips/${tripId.value}/dropoff`, {
+        method: 'POST',
+        body: {
+          eventId: crypto.randomUUID(),
+          destinationLocationId: destination.value.id,
+          retainChassis: retainChassis.value === true,
+          notes: notes.value || null,
+        },
+      })
+      await navigateTo('/')
     })
-    await navigateTo('/')
   }
   catch (err) {
     errorMessage.value = apiErrorMessage(err, 'Could not record the arrival.')

@@ -212,33 +212,36 @@ async function confirm() {
   }
   submitting.value = true
   try {
-    if (kind.value === 'BARE_CHASSIS') {
-      await $fetch(`/api/locations/${locationId.value}/chassis`, {
-        method: 'POST',
-        body: {
-          eventId: crypto.randomUUID(),
-          chassisNumber: chassisNumber.value,
-        },
-      })
+    if (kind.value !== 'BARE_CHASSIS' && (!containerType.value || !equipmentType.value || isLoaded.value === null)) {
+      errorMessage.value = 'Choose container type, size, and empty or load.'
+      return
     }
-    else {
-      if (!containerType.value || !equipmentType.value || isLoaded.value === null) {
-        errorMessage.value = 'Choose container type, size, and empty or load.'
-        return
+    const { withLoader } = useBrandLoader()
+    await withLoader(async () => {
+      if (kind.value === 'BARE_CHASSIS') {
+        await $fetch(`/api/locations/${locationId.value}/chassis`, {
+          method: 'POST',
+          body: {
+            eventId: crypto.randomUUID(),
+            chassisNumber: chassisNumber.value,
+          },
+        })
       }
-      await $fetch(`/api/locations/${locationId.value}/containers`, {
-        method: 'POST',
-        body: {
-          eventId: crypto.randomUUID(),
-          containerNumber: normalized.value,
-          containerType: containerType.value,
-          equipmentType: equipmentType.value,
-          isLoaded: isLoaded.value,
-          chassisNumber: chassisNumber.value || null,
-        },
-      })
-    }
-    await navigateTo(`/locations/${locationId.value}`)
+      else {
+        await $fetch(`/api/locations/${locationId.value}/containers`, {
+          method: 'POST',
+          body: {
+            eventId: crypto.randomUUID(),
+            containerNumber: normalized.value,
+            containerType: containerType.value,
+            equipmentType: equipmentType.value,
+            isLoaded: isLoaded.value,
+            chassisNumber: chassisNumber.value || null,
+          },
+        })
+      }
+      await navigateTo(`/locations/${locationId.value}`)
+    })
   }
   catch (error) {
     errorMessage.value = apiErrorMessage(error, 'Could not add the equipment.')

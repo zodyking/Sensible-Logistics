@@ -55,7 +55,8 @@ async function submit() {
       ? route.query.redirect
       : result.redirectTo
 
-    await navigateTo(redirect)
+    const { withLoader } = useBrandLoader()
+    await withLoader(() => navigateTo(redirect), { caption: 'Welcome' })
   }
   catch (error) {
     const detail = (error as { data?: { data?: { emailVerificationRequired?: boolean } } })
@@ -71,6 +72,10 @@ async function submit() {
 
 <template>
   <div>
+    <div class="auth-logo">
+      <BrandLogo />
+    </div>
+
     <AuthHeader
       title="Sign in"
       subtitle="Driver &amp; management access"

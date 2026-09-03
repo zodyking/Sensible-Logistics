@@ -22,8 +22,9 @@ export default defineNuxtConfig({
         { name: 'apple-mobile-web-app-status-bar-style', content: 'black-translucent' },
       ],
       link: [
-        { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
-        { rel: 'apple-touch-icon', href: '/icons/icon-192.svg' },
+        { rel: 'icon', type: 'image/png', sizes: '32x32', href: '/favicon-32.png' },
+        { rel: 'icon', href: '/favicon.ico', sizes: '48x48' },
+        { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' },
         { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
         { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' },
         {
@@ -133,14 +134,14 @@ export default defineNuxtConfig({
       start_url: '/',
       scope: '/',
       icons: [
-        { src: '/icons/icon-192.svg', sizes: '192x192', type: 'image/svg+xml', purpose: 'any' },
-        { src: '/icons/icon-512.svg', sizes: '512x512', type: 'image/svg+xml', purpose: 'any maskable' },
+        { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+        { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
       ],
     },
     workbox: {
       // Operational API writes are never cached — the Phase 2 Dexie outbox owns replay.
       navigateFallback: undefined,
-      globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+      globPatterns: ['**/*.{js,css,html,svg,png,jpg,ico,woff2}'],
       navigateFallbackDenylist: [/^\/api\//],
     },
     client: {

@@ -10,4 +10,5 @@ useHead({
   <NuxtLayout>
     <NuxtPage />
   </NuxtLayout>
+  <BrandLoader />
 </template>
