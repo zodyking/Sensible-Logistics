@@ -2659,6 +2659,16 @@
     position: relative;
   }
 
+  .map-basemap {
+    display: flex;
+    gap: var(--s2);
+    margin-top: var(--s3);
+  }
+
+  .map-basemap .fchip {
+    flex: 1;
+  }
+
   .map-frame-wrap.is-drawing .fence-frame {
     display: none;
   }
