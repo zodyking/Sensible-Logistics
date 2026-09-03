@@ -119,6 +119,18 @@ export function postalState(state: string | null | undefined): string | null {
   return raw
 }
 
+/** Street plus city/state/ZIP for Photon search and map centering. */
+export function formatAddressSearchQuery(parts: {
+  addressLine1?: string | null
+  city?: string | null
+  state?: string | null
+  postalCode?: string | null
+}): string {
+  const street = parts.addressLine1?.trim() || ''
+  const place = formatCityStateZip(parts.city, parts.state, parts.postalCode)
+  return [street, place].filter(Boolean).join(', ')
+}
+
 /** “Brooklyn, NY 11236” — comma before state, space before ZIP. */
 export function formatCityStateZip(
   city: string | null | undefined,

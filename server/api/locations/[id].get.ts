@@ -4,6 +4,7 @@ import { listOnSiteChassis, listOnSiteContainers } from '../../services/location
 import { locationIdsAtSameAddress } from '../../services/location-sites'
 import { assertTenant, requireAuth } from '../../utils/session'
 import { countContainersByType, emptyTypeCounts } from '#shared/utils/domain'
+import { parseCoord } from '#shared/utils/geo'
 
 /** One location plus the active-pool containers currently sitting on its map. */
 export default defineEventHandler(async (event) => {
@@ -41,8 +42,8 @@ export default defineEventHandler(async (event) => {
       state: location!.state,
       postalCode: location!.postalCode,
       capacity: location!.capacity,
-      latitude: location!.latitude ? Number(location!.latitude) : null,
-      longitude: location!.longitude ? Number(location!.longitude) : null,
+      latitude: parseCoord(location!.latitude),
+      longitude: parseCoord(location!.longitude),
       mapHeading: location!.mapHeading ?? 0,
       boundary: location!.boundary,
       hours: location!.hours,

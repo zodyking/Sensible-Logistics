@@ -95,6 +95,10 @@ async function generate() {
         :longitude="data.location.longitude"
         :boundary="boundary"
         :heading="heading"
+        :address-line1="data.location.addressLine1"
+        :city="data.location.city"
+        :state="data.location.state"
+        :postal-code="data.location.postalCode"
         @update:boundary="boundary = $event"
         @update:heading="heading = $event"
       />

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   displayNameFromPhoton,
+  formatAddressSearchQuery,
   formatCityStateZip,
   localityFromPhoton,
   parseUsAddressQuery,
@@ -54,6 +55,12 @@ describe('NYC mailing line', () => {
     expect(displayNameFromPhoton(fosterAve, '8202 Foster Ave, Brooklyn, NY 11236'))
       .toBe('8202 Foster Avenue, Brooklyn, NY 11236')
     expect(formatCityStateZip('Brooklyn', 'New York', '11236')).toBe('Brooklyn, NY 11236')
+    expect(formatAddressSearchQuery({
+      addressLine1: '8202 Foster Ave',
+      city: 'Brooklyn',
+      state: 'NY',
+      postalCode: '11236',
+    })).toBe('8202 Foster Ave, Brooklyn, NY 11236')
   })
 
   it('keeps the house number from the typed query when Photon omits it', () => {

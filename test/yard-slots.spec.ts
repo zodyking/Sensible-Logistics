@@ -27,6 +27,7 @@ describe('isPlacedPin', () => {
     expect(isPlacedPin(null, null)).toBe(false)
     expect(isPlacedPin(0, 0)).toBe(false)
     expect(isPlacedPin(40.67, -73.89)).toBe(true)
+    expect(isPlacedPin('40.67', '-73.89')).toBe(true)
   })
 })
 

@@ -1,17 +1,28 @@
 <script setup lang="ts">
 import type { GeoJsonPolygon } from '#shared/utils/geo'
-import { bboxFromPolygon, headingDelta, normalizeHeading, polygonFromRing } from '#shared/utils/geo'
-import { isPlacedPin } from '#shared/utils/yard-slots'
+import { bboxFromPolygon, headingDelta, normalizeHeading, parsePin, polygonFromRing } from '#shared/utils/geo'
+import { formatAddressSearchQuery } from '#shared/utils/us-address'
 import { loadLeaflet, observeMapSize, waitForMapSize } from '~/utils/leaflet-map'
 import { OSM_ATTRIBUTION, osmTileUrl } from '~/utils/map-tiles'
 
+const US_CENTER: [number, number] = [39.8283, -98.5795]
+const YARD_ZOOM = 18
+
 const props = withDefaults(defineProps<{
-  latitude: number | null
-  longitude: number | null
+  latitude: number | string | null
+  longitude: number | string | null
   boundary: GeoJsonPolygon | null
   heading?: number
+  addressLine1?: string | null
+  city?: string | null
+  state?: string | null
+  postalCode?: string | null
 }>(), {
   heading: 0,
+  addressLine1: null,
+  city: null,
+  state: null,
+  postalCode: null,
 })
 
 const emit = defineEmits<{
@@ -40,13 +51,16 @@ const FRAME_INSET = 0.12
 
 const hasFence = computed(() => Boolean(props.boundary?.coordinates?.[0]?.length))
 const canFinishDraw = computed(() => draftPoints.value.length >= 3)
+const sitePin = ref<{ latitude: number, longitude: number } | null>(parsePin(props.latitude, props.longitude))
+let recenterTimer: ReturnType<typeof setTimeout> | undefined
 
 function paintPin() {
   if (!map || !L) return
   pinMarker?.remove()
   pinMarker = null
-  if (!isPlacedPin(props.latitude, props.longitude)) return
-  pinMarker = L.marker([props.latitude!, props.longitude!], {
+  const pin = parsePin(props.latitude, props.longitude) ?? sitePin.value
+  if (!pin) return
+  pinMarker = L.marker([pin.latitude, pin.longitude], {
     icon: L.divIcon({
       className: 'addr-pin',
       iconSize: [18, 18],
@@ -111,7 +125,7 @@ function onRotate() {
   emit('update:heading', next)
 }
 
-function setInitialView() {
+function applySiteView(site: { latitude: number, longitude: number } | null = sitePin.value) {
   if (!map) return
   const box = bboxFromPolygon(props.boundary)
   if (box) {
@@ -121,11 +135,33 @@ function setInitialView() {
     )
     return
   }
-  if (isPlacedPin(props.latitude, props.longitude)) {
-    map.setView([props.latitude!, props.longitude!], 18, { animate: false })
+  if (site) {
+    map.setView([site.latitude, site.longitude], YARD_ZOOM, { animate: false })
     return
   }
-  map.setView([39.8283, -98.5795], 4, { animate: false })
+  map.setView(US_CENTER, 4, { animate: false })
+}
+
+async function geocodeAddress(): Promise<{ latitude: number, longitude: number } | null> {
+  const q = formatAddressSearchQuery({
+    addressLine1: props.addressLine1,
+    city: props.city,
+    state: props.state,
+    postalCode: props.postalCode,
+  })
+  if (q.length < 3) return null
+  try {
+    const result = await $fetch('/api/geocode/search', { query: { q, limit: 1 } })
+    const hit = result.results?.[0]
+    return hit ? parsePin(hit.latitude, hit.longitude) : null
+  }
+  catch {
+    return null
+  }
+}
+
+async function resolveSite(): Promise<{ latitude: number, longitude: number } | null> {
+  return parsePin(props.latitude, props.longitude) ?? await geocodeAddress()
 }
 
 /**
@@ -204,6 +240,9 @@ async function boot() {
       errorMessage.value = 'Map did not get a size. Go back one step and open it again.'
       return
     }
+    const site = await resolveSite()
+    if (cancelled || !mapEl.value) return
+    sitePin.value = site
     L = await loadLeaflet()
     if (cancelled || !mapEl.value) return
     map = L.map(mapEl.value, {
@@ -214,6 +253,8 @@ async function boot() {
       touchRotate: true,
       rotateControl: false,
       shiftKeyRotate: true,
+      center: site ? [site.latitude, site.longitude] : US_CENTER,
+      zoom: site ? YARD_ZOOM : 4,
     })
     L.tileLayer(osmTileUrl(), {
       maxZoom: 22,
@@ -221,11 +262,12 @@ async function boot() {
     }).addTo(map)
     draftLayer = L.layerGroup().addTo(map)
     map.on('rotate', onRotate)
-    setInitialView()
+    applySiteView(site)
     paintFence()
     paintPin()
     ready.value = true
     map.invalidateSize()
+    applySiteView(site)
     applyHeading(props.heading)
     stopSizeWatch = observeMapSize(mapEl.value, () => {
       if (cancelled || !map) return
@@ -239,6 +281,15 @@ async function boot() {
   }
 }
 
+async function recenterFromProps() {
+  if (!ready.value || drawing.value) return
+  const site = await resolveSite()
+  if (cancelled) return
+  sitePin.value = site
+  paintPin()
+  if (!hasFence.value) applySiteView(site)
+}
+
 watch(() => props.boundary, () => {
   if (!ready.value) return
   paintFence()
@@ -247,10 +298,18 @@ watch(draftPoints, () => {
   if (!ready.value) return
   paintDraft()
 })
-watch(() => [props.latitude, props.longitude] as const, () => {
-  if (!ready.value) return
-  paintPin()
-  if (!drawing.value && !hasFence.value) setInitialView()
+watch(() => [
+  props.latitude,
+  props.longitude,
+  props.addressLine1,
+  props.city,
+  props.state,
+  props.postalCode,
+] as const, () => {
+  clearTimeout(recenterTimer)
+  recenterTimer = setTimeout(() => {
+    void recenterFromProps()
+  }, 350)
 })
 watch(() => props.heading, (value) => {
   if (!ready.value || !map) return
@@ -264,6 +323,7 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   cancelled = true
+  clearTimeout(recenterTimer)
   stopSizeWatch?.()
   stopSizeWatch = null
   try {
@@ -286,7 +346,7 @@ onBeforeUnmount(() => {
 
 defineExpose({
   captureFence,
-  recenter: setInitialView,
+  recenter: () => applySiteView(sitePin.value),
 })
 </script>
 
