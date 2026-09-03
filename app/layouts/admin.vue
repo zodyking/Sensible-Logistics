@@ -45,14 +45,7 @@ async function signOut() {
       aria-label="Management navigation"
     >
       <div class="brand !items-start px-3 pb-4">
-        <span class="brand-lockup">
-          <img
-            class="brand-mark"
-            src="/icons/icon-192.png"
-            alt=""
-          >
-          <b>{{ user?.companyName ?? appName }}</b>
-        </span>
+        <b>{{ user?.companyName ?? appName }}</b>
         <i
           class="brand-rule"
           aria-hidden="true"
@@ -117,14 +110,7 @@ async function signOut() {
         aria-label="Management navigation"
       >
         <div class="brand !items-start px-3 pb-4">
-          <span class="brand-lockup">
-            <img
-              class="brand-mark"
-              src="/icons/icon-192.png"
-              alt=""
-            >
-            <b>{{ user?.companyName ?? appName }}</b>
-          </span>
+          <b>{{ user?.companyName ?? appName }}</b>
           <i
             class="brand-rule"
             aria-hidden="true"
