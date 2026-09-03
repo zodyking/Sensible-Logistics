@@ -1,8 +1,10 @@
 <script setup lang="ts">
-const appName = useRuntimeConfig().public.appName
+import { resolveProductName } from '#shared/utils/brand'
+
+const appName = computed(() => resolveProductName(useRuntimeConfig().public.appName))
 
 useHead({
-  titleTemplate: title => (title ? `${title} · ${appName}` : appName),
+  titleTemplate: title => (title ? `${title} · ${appName.value}` : appName.value),
 })
 </script>
 

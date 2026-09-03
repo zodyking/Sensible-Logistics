@@ -1,3 +1,4 @@
+import { resolveProductName } from '#shared/utils/brand'
 import { useMail } from './mail'
 
 /**
@@ -11,7 +12,7 @@ export async function notifyEmailChanged(input: {
   oldEmail: string
   newEmail: string
 }): Promise<void> {
-  const appName = String(useRuntimeConfig().public.appName || 'Yard Manager')
+  const appName = resolveProductName(useRuntimeConfig().public.appName)
   const subject = `Your ${appName} email was updated`
   const text = [
     `Hi ${input.firstName},`,

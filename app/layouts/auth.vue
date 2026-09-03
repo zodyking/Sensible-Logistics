@@ -4,7 +4,9 @@
  * that is layout chrome (not page content). The shell is locked to the
  * layout viewport (`inset: 0`); only `.auth-main` scrolls.
  */
-const { appName } = useRuntimeConfig().public
+import { resolveProductName } from '#shared/utils/brand'
+
+const appName = computed(() => resolveProductName(useRuntimeConfig().public.appName))
 </script>
 
 <template>

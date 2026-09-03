@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { resolveProductName } from '#shared/utils/brand'
 import { resetMail, useMail } from '../../services/mail'
 import { requireAdmin } from '../../utils/session'
 
@@ -30,7 +31,7 @@ export default defineEventHandler(async (event) => {
     return { ok: false, delivered: false, to, message: reachable.message }
   }
 
-  const appName = String(useRuntimeConfig().public.appName || 'Yard Manager')
+  const appName = resolveProductName(useRuntimeConfig().public.appName)
 
   try {
     await mail.send({
