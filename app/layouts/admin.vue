@@ -45,7 +45,7 @@ async function signOut() {
       aria-label="Management navigation"
     >
       <div class="brand !items-start px-3 pb-4">
-        <b>{{ user?.companyName ?? appName }}</b>
+        <b>{{ appName }}</b>
         <i
           class="brand-rule"
           aria-hidden="true"
@@ -110,7 +110,7 @@ async function signOut() {
         aria-label="Management navigation"
       >
         <div class="brand !items-start px-3 pb-4">
-          <b>{{ user?.companyName ?? appName }}</b>
+          <b>{{ appName }}</b>
           <i
             class="brand-rule"
             aria-hidden="true"

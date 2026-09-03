@@ -5,7 +5,6 @@
  * the layout viewport (`inset: 0`); only `.d-shell` scrolls.
  */
 const route = useRoute()
-const { user } = useUserSession()
 const { appName } = useRuntimeConfig().public
 
 const pendingSync = useState('pending-sync', () => 0)
@@ -29,7 +28,7 @@ const tabs: Array<{
   <div class="d-app">
     <header class="d-topbar">
       <div class="brand">
-        <b>{{ user?.companyName ?? appName }}</b>
+        <b>{{ appName }}</b>
         <i
           class="brand-rule"
           aria-hidden="true"
@@ -51,8 +50,11 @@ const tabs: Array<{
       </div>
     </header>
 
-    <div class="d-shell">
-      <slot />
+    <div class="d-stage">
+      <div class="d-shell">
+        <slot />
+      </div>
+      <BrandLoader />
     </div>
 
     <nav

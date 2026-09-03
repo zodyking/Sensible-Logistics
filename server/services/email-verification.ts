@@ -125,7 +125,7 @@ export async function consumeEmailVerification(
 
 function buildMessage(firstName: string, link: string, expiresAt: Date) {
   const hours = Math.round(TOKEN_TTL_MINUTES / 60)
-  const appName = String(useRuntimeConfig().public.appName || 'Driver Portal')
+  const appName = String(useRuntimeConfig().public.appName || 'Yard Manager')
   const subject = `Confirm your ${appName} email`
 
   const text = [

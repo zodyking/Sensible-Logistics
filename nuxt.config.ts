@@ -22,9 +22,9 @@ export default defineNuxtConfig({
         { name: 'apple-mobile-web-app-status-bar-style', content: 'black-translucent' },
       ],
       link: [
-        { rel: 'icon', type: 'image/png', sizes: '32x32', href: '/favicon-32.png' },
-        { rel: 'icon', href: '/favicon.ico', sizes: '48x48' },
-        { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' },
+        { rel: 'icon', type: 'image/png', sizes: '32x32', href: '/favicon-32.png?v=2' },
+        { rel: 'icon', href: '/favicon.ico?v=2', sizes: '48x48' },
+        { rel: 'apple-touch-icon', href: '/apple-touch-icon.png?v=2' },
         { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
         { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' },
         {
@@ -82,7 +82,7 @@ export default defineNuxtConfig({
     s3AccessKeyId: '',
     s3SecretAccessKey: '',
     public: {
-      appName: 'Sensible Logistics Solutions LLC',
+      appName: 'Yard Manager',
       mapTilesUrl: '',
       mapSatelliteUrl: '',
       geocoderUrl: '',
@@ -124,9 +124,9 @@ export default defineNuxtConfig({
     manifest: {
       // Baked in at build time — the manifest is a static file, so changing the
       // env var afterwards requires a rebuild.
-      name: process.env.NUXT_PUBLIC_APP_NAME || 'Sensible Logistics Solutions LLC',
-      short_name: process.env.NUXT_PUBLIC_PWA_SHORT_NAME || 'Driver Portal',
-      description: process.env.NUXT_PUBLIC_PWA_DESCRIPTION || 'Driver Portal',
+      name: process.env.NUXT_PUBLIC_APP_NAME || 'Yard Manager',
+      short_name: process.env.NUXT_PUBLIC_PWA_SHORT_NAME || 'Yard Manager',
+      description: process.env.NUXT_PUBLIC_PWA_DESCRIPTION || 'Yard Manager — driver and yard operations',
       theme_color: '#0C1E30',
       background_color: '#EDF0F2',
       display: 'standalone',
@@ -134,8 +134,8 @@ export default defineNuxtConfig({
       start_url: '/',
       scope: '/',
       icons: [
-        { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
-        { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
+        { src: '/icons/icon-192.png?v=2', sizes: '192x192', type: 'image/png', purpose: 'any' },
+        { src: '/icons/icon-512.png?v=2', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
       ],
     },
     workbox: {
