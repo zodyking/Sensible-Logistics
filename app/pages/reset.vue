@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { RESET_TARGETS, type ResetCounts, type ResetTargetId } from '#shared/utils/reset-targets'
+import { invalidateTripLists } from '~/utils/trip-lists'
 
 useHead({ title: 'Clear records' })
 
@@ -57,6 +58,9 @@ async function confirmClear() {
     const label = pendingTarget.value?.label ?? 'Records'
     flash.value = `${label} cleared (${result.deleted}).`
     pending.value = null
+    if (target === 'trips' || target === 'users') {
+      invalidateTripLists()
+    }
     await refresh()
   }
   catch (err) {

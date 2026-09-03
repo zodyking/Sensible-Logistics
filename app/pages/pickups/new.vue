@@ -16,6 +16,7 @@ import {
 } from '#shared/utils/iso6346'
 import { driverOcrMessage } from '#shared/utils/ocr-parse'
 import { rememberTripPhoto } from '~/utils/trip-share-files'
+import { invalidateTripLists } from '~/utils/trip-lists'
 
 useHead({ title: 'New pickup' })
 
@@ -802,6 +803,7 @@ async function abandon() {
       method: 'POST',
       body: { eventId: crypto.randomUUID(), reason: swapMode.value ? 'Driver cancelled the swap pickup.' : 'Driver cancelled before confirming.' },
     })
+    invalidateTripLists()
   }
   finally {
     await navigateTo('/')

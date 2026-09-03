@@ -1263,6 +1263,13 @@ async function loadLocation(
   return location
 }
 
+/** Permanently remove a finished trip (history delete). */
+export async function discardFinishedTrip(db: Database, companyId: string, tripId: string) {
+  await db.transaction(async (tx) => {
+    await discardTrip(tx, companyId, tripId)
+  })
+}
+
 /** Drop a trip row. Child stops cascade; dispatch tasks lose the trip link. */
 async function discardTrip(tx: DbExecutor, companyId: string, tripId: string) {
   const now = new Date()

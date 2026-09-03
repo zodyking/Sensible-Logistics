@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import {
+  canRemoveFromTripHistory,
   CONTAINER_TYPE_LABELS,
   EQUIPMENT_TYPE_SHORT,
+  isLiveTripStatus,
   TRIP_KIND_LABELS,
   TRIP_STATUS_CHIP,
   TRIP_STATUS_LABELS,
@@ -9,6 +11,7 @@ import {
 import { formatChassisNumber, formatContainerNumber } from '#shared/utils/iso6346'
 import { tripSmsAction } from '#shared/utils/trip-sms'
 import { visibleTimelineEntries } from '#shared/utils/timeline'
+import { invalidateTripLists } from '~/utils/trip-lists'
 
 const route = useRoute()
 const tripId = computed(() => String(route.params.id))
@@ -17,8 +20,29 @@ const { data, status, error } = await useFetch(() => `/api/trips/${tripId.value}
 
 useHead({ title: () => data.value?.trip.reference ?? 'Trip' })
 
-const isLive = computed(() =>
-  ['PICKUP_IN_PROGRESS', 'IN_TRANSIT', 'DROPOFF_IN_PROGRESS'].includes(data.value?.trip.status ?? ''))
+const isLive = computed(() => isLiveTripStatus(data.value?.trip.status))
+const canDelete = computed(() => canRemoveFromTripHistory(data.value?.trip.status))
+const confirmDeleteOpen = ref(false)
+const deleting = ref(false)
+const deleteError = ref('')
+
+async function confirmDelete() {
+  if (deleting.value || !canDelete.value) return
+  deleting.value = true
+  deleteError.value = ''
+  try {
+    await $fetch(`/api/trips/${tripId.value}`, { method: 'DELETE' })
+    invalidateTripLists()
+    confirmDeleteOpen.value = false
+    await navigateTo('/pickups')
+  }
+  catch (err) {
+    deleteError.value = apiErrorMessage(err, 'Could not delete this trip.')
+  }
+  finally {
+    deleting.value = false
+  }
+}
 
 const pickupStamp = computed(() => data.value?.trip.pickedUpAt ?? null)
 const dropoffStamp = computed(() => data.value?.trip.droppedOffAt ?? data.value?.trip.completedAt ?? null)
@@ -269,6 +293,14 @@ const dropoffPlace = computed(() => {
           >
             History
           </NuxtLink>
+          <button
+            v-if="canDelete"
+            type="button"
+            class="menu-row danger"
+            @click="confirmDeleteOpen = true"
+          >
+            Delete trip
+          </button>
         </div>
       </div>
 
@@ -351,6 +383,42 @@ const dropoffPlace = computed(() => {
         :destination="data.destination"
         @close="contactsOpen = false"
       />
+
+      <BottomSheet
+        :open="confirmDeleteOpen"
+        title="Delete trip?"
+        @close="confirmDeleteOpen = false"
+      >
+        <p
+          v-if="deleteError"
+          class="banner err"
+          role="alert"
+        >
+          <span aria-hidden="true">✕</span>
+          <span>{{ deleteError }}</span>
+        </p>
+        <p class="text-sm text-[var(--color-ink-700)]">
+          This trip will be removed from history. This cannot be undone.
+        </p>
+        <div class="sheet-actions">
+          <button
+            type="button"
+            class="btn-cancel"
+            :disabled="deleting"
+            @click="confirmDeleteOpen = false"
+          >
+            Keep trip
+          </button>
+          <button
+            type="button"
+            class="btn-save danger"
+            :disabled="deleting"
+            @click="confirmDelete"
+          >
+            {{ deleting ? 'Deleting…' : 'Delete trip' }}
+          </button>
+        </div>
+      </BottomSheet>
     </template>
   </section>
 </template>

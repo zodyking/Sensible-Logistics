@@ -192,6 +192,19 @@ export const TRIP_STATUSES = [
 ] as const
 export type TripStatus = (typeof TRIP_STATUSES)[number]
 
+/** Driver still owns the movement — cancel from Home, do not delete from history. */
+export const LIVE_TRIP_STATUSES = ['PICKUP_IN_PROGRESS', 'IN_TRANSIT', 'DROPOFF_IN_PROGRESS'] as const
+export type LiveTripStatus = (typeof LIVE_TRIP_STATUSES)[number]
+
+export function isLiveTripStatus(status: string | null | undefined): boolean {
+  return Boolean(status && (LIVE_TRIP_STATUSES as readonly string[]).includes(status))
+}
+
+/** Finished, cancelled, or draft rows may be removed from trip history. */
+export function canRemoveFromTripHistory(status: string | null | undefined): boolean {
+  return Boolean(status) && !isLiveTripStatus(status)
+}
+
 export const TRIP_STATUS_LABELS: Record<TripStatus, string> = {
   DRAFT: 'Draft',
   PICKUP_IN_PROGRESS: 'Pickup in progress',
