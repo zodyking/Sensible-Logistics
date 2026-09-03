@@ -9,7 +9,7 @@ import {
 import type { ContainerType, EquipmentType, TripKind, TripStatus } from '#shared/utils/domain'
 import { formatChassisNumber, formatContainerNumber } from '#shared/utils/iso6346'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   tripKind?: TripKind | null
   containerType?: ContainerType | null
   isLoaded?: boolean | null
@@ -23,7 +23,11 @@ const props = defineProps<{
   destinationLabel?: string
   canChangeDropoff?: boolean
   status?: TripStatus | null
-}>()
+  /** Home / wizard hero vs trip record. */
+  tone?: 'live' | 'record'
+}>(), {
+  tone: 'live',
+})
 
 const emit = defineEmits<{ changeDropoff: [] }>()
 
@@ -51,20 +55,34 @@ const typeLabel = computed(() => {
 const originDisplay = computed(() => props.originName?.trim() || 'Not set')
 const destinationDisplay = computed(() => props.destinationName?.trim() || 'Choose at drop-off')
 const loadLabel = computed(() => !isBareChassis.value && props.isLoaded ? 'Loaded' : 'Empty')
+const isRecord = computed(() => props.tone === 'record')
+const liveStatus = computed(() => {
+  if (isRecord.value || !props.status || props.status === 'COMPLETED') return null
+  return props.status
+})
 </script>
 
 <template>
-  <article class="trip-card">
+  <article
+    class="trip-card"
+    :class="{ 'trip-record': isRecord }"
+  >
     <div class="trip-card-head">
       <div
-        v-if="status"
+        v-if="liveStatus"
         class="trip-card-meta"
       >
         <StatusChip
-          :variant="TRIP_STATUS_CHIP[status]"
-          :label="TRIP_STATUS_LABELS[status]"
+          :variant="TRIP_STATUS_CHIP[liveStatus]"
+          :label="TRIP_STATUS_LABELS[liveStatus]"
         />
       </div>
+      <p
+        v-if="isRecord"
+        class="trip-record-kicker"
+      >
+        {{ isBareChassis ? 'Chassis' : 'Container' }}
+      </p>
 
       <div class="trip-cno">
         <slot name="number">

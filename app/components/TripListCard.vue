@@ -3,7 +3,6 @@ import {
   CONTAINER_TYPE_LABELS,
   TRIP_KIND_LABELS,
   TRIP_STATUS_CHIP,
-  TRIP_STATUS_LABELS,
 } from '#shared/utils/domain'
 import type { ContainerType, TripKind, TripStatus } from '#shared/utils/domain'
 import { formatChassisNumber, formatContainerNumber } from '#shared/utils/iso6346'
@@ -79,10 +78,6 @@ const metaLine = computed(() => {
           />
           <span>{{ title }}</span>
         </b>
-        <StatusChip
-          :variant="TRIP_STATUS_CHIP[status]"
-          :label="TRIP_STATUS_LABELS[status]"
-        />
       </div>
       <p class="trip-move-route">
         <span>{{ origin }}</span>

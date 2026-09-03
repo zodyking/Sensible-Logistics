@@ -11,11 +11,13 @@ const emit = defineEmits<{
 }>()
 
 const confirmed = computed(() => props.resolution === 'BOBTAIL')
+const menuOpen = ref(false)
 const busy = ref(false)
 
 async function choose(resolution: GapResolution) {
   if (busy.value) return
   busy.value = true
+  menuOpen.value = false
   try {
     emit('resolve', resolution)
   }
@@ -27,61 +29,73 @@ async function choose(resolution: GapResolution) {
 
 <template>
   <article
-    class="trip-move is-static"
+    class="trip-move trip-gap is-static"
     :class="confirmed ? 'bobtail' : 'warn'"
   >
     <span
       class="trip-move-rail"
       aria-hidden="true"
     />
-    <div class="trip-move-body">
-      <div class="trip-move-top">
-        <b :class="{ mono: confirmed }">
-          <EquipmentIcon
-            v-if="confirmed"
-            name="bobtail"
-            :size="36"
-          />
-          <span>{{ confirmed ? 'Bobtail move' : 'Missing Trip Detected' }}</span>
-        </b>
+    <div class="trip-gap-body">
+      <div class="trip-gap-tools">
         <StatusChip
-          :variant="confirmed ? 'idle' : 'warn'"
-          :label="confirmed ? 'Bobtail' : 'Missing'"
-        />
-      </div>
-      <p class="trip-move-route">
-        <span>{{ gap.fromName }}</span>
-        <span
-          class="trip-move-arrow"
-          aria-hidden="true"
-        />
-        <span class="to">{{ gap.toName }}</span>
-      </p>
-      <p class="trip-move-meta">
-        {{ confirmed
-          ? 'Tractor only · between recorded trips'
-          : 'Prior drop-off is not the next pickup. Did you bobtail between these stops?' }}
-      </p>
-      <div class="trip-gap-actions">
-        <button
           v-if="!confirmed"
-          type="button"
-          class="btn-dark"
-          :disabled="busy"
-          @click="choose('BOBTAIL')"
-        >
-          Yes, I made a bobtail move
-        </button>
+          variant="warn"
+          label="Missing"
+        />
         <button
-          v-else
+          v-if="confirmed"
           type="button"
-          class="btn-ghost"
+          class="icon-btn"
+          aria-label="Bobtail actions"
+          aria-haspopup="menu"
+          :aria-expanded="menuOpen"
           :disabled="busy"
-          @click="choose('MISSING')"
+          @click="menuOpen = true"
         >
-          This was not a bobtail
+          ⋮
         </button>
       </div>
+
+      <div class="trip-gap-core">
+        <BobtailMark :size="confirmed ? 52 : 44" />
+        <p class="trip-gap-title">
+          {{ confirmed ? 'Bobtail' : 'Missing trip' }}
+        </p>
+        <p class="trip-move-route">
+          <span>{{ gap.fromName }}</span>
+          <span
+            class="trip-move-arrow"
+            aria-hidden="true"
+          />
+          <span class="to">{{ gap.toName }}</span>
+        </p>
+      </div>
+
+      <button
+        v-if="!confirmed"
+        type="button"
+        class="btn-dark trip-gap-confirm"
+        :disabled="busy"
+        @click="choose('BOBTAIL')"
+      >
+        Yes, I made a bobtail move
+      </button>
     </div>
+
+    <BottomSheet
+      :open="menuOpen"
+      title="Bobtail"
+      @close="menuOpen = false"
+    >
+      <button
+        type="button"
+        class="menu-row"
+        :disabled="busy"
+        @click="choose('MISSING')"
+      >
+        This was not a bobtail
+      </button>
+    </BottomSheet>
   </article>
 </template>

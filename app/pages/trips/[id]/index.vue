@@ -56,6 +56,7 @@ const timeline = computed(() => visibleTimelineEntries(data.value?.timeline ?? [
       </p>
 
       <TripCard
+        tone="record"
         :trip-kind="data.trip.kind === 'BARE_CHASSIS' ? 'BARE_CHASSIS' : 'CONTAINER'"
         :container-type="data.container?.containerType"
         :is-loaded="data.trip.isLoaded"
@@ -65,7 +66,6 @@ const timeline = computed(() => visibleTimelineEntries(data.value?.timeline ?? [
         :seal-number="data.trip.sealNumber"
         :origin-name="data.origin?.name"
         :destination-name="data.destination?.name"
-        :status="data.trip.status"
         :can-change-dropoff="isLive"
         @change-dropoff="navigateTo(`/trips/${tripId}/destination`)"
       >
