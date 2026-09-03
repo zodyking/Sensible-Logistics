@@ -23,6 +23,9 @@ export default defineEventHandler(async (event) => {
 
   const [record] = await db.select().from(chassis).where(eq(chassis.id, id)).limit(1)
   assertTenant(auth, record, 'Chassis')
+  if (record!.deletedAt) {
+    throw createError({ statusCode: 404, statusMessage: 'Chassis not found.' })
+  }
 
   const [currentLocation] = record!.currentLocationId
     ? await db.select().from(locations).where(eq(locations.id, record!.currentLocationId)).limit(1)
