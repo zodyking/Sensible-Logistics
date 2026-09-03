@@ -2,6 +2,7 @@
 import { countDayWork, formatDayWorkSummary, sortTripsForDay, tripOccursOnDay, tripPickupDay, toLocalIsoDate } from '#shared/utils/trip-days'
 import { taskAddedDate } from '#shared/utils/task-days'
 import { findTripGaps, resolutionMap, type GapResolution, type TripGap } from '#shared/utils/trip-gaps'
+import { TRIPS_MINE_KEY } from '~/utils/trip-lists'
 
 useHead({ title: 'My Trips' })
 
@@ -12,6 +13,14 @@ const selectedIso = ref(toLocalIsoDate(new Date()) ?? '')
 
 const { data, status, error, refresh } = await useFetch('/api/trips', {
   query: { scope: 'mine', limit: 200 },
+  key: TRIPS_MINE_KEY,
+})
+
+onMounted(() => {
+  void refresh()
+})
+onActivated(() => {
+  void refresh()
 })
 const { data: taskData } = await useFetch('/api/tasks')
 

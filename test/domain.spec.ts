@@ -46,6 +46,8 @@ import {
   TRIP_STATUS_GLYPH,
   TRIP_STATUS_LABELS,
   TRIP_STATUSES,
+  canRemoveFromTripHistory,
+  isLiveTripStatus,
 } from '../shared/utils/domain'
 
 function expectUnionKeysMatch<T extends string>(
@@ -95,6 +97,15 @@ describe('domain vocabulary integrity', () => {
 
   it('keeps TRIP_STATUSES in lockstep with labels and chips', () => {
     expectUnionKeysMatch(TRIP_STATUSES, TRIP_STATUS_LABELS, TRIP_STATUS_CHIP, TRIP_STATUS_GLYPH)
+  })
+
+  it('lets finished trips leave history and keeps live ones', () => {
+    expect(isLiveTripStatus('IN_TRANSIT')).toBe(true)
+    expect(canRemoveFromTripHistory('IN_TRANSIT')).toBe(false)
+    expect(canRemoveFromTripHistory('COMPLETED')).toBe(true)
+    expect(canRemoveFromTripHistory('DROPPED_OFF')).toBe(true)
+    expect(canRemoveFromTripHistory('CANCELLED')).toBe(true)
+    expect(canRemoveFromTripHistory(null)).toBe(false)
   })
 
   it('keeps EVENT_TYPES in lockstep with labels and glyphs', () => {

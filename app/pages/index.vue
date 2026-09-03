@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { canStartSwap, tripSmsAction } from '#shared/utils/trip-sms'
+import { invalidateTripLists } from '~/utils/trip-lists'
 
 useHead({ title: 'Home' })
 
@@ -153,6 +154,7 @@ async function confirmCancelTrip() {
       },
     })
     sheet.value = null
+    invalidateTripLists()
     await refresh()
   }
   catch (err) {
