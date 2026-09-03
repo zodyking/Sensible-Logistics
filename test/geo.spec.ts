@@ -14,6 +14,7 @@ import {
   polygonFromBbox,
   polygonFromRing,
   snapHeadingToStreet,
+  isPlausibleYardFence,
 } from '../shared/utils/geo'
 
 describe('containerCorners', () => {
@@ -39,6 +40,18 @@ describe('parsePin', () => {
     expect(parsePin(0, 0)).toBeNull()
     expect(parsePin('', '-80.1')).toBeNull()
     expect(parsePin(null, -80.1)).toBeNull()
+  })
+})
+
+describe('isPlausibleYardFence', () => {
+  it('accepts a terminal-sized box and rejects a continental view', () => {
+    expect(isPlausibleYardFence(polygonFromBbox(bboxAround(26.1, -80.2, 80)))).toBe(true)
+    expect(isPlausibleYardFence(polygonFromBbox({
+      west: -104,
+      south: 31,
+      east: -90,
+      north: 43,
+    }))).toBe(false)
   })
 })
 

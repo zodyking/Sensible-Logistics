@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { generateYardLayout } from '../../../../services/yard-generate'
 import { requireAuth } from '../../../../utils/session'
+import { isPlausibleYardFence } from '#shared/utils/geo'
 
 const schema = z.object({
   boundary: z.object({
@@ -17,5 +18,11 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Location id is required.' })
   }
   const body = await readValidatedJson(event, schema)
+  if (!isPlausibleYardFence(body.boundary)) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'That zone is too large. Zoom in until the gold frame hugs the usable yard.',
+    })
+  }
   return generateYardLayout(useDb(), auth, { locationId, boundary: body.boundary })
 })

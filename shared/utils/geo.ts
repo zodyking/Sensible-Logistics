@@ -89,6 +89,19 @@ export function bboxSizeMeters(box: BoundingBox): { width: number, height: numbe
   }
 }
 
+/** A usable yard is tens of metres to a few kilometres — not a city or a continent. */
+export const MAX_YARD_FENCE_METERS = 8_000
+export const MIN_YARD_FENCE_METERS = 8
+
+export function isPlausibleYardFence(polygon: GeoJsonPolygon | null | undefined): boolean {
+  const box = bboxFromPolygon(polygon)
+  if (!box) return false
+  const size = bboxSizeMeters(box)
+  const longest = Math.max(size.width, size.height)
+  const shortest = Math.min(size.width, size.height)
+  return longest <= MAX_YARD_FENCE_METERS && shortest >= MIN_YARD_FENCE_METERS
+}
+
 export function polygonFromBbox(box: BoundingBox): GeoJsonPolygon {
   return {
     type: 'Polygon',

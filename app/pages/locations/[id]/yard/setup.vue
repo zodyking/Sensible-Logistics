@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { GeoJsonPolygon } from '#shared/utils/geo'
+import { isPlausibleYardFence } from '#shared/utils/geo'
 
 const { user } = useUserSession()
 setPageLayout(user.value?.role === 'ADMIN' ? 'admin' : 'default')
@@ -7,7 +8,7 @@ setPageLayout(user.value?.role === 'ADMIN' ? 'admin' : 'default')
 const route = useRoute()
 const locationId = computed(() => String(route.params.id))
 
-const { data, error, status } = await useFetch(() => `/api/locations/${locationId.value}`)
+const { data, error, status, refresh } = await useFetch(() => `/api/locations/${locationId.value}`)
 useHead({ title: () => `Generate yard · ${data.value?.location.name ?? 'Location'}` })
 
 const editor = ref<{ captureFence: () => GeoJsonPolygon | null } | null>(null)
@@ -23,19 +24,29 @@ watch(data, (value) => {
 }, { immediate: true })
 
 function captureIfNeeded() {
-  if (boundary.value) return
+  if (boundary.value && isPlausibleYardFence(boundary.value)) return
   const next = editor.value?.captureFence()
   if (next) boundary.value = next
 }
 
 async function generate() {
-  captureIfNeeded()
+  errorMessage.value = ''
+  try {
+    captureIfNeeded()
+  }
+  catch {
+    errorMessage.value = 'Wait for the map to finish loading, then draw the zone.'
+    return
+  }
   if (!boundary.value) {
-    errorMessage.value = 'Draw the zone around the usable yard, or set the fence to this view.'
+    errorMessage.value = 'Draw the zone around the usable yard, or zoom in and set the fence to this view.'
+    return
+  }
+  if (!isPlausibleYardFence(boundary.value)) {
+    errorMessage.value = 'That zone is too large. Zoom in until the gold frame hugs the yard, then set the fence.'
     return
   }
   submitting.value = true
-  errorMessage.value = ''
   try {
     if (heading.value !== (data.value?.location.mapHeading ?? 0)) {
       await $fetch(`/api/locations/${locationId.value}`, {
@@ -73,35 +84,59 @@ async function generate() {
     </p>
 
     <p
-      v-if="error || errorMessage"
+      v-if="error && !data"
       class="banner err"
       role="alert"
     >
       <span aria-hidden="true">✕</span>
-      <span>{{ errorMessage || apiErrorMessage(error, 'Location not found.') }}</span>
+      <span>{{ apiErrorMessage(error, 'Location not found.') }}</span>
+      <button
+        type="button"
+        class="btn-ghost ml-auto"
+        @click="refresh()"
+      >
+        Try again
+      </button>
     </p>
 
     <p
-      v-else-if="status === 'pending'"
+      v-else-if="status === 'pending' && !data"
       class="wiz-hint"
     >
       Loading location…
     </p>
 
     <template v-else-if="data">
-      <LocationMapEditor
-        ref="editor"
-        :latitude="data.location.latitude"
-        :longitude="data.location.longitude"
-        :boundary="boundary"
-        :heading="heading"
-        :address-line1="data.location.addressLine1"
-        :city="data.location.city"
-        :state="data.location.state"
-        :postal-code="data.location.postalCode"
-        @update:boundary="boundary = $event"
-        @update:heading="heading = $event"
-      />
+      <p
+        v-if="errorMessage"
+        class="banner err"
+        role="alert"
+      >
+        <span aria-hidden="true">✕</span>
+        <span>{{ errorMessage }}</span>
+      </p>
+
+      <ClientOnly>
+        <LocationMapEditor
+          ref="editor"
+          :latitude="data.location.latitude"
+          :longitude="data.location.longitude"
+          :boundary="boundary"
+          :heading="heading"
+          :address-line1="data.location.addressLine1"
+          :city="data.location.city"
+          :state="data.location.state"
+          :postal-code="data.location.postalCode"
+          @update:boundary="boundary = $event"
+          @update:heading="heading = $event"
+        />
+        <template #fallback>
+          <div
+            class="location-map place"
+            aria-hidden="true"
+          />
+        </template>
+      </ClientOnly>
 
       <div class="wiz-actions">
         <button
