@@ -3,7 +3,7 @@ import type { GeoJsonPolygon } from '#shared/utils/geo'
 import { bboxFromPolygon, headingDelta, normalizeHeading } from '#shared/utils/geo'
 import { isPlacedPin } from '#shared/utils/yard-slots'
 import { loadLeaflet, observeMapSize, waitForMapSize } from '~/utils/leaflet-map'
-import { OSM_ATTRIBUTION, osmTileUrl } from '~/utils/map-tiles'
+import { ESRI_ATTRIBUTION, ESRI_SATELLITE_URL, OSM_ATTRIBUTION, osmTileUrl } from '~/utils/map-tiles'
 
 const props = withDefaults(defineProps<{
   latitude: number | null
@@ -22,12 +22,15 @@ const emit = defineEmits<{
 const mapEl = ref<HTMLElement | null>(null)
 const ready = ref(false)
 const errorMessage = ref('')
+const satellite = ref(true)
 
 type LeafletModule = typeof import('leaflet')
 let L: LeafletModule | null = null
 let map: import('leaflet').Map | null = null
 let fenceLayer: import('leaflet').Polygon | null = null
 let pinMarker: import('leaflet').Marker | null = null
+let osmLayer: import('leaflet').TileLayer | null = null
+let satLayer: import('leaflet').TileLayer | null = null
 let cancelled = false
 let stopSizeWatch: (() => void) | null = null
 let applyingHeading = false
@@ -65,6 +68,19 @@ function paintFence() {
     fillOpacity: 0.14,
     interactive: false,
   }).addTo(map)
+}
+
+function setTileLayer(useSatellite: boolean) {
+  if (!map) return
+  satellite.value = useSatellite
+  if (useSatellite) {
+    osmLayer?.remove()
+    satLayer?.addTo(map)
+  }
+  else {
+    satLayer?.remove()
+    osmLayer?.addTo(map)
+  }
 }
 
 function applyHeading(value: number) {
@@ -144,10 +160,16 @@ async function boot() {
       rotateControl: false,
       shiftKeyRotate: true,
     })
-    L.tileLayer(osmTileUrl(), {
+    satLayer = L.tileLayer(ESRI_SATELLITE_URL, {
+      maxZoom: 22,
+      attribution: ESRI_ATTRIBUTION,
+    })
+    osmLayer = L.tileLayer(osmTileUrl(), {
       maxZoom: 22,
       attribution: OSM_ATTRIBUTION,
-    }).addTo(map)
+    })
+    if (satellite.value) satLayer.addTo(map)
+    else osmLayer.addTo(map)
     map.on('rotate', onRotate)
     setInitialView()
     paintFence()
@@ -194,6 +216,8 @@ onBeforeUnmount(() => {
     map?.off()
     pinMarker?.remove()
     fenceLayer?.remove()
+    osmLayer?.remove()
+    satLayer?.remove()
     map?.remove()
   }
   catch {
@@ -202,6 +226,8 @@ onBeforeUnmount(() => {
   map = null
   fenceLayer = null
   pinMarker = null
+  osmLayer = null
+  satLayer = null
   L = null
 })
 
@@ -225,6 +251,26 @@ defineExpose({
         aria-hidden="true"
       />
     </div>
+    <div
+      v-if="ready"
+      class="tile-toggle"
+    >
+      <button
+        type="button"
+        :class="['tile-btn', { active: satellite }]"
+        @click="setTileLayer(true)"
+      >
+        Satellite
+      </button>
+      <button
+        type="button"
+        :class="['tile-btn', { active: !satellite }]"
+        @click="setTileLayer(false)"
+      >
+        Map
+      </button>
+    </div>
+
     <p
       v-if="errorMessage"
       class="banner err mt-2 mb-0"
@@ -241,8 +287,8 @@ defineExpose({
       {{ boundary ? 'Update fence to this view' : 'Set fence to this view' }}
     </button>
     <p class="field-hint mt-2">
-      Align to the road, then pan and zoom until the yard fills the gold frame.
-      The fence follows the rotated view, so it stays square to the street.
+      Align to the road on the aerial photo, then pan and zoom until the yard fills
+      the gold frame.
     </p>
   </div>
 </template>

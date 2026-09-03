@@ -11,10 +11,10 @@ if (user.value?.role !== 'ADMIN') {
   await navigateTo(`/locations/${locationId.value}/yard`)
 }
 
-const { data, error, status } = await useFetch(() => `/api/locations/${locationId.value}`)
+const { data, error, status, refresh } = await useFetch(() => `/api/locations/${locationId.value}`)
 useHead({ title: () => `Generate yard · ${data.value?.location.name ?? 'Location'}` })
 
-const editor = ref<{ captureFence: () => GeoJsonPolygon | null } | null>(null)
+const editor = ref<{ captureFence: () => GeoJsonPolygon | null, recenter: () => void } | null>(null)
 const heading = ref(0)
 const boundary = ref<GeoJsonPolygon | null>(null)
 const submitting = ref(false)
@@ -71,8 +71,9 @@ async function generate() {
     />
 
     <p class="wiz-hint">
-      Align to the street, then fill the gold frame with pavement, buildings, and the gate.
-      The operational view will be a clean 2D plan — not this map.
+      Tap the corners of the usable yard on the aerial photo, or fill the
+      gold frame and use this view as the fence. The operational view will be a
+      clean 2D plan &mdash; not this map.
     </p>
 
     <p
@@ -81,8 +82,16 @@ async function generate() {
       role="alert"
     >
       <span aria-hidden="true">✕</span>
-      <span>{{ errorMessage || apiErrorMessage(error, 'Location not found.') }}</span>
+      <span>{{ errorMessage || apiErrorMessage(error, 'Could not load this location.') }}</span>
     </p>
+    <button
+      v-if="error && !errorMessage"
+      type="button"
+      class="btn-ghost mt-2"
+      @click="error = null; refresh()"
+    >
+      Retry
+    </button>
 
     <p
       v-else-if="status === 'pending'"
@@ -103,6 +112,14 @@ async function generate() {
       />
 
       <div class="wiz-actions">
+        <button
+          v-if="boundary"
+          type="button"
+          class="btn-dark w-full"
+          @click="boundary = null; editor?.recenter()"
+        >
+          Redraw zone
+        </button>
         <button
           type="button"
           class="wiz-next"

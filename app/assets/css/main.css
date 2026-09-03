@@ -5697,6 +5697,30 @@ textarea {
   color: var(--color-ink-500);
 }
 
+.tile-toggle {
+  display: flex;
+  gap: 0;
+  margin-top: 0.75rem;
+}
+.tile-btn {
+  flex: 1;
+  padding: 0.6rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border: 1px solid var(--color-ink-200);
+  background: var(--color-surface);
+  color: var(--color-ink-700);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.tile-btn:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+.tile-btn:last-child  { border-radius: 0 var(--radius) var(--radius) 0; border-left: 0; }
+.tile-btn.active {
+  background: var(--color-ink-900);
+  color: #fff;
+  border-color: var(--color-ink-900);
+}
+
 @media (max-width: 640px) {
   .yard-view {
     height: min(62vh, 560px);
