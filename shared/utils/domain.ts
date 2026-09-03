@@ -317,7 +317,7 @@ export const LOCATION_TYPE_LABELS: Record<LocationType, string> = {
 }
 
 export const LOCATION_GLYPH: Record<LocationType, string> = {
-  COMPANY_YARD: '⌂',
+  COMPANY_YARD: 'P',
   CUSTOMER: '☖',
   MARINE_TERMINAL: '⚓',
   RAIL_TERMINAL: '┼',

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   countDayWork,
   formatDayWorkSummary,
+  sortTripsForDay,
   toLocalIsoDate,
   tripActivityDays,
   tripOccursOnDay,
@@ -74,6 +75,31 @@ describe('countDayWork', () => {
       { id: 'load', pickedUpAt: new Date(2026, 7, 27, 10, 5), droppedOffAt: new Date(2026, 7, 27, 11, 0), swapPairTripId: 'empty' },
     ]
     expect(countDayWork(trips, '2026-08-27')).toEqual({ swaps: 1, pickups: 2, dropoffs: 2 })
+  })
+})
+
+describe('sortTripsForDay', () => {
+  it('orders a day top-down from earliest to latest', () => {
+    const late = {
+      id: 'late',
+      createdAt: new Date(2026, 8, 2, 17, 59),
+      pickedUpAt: new Date(2026, 8, 2, 16, 0),
+      droppedOffAt: new Date(2026, 8, 2, 17, 59),
+    }
+    const morning = {
+      id: 'morning',
+      createdAt: new Date(2026, 8, 2, 4, 20),
+      pickedUpAt: new Date(2026, 8, 2, 4, 20),
+      droppedOffAt: new Date(2026, 8, 2, 4, 31),
+    }
+    const midday = {
+      id: 'midday',
+      createdAt: new Date(2026, 8, 2, 9, 29),
+      pickedUpAt: new Date(2026, 8, 2, 9, 29),
+      droppedOffAt: new Date(2026, 8, 2, 13, 2),
+    }
+    expect(sortTripsForDay([late, midday, morning], '2026-09-02').map(trip => trip.id))
+      .toEqual(['morning', 'midday', 'late'])
   })
 })
 

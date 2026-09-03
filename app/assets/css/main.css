@@ -5480,6 +5480,69 @@
   flex: 1 1 120px;
 }
 
+.day-work-toggle {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.day-work-toggle:focus-visible {
+  outline: 2px solid var(--color-accent, #e07a2f);
+  outline-offset: 3px;
+}
+
+.day-work-toggle .task-card-meta {
+  width: 100%;
+}
+
+.day-work-chev {
+  margin-left: auto;
+  font-size: 1.05em;
+  color: var(--color-ink-400);
+}
+
+.day-work-pull {
+  list-style: none;
+  margin: var(--s3) 0 0;
+  padding: var(--s3) 0 0;
+  border-top: 1px solid var(--color-line-200);
+}
+
+.day-work-pull li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+  margin: 0 0 var(--s2);
+  font-size: var(--text-sm);
+  color: var(--color-ink-700);
+  white-space: pre-wrap;
+}
+
+.day-work-pull li:last-child {
+  margin-bottom: 0;
+}
+
+.day-work-pull li.done {
+  color: var(--color-ink-500);
+}
+
+.day-work-mark {
+  flex: 0 0 auto;
+  width: 1.1em;
+  font-weight: 700;
+  color: var(--color-ink-400);
+}
+
+.day-work-pull li.done .day-work-mark {
+  color: var(--color-ok, #2a7a4b);
+}
+
 .home-dispatch {
   margin-top: var(--s2);
   margin-bottom: var(--s4);

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { countDayWork, formatDayWorkSummary, tripOccursOnDay, tripPickupDay, toLocalIsoDate } from '#shared/utils/trip-days'
+import { countDayWork, formatDayWorkSummary, sortTripsForDay, tripOccursOnDay, tripPickupDay, toLocalIsoDate } from '#shared/utils/trip-days'
 import { taskAddedDate } from '#shared/utils/task-days'
 
 useHead({ title: 'My Trips' })
@@ -75,7 +75,7 @@ const grouped = computed(() => {
           iso,
           label: formatDayHeading(iso, todayIso.value),
           summary: formatDayWorkSummary(countDayWork(visibleTrips.value, iso)),
-          items,
+          items: sortTripsForDay(items, iso),
           tasks: tasksByDate.value.get(iso) ?? [],
         })),
     }))
@@ -152,13 +152,10 @@ const selectedDayLabel = computed(() => formatDayHeading(selectedIso.value, toda
 const selectedDaySummary = computed(() => formatDayWorkSummary(countDayWork(trips.value, selectedIso.value)))
 
 const selectedDayTrips = computed(() =>
-  trips.value
-    .filter(trip => tripOccursOnDay(trip, selectedIso.value))
-    .sort((a, b) => {
-      const aStamp = new Date(a.pickedUpAt ?? a.createdAt).getTime()
-      const bStamp = new Date(b.pickedUpAt ?? b.createdAt).getTime()
-      return bStamp - aStamp
-    }),
+  sortTripsForDay(
+    trips.value.filter(trip => tripOccursOnDay(trip, selectedIso.value)),
+    selectedIso.value,
+  ),
 )
 
 const selectedDayTasks = computed(() => tasksByDate.value.get(selectedIso.value) ?? [])
@@ -295,6 +292,10 @@ function calendarDayLabel(cell: { iso: string, hasTrip: boolean, selected: boole
                   class="day-summary"
                 >{{ day.summary }}</small>
               </div>
+              <DayWorkCard
+                :tasks="day.tasks"
+                :work-date="day.iso"
+              />
               <TripListCard
                 v-for="trip in day.items"
                 :id="trip.id"
@@ -311,21 +312,6 @@ function calendarDayLabel(cell: { iso: string, hasTrip: boolean, selected: boole
                 :dropped-off-at="trip.droppedOffAt"
                 :is-loaded="trip.isLoaded"
                 :created-at="trip.createdAt"
-              />
-              <DispatchTaskCard
-                v-for="task in day.tasks"
-                :id="task.id"
-                :key="task.id"
-                :title="task.title"
-                :raw-text="task.rawText"
-                :sender="task.sender"
-                :received-at="task.receivedAt"
-                :work-date="taskAddedDate(task)"
-                :kind="task.kind"
-                :status="task.status"
-                :trip-id="task.tripId"
-                :steps="task.steps"
-                compact
               />
             </div>
           </div>
@@ -397,6 +383,11 @@ function calendarDayLabel(cell: { iso: string, hasTrip: boolean, selected: boole
             <span v-if="selectedDaySummary">{{ selectedDaySummary }}</span>
           </div>
 
+          <DayWorkCard
+            :tasks="selectedDayTasks"
+            :work-date="selectedIso"
+          />
+
           <TripListCard
             v-for="trip in selectedDayTrips"
             :id="trip.id"
@@ -413,22 +404,6 @@ function calendarDayLabel(cell: { iso: string, hasTrip: boolean, selected: boole
             :dropped-off-at="trip.droppedOffAt"
             :is-loaded="trip.isLoaded"
             :created-at="trip.createdAt"
-          />
-
-          <DispatchTaskCard
-            v-for="task in selectedDayTasks"
-            :id="task.id"
-            :key="task.id"
-            :title="task.title"
-            :raw-text="task.rawText"
-            :sender="task.sender"
-            :received-at="task.receivedAt"
-            :work-date="taskAddedDate(task)"
-            :kind="task.kind"
-            :status="task.status"
-            :trip-id="task.tripId"
-            :steps="task.steps"
-            compact
           />
 
           <EmptyState
