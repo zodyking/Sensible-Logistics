@@ -91,7 +91,6 @@ const STEPS = computed<Step[]>(() => pickupSteps({
   needsClassification: needsClassification.value,
   isLoaded: isLoaded.value,
   swap: swapMode.value,
-  destinationKnown: Boolean(destinationLocationId.value),
 }))
 
 const step = ref<Step>(swapMode.value ? 'inventory' : 'kind')
@@ -289,19 +288,6 @@ const existingTripId = ref<string | null>(null)
 const hydrating = ref(false)
 const savedDestinationId = ref<string | null>(null)
 
-/** A swap returns the load to the yard the empty came from. */
-async function applySwapReturnLeg(pairTripId: string) {
-  try {
-    const pair = await $fetch(`/api/trips/${pairTripId}`)
-    if (!pair.trip.originLocationId) return
-    destinationLocationId.value = pair.trip.originLocationId
-    destinationName.value = pair.origin?.name ?? ''
-  }
-  catch {
-    // Without the pair the driver picks the drop-off, as on a plain pickup.
-  }
-}
-
 async function hydrateFromTrip(id: string) {
   hydrating.value = true
   errorMessage.value = ''
@@ -330,12 +316,13 @@ async function hydrateFromTrip(id: string) {
       isLoaded.value = true
       STEP_TITLES.inventory = 'Which load?'
       STEP_TITLES.equipment = 'Load and chassis'
-      if (!destinationLocationId.value) await applySwapReturnLeg(data.trip.swapPairTripId)
     }
     sealNumber.value = data.trip.sealNumber ?? ''
     notes.value = data.trip.driverNotes ?? ''
     manualEntry.value = true
-    step.value = destinationLocationId.value ? 'confirm' : 'destination'
+    step.value = data.trip.swapPairTripId
+      ? 'confirm'
+      : (data.trip.destinationLocationId ? 'confirm' : 'destination')
   }
   catch (error) {
     errorMessage.value = apiErrorMessage(error, 'Could not resume that pickup.')
@@ -356,10 +343,6 @@ async function loadSwapSource(id: string) {
     isLoaded.value = true
     originLocationId.value = site.destination.id
     originName.value = site.destination.name ?? ''
-    if (site.returnTo) {
-      destinationLocationId.value = site.returnTo.id
-      destinationName.value = site.returnTo.name ?? ''
-    }
     originContainers.value = site.containers ?? []
     inventory.value = {
       containers: site.containers ?? [],
@@ -596,7 +579,7 @@ const canAdvance = computed(() => {
     case 'destination':
       return Boolean(destinationLocationId.value) && destinationLocationId.value !== originLocationId.value
     case 'confirm':
-      return Boolean(destinationLocationId.value)
+      return (swapMode.value || Boolean(destinationLocationId.value))
         && pickupKind.value != null
         && (pickupKind.value !== 'CONTAINER' || (
           Boolean(containerType.value)
@@ -679,7 +662,9 @@ async function next() {
   if (!await saveDestination()) return
 
   const index = stepIndex.value
-  if (index < STEPS.value.length - 1) step.value = STEPS.value[index + 1]!
+  if (index >= STEPS.value.length - 1) return
+  const following = STEPS.value[index + 1]!
+  step.value = swapMode.value && following === 'destination' ? 'confirm' : following
 }
 
 function back() {
@@ -761,7 +746,7 @@ async function confirm() {
     step.value = 'seal'
     return
   }
-  if (!destinationLocationId.value) {
+  if (!swapMode.value && !destinationLocationId.value) {
     errorMessage.value = 'Choose a drop-off location.'
     return
   }
@@ -1431,8 +1416,8 @@ async function onPhoto(dataUrl: string) {
       </div>
     </template>
 
-    <!-- ── Destination ─────────────────────────────────────────── -->
-    <template v-else-if="step === 'destination'">
+    <!-- ── Destination (plain pickup only — swap never picks a location) ── -->
+    <template v-else-if="step === 'destination' && !swapMode">
       <div class="searchbar wiz-search">
         <span aria-hidden="true">⌕</span>
         <input

@@ -1,14 +1,13 @@
-import { eq, inArray } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { locations, trips } from '../../../database/schema'
 import { listOnSiteChassis, listOnSiteContainers } from '../../../services/location-equipment'
 import { locationIdsAtSameAddress } from '../../../services/location-sites'
 import { assertTenant, requireAuth } from '../../../utils/session'
 
 /**
- * The swap runs the empty's leg in reverse: the load is picked up at that
- * trip's drop-off and returns to where the empty came from. Containers are
- * the same rows as the drop-off location's equipment page, including empty
- * boxes and same-address twins.
+ * Equipment at the inbound empty's drop-off — same rows as that location's
+ * equipment page. The load is picked up here; the empty still finishes at
+ * this customer on Arrive. Nothing is sent back to the empty's origin.
  */
 export default defineEventHandler(async (event) => {
   const auth = await requireAuth(event)
@@ -28,17 +27,15 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 422, statusMessage: 'Set a drop-off on this trip before swapping.' })
   }
 
-  const siteIds = [trip!.destinationLocationId, trip!.originLocationId].filter(Boolean) as string[]
-  const sites = await db
+  const [destination] = await db
     .select()
     .from(locations)
-    .where(inArray(locations.id, siteIds))
+    .where(eq(locations.id, trip!.destinationLocationId))
+    .limit(1)
 
-  const destination = sites.find(row => row.id === trip!.destinationLocationId)
   if (!destination) {
     throw createError({ statusCode: 404, statusMessage: 'Drop-off location not found.' })
   }
-  const returnTo = sites.find(row => row.id === trip!.originLocationId) ?? null
 
   const locationIds = await locationIdsAtSameAddress(db, auth.companyId, destination.id)
   const [containerRows, chassisRows] = await Promise.all([
@@ -54,15 +51,6 @@ export default defineEventHandler(async (event) => {
       addressLine1: destination.addressLine1,
       city: destination.city,
     },
-    returnTo: returnTo
-      ? {
-          id: returnTo.id,
-          name: returnTo.name,
-          type: returnTo.type,
-          addressLine1: returnTo.addressLine1,
-          city: returnTo.city,
-        }
-      : null,
     containers: containerRows,
     chassis: chassisRows,
   }
