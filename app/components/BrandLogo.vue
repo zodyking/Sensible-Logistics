@@ -4,7 +4,7 @@ withDefaults(defineProps<{
   alt?: string
 }>(), {
   compact: false,
-  alt: 'Gantry',
+  alt: 'Yard Manager',
 })
 </script>
 

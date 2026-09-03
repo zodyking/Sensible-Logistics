@@ -30,7 +30,7 @@ export default defineEventHandler(async (event) => {
     return { ok: false, delivered: false, to, message: reachable.message }
   }
 
-  const appName = String(useRuntimeConfig().public.appName || 'Gantry')
+  const appName = String(useRuntimeConfig().public.appName || 'Yard Manager')
 
   try {
     await mail.send({
