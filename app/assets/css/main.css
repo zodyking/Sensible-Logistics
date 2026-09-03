@@ -312,7 +312,6 @@
 
   .brand-loader-stage .brand-logo {
     width: min(78vw, 280px);
-    mix-blend-mode: multiply;
   }
 
   .brand-loader-glow {
