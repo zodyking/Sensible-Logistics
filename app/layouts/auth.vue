@@ -21,11 +21,14 @@ const { appName } = useRuntimeConfig().public
 
     <!-- `my-auto` centers short forms in the viewport but yields to tall ones,
          so the signup form never overflows past the top edge. -->
-    <main class="auth-main">
-      <div class="auth-main-inner">
-        <slot />
-      </div>
-    </main>
+    <div class="auth-stage">
+      <main class="auth-main">
+        <div class="auth-main-inner">
+          <slot />
+        </div>
+      </main>
+      <BrandLoader />
+    </div>
 
     <AppFooter />
   </div>
