@@ -10,7 +10,7 @@ withDefaults(defineProps<{
 
 <template>
   <img
-    src="/brand/logo.jpg"
+    src="/brand/logo.png"
     :alt="alt"
     class="brand-logo"
     :class="{ compact }"

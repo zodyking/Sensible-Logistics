@@ -269,26 +269,11 @@
     border-radius: 1px;
   }
 
-  .brand-lockup {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
-    max-width: 100%;
-  }
-
-  .brand-mark {
-    width: 28px;
-    height: 28px;
-    flex-shrink: 0;
-    border-radius: 7px;
-    object-fit: cover;
-  }
-
   .brand-logo {
     display: block;
     width: min(100%, 280px);
     height: auto;
+    background: transparent;
   }
 
   .brand-logo.compact {

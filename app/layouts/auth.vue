@@ -11,14 +11,7 @@ const { appName } = useRuntimeConfig().public
   <div class="auth-app">
     <header class="d-topbar !relative">
       <div class="brand">
-        <span class="brand-lockup">
-          <img
-            class="brand-mark"
-            src="/icons/icon-192.png"
-            alt=""
-          >
-          <b>{{ appName }}</b>
-        </span>
+        <b>{{ appName }}</b>
         <i
           class="brand-rule"
           aria-hidden="true"

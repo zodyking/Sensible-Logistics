@@ -29,14 +29,7 @@ const tabs: Array<{
   <div class="d-app">
     <header class="d-topbar">
       <div class="brand">
-        <span class="brand-lockup">
-          <img
-            class="brand-mark"
-            src="/icons/icon-192.png"
-            alt=""
-          >
-          <b>{{ user?.companyName ?? appName }}</b>
-        </span>
+        <b>{{ user?.companyName ?? appName }}</b>
         <i
           class="brand-rule"
           aria-hidden="true"
