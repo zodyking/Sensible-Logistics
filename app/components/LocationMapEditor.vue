@@ -10,7 +10,12 @@ import {
 } from '#shared/utils/geo'
 import { formatAddressSearchQuery } from '#shared/utils/us-address'
 import { loadLeaflet, observeMapSize, waitForMapSize } from '~/utils/leaflet-map'
-import { OSM_ATTRIBUTION, osmTileUrl } from '~/utils/map-tiles'
+import {
+  OSM_ATTRIBUTION,
+  osmTileUrl,
+  SATELLITE_ATTRIBUTION,
+  satelliteTileUrl,
+} from '~/utils/map-tiles'
 
 const US_CENTER: [number, number] = [39.8283, -98.5795]
 const YARD_ZOOM = 18
@@ -42,10 +47,12 @@ const ready = ref(false)
 const drawing = ref(false)
 const draftPoints = ref<Array<[number, number]>>([])
 const errorMessage = ref('')
+const basemap = ref<'satellite' | 'street'>('satellite')
 
 type LeafletModule = typeof import('leaflet')
 let L: LeafletModule | null = null
 let map: import('leaflet').Map | null = null
+let baseLayer: import('leaflet').TileLayer | null = null
 let fenceLayer: import('leaflet').Polygon | null = null
 let pinMarker: import('leaflet').Marker | null = null
 let draftLayer: import('leaflet').LayerGroup | null = null
@@ -121,6 +128,23 @@ function paintDraft() {
       interactive: false,
     }).addTo(draftLayer!)
   }
+}
+
+function paintBaseLayer() {
+  if (!map || !L) return
+  baseLayer?.remove()
+  baseLayer = basemap.value === 'satellite'
+    ? L.tileLayer(satelliteTileUrl(), {
+        maxZoom: 22,
+        maxNativeZoom: 19,
+        attribution: SATELLITE_ATTRIBUTION,
+      })
+    : L.tileLayer(osmTileUrl(), {
+        maxZoom: 22,
+        attribution: OSM_ATTRIBUTION,
+      })
+  baseLayer.addTo(map)
+  baseLayer.bringToBack()
 }
 
 function mapIsLoaded(): boolean {
@@ -297,10 +321,7 @@ async function boot() {
       shiftKeyRotate: true,
     })
     applySiteView(site)
-    L.tileLayer(osmTileUrl(), {
-      maxZoom: 22,
-      attribution: OSM_ATTRIBUTION,
-    }).addTo(map)
+    paintBaseLayer()
     draftLayer = L.layerGroup().addTo(map)
     map.on('rotate', onRotate)
     paintFence()
@@ -358,6 +379,10 @@ watch(() => props.heading, (value) => {
   if (headingDelta(map.getBearing(), value) < 0.4) return
   applyHeading(value)
 })
+watch(basemap, () => {
+  if (!ready.value) return
+  paintBaseLayer()
+})
 
 onMounted(() => {
   cancelled = false
@@ -374,6 +399,7 @@ onBeforeUnmount(() => {
     pinMarker?.remove()
     fenceLayer?.remove()
     draftLayer?.remove()
+    baseLayer?.remove()
     map?.remove()
   }
   catch {
@@ -383,6 +409,7 @@ onBeforeUnmount(() => {
   fenceLayer = null
   pinMarker = null
   draftLayer = null
+  baseLayer = null
   L = null
 })
 
@@ -403,13 +430,37 @@ defineExpose({
         class="location-map place"
         role="application"
         :aria-label="drawing
-          ? 'OpenStreetMap. Tap the corners of the usable yard, then finish the zone.'
-          : 'OpenStreetMap. Draw the yard zone by tapping corners, or pan until the yard fills the frame.'"
+          ? 'Aerial map. Tap the corners of the usable yard, then finish the zone.'
+          : 'Aerial map. Draw the yard zone by tapping corners, or pan until the yard fills the frame.'"
       />
       <div
         class="fence-frame"
         aria-hidden="true"
       />
+    </div>
+    <div
+      class="map-basemap"
+      role="group"
+      aria-label="Map type"
+    >
+      <button
+        type="button"
+        class="fchip"
+        :class="{ on: basemap === 'satellite' }"
+        :aria-pressed="basemap === 'satellite'"
+        @click="basemap = 'satellite'"
+      >
+        Satellite
+      </button>
+      <button
+        type="button"
+        class="fchip"
+        :class="{ on: basemap === 'street' }"
+        :aria-pressed="basemap === 'street'"
+        @click="basemap = 'street'"
+      >
+        Map
+      </button>
     </div>
     <p
       v-if="errorMessage"
@@ -466,8 +517,7 @@ defineExpose({
         {{ hasFence ? 'Update fence to this view' : 'Use this view as fence' }}
       </button>
       <p class="field-hint mt-2">
-        Draw by tapping corners, or align to the road and fill the gold frame.
-        The fence follows the rotated view, so a framed zone stays square to the street.
+        Align to the road on the aerial photo, then pan and zoom until the yard fills the gold frame.
       </p>
     </template>
   </div>

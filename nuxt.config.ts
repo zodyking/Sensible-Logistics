@@ -83,6 +83,7 @@ export default defineNuxtConfig({
     public: {
       appName: 'Sensible Logistics Solutions LLC',
       mapTilesUrl: '',
+      mapSatelliteUrl: '',
       geocoderUrl: '',
       /**
        * Baked when the image is built, so More shows which bundle a phone is

@@ -79,7 +79,7 @@ async function generate() {
     />
 
     <p class="wiz-hint">
-      Tap the corners of the usable yard, or fill the gold frame and use this view as the fence.
+      Tap the corners of the usable yard on the aerial photo, or fill the gold frame and use this view as the fence.
       The operational view will be a clean 2D plan — not this map.
     </p>
 
