@@ -82,6 +82,23 @@ export function polygonFromBbox(box: BoundingBox): GeoJsonPolygon {
   }
 }
 
+/**
+ * Close an open ring of [longitude, latitude] vertices into a GeoJSON Polygon.
+ * Returns null when there are fewer than three distinct corners.
+ */
+export function polygonFromRing(vertices: Array<[number, number]>): GeoJsonPolygon | null {
+  if (vertices.length < 3) return null
+  if (!vertices.every(([lng, lat]) => Number.isFinite(lng) && Number.isFinite(lat))) return null
+  const ring: [number, number][] = vertices.map(([lng, lat]) => [lng, lat])
+  const first = ring[0]!
+  const last = ring[ring.length - 1]!
+  if (first[0] !== last[0] || first[1] !== last[1]) {
+    ring.push([first[0], first[1]])
+  }
+  if (ring.length < 4) return null
+  return { type: 'Polygon', coordinates: [ring] }
+}
+
 export function bboxFromPolygon(polygon: GeoJsonPolygon | null | undefined): BoundingBox | null {
   const ring = polygon?.coordinates?.[0]
   if (!ring?.length) return null

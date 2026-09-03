@@ -7,10 +7,6 @@ setPageLayout(user.value?.role === 'ADMIN' ? 'admin' : 'default')
 const route = useRoute()
 const locationId = computed(() => String(route.params.id))
 
-if (user.value?.role !== 'ADMIN') {
-  await navigateTo(`/locations/${locationId.value}/yard`)
-}
-
 const { data, error, status } = await useFetch(() => `/api/locations/${locationId.value}`)
 useHead({ title: () => `Generate yard · ${data.value?.location.name ?? 'Location'}` })
 
@@ -26,15 +22,16 @@ watch(data, (value) => {
   if (value.location.boundary) boundary.value = value.location.boundary as GeoJsonPolygon
 }, { immediate: true })
 
-function capture() {
+function captureIfNeeded() {
+  if (boundary.value) return
   const next = editor.value?.captureFence()
   if (next) boundary.value = next
 }
 
 async function generate() {
-  capture()
+  captureIfNeeded()
   if (!boundary.value) {
-    errorMessage.value = 'Set the fence so it hugs the usable yard.'
+    errorMessage.value = 'Draw the zone around the usable yard, or set the fence to this view.'
     return
   }
   submitting.value = true
@@ -62,7 +59,7 @@ async function generate() {
 </script>
 
 <template>
-  <section class="d-page">
+  <section :class="user?.role === 'ADMIN' ? '' : 'd-page'">
     <PageHeader
       eyebrow="Yard"
       title="Draw the usable area"
@@ -71,7 +68,7 @@ async function generate() {
     />
 
     <p class="wiz-hint">
-      Align to the street, then fill the gold frame with pavement, buildings, and the gate.
+      Tap the corners of the usable yard, or fill the gold frame and use this view as the fence.
       The operational view will be a clean 2D plan — not this map.
     </p>
 

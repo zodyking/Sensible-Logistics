@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { LOCATION_TYPE_LABELS, LOCATION_TYPES } from '#shared/utils/domain'
 import type { LocationType } from '#shared/utils/domain'
+import type { GeoJsonPolygon } from '#shared/utils/geo'
 import { isPlacedPin } from '#shared/utils/yard-slots'
 import { formatPhoneInput, isValidPhone } from '#shared/utils/phone'
 import { formatCityStateZip, parseUsAddressQuery } from '#shared/utils/us-address'
@@ -42,6 +43,8 @@ const form = reactive({
 
 const latitude = ref<number | null>(null)
 const longitude = ref<number | null>(null)
+const heading = ref(0)
+const boundary = ref<GeoJsonPolygon | null>(null)
 const addressDirty = ref(false)
 const suggestions = ref<PlaceHit[]>([])
 const searching = ref(false)
@@ -67,6 +70,8 @@ onMounted(async () => {
         postalCode: string | null
         latitude: number | null
         longitude: number | null
+        mapHeading?: number | null
+        boundary?: GeoJsonPolygon | null
       }
     }>(`/api/locations/${locationId.value}`)
     const loc = data.location
@@ -84,6 +89,8 @@ onMounted(async () => {
     form.addressQuery = [loc.addressLine1, loc.city, loc.state].filter(Boolean).join(', ')
     latitude.value = loc.latitude
     longitude.value = loc.longitude
+    heading.value = loc.mapHeading ?? 0
+    boundary.value = loc.boundary ?? null
   }
   catch (error) {
     errorMessage.value = apiErrorMessage(error, 'Could not load this location.')
@@ -204,6 +211,8 @@ async function save() {
       body.latitude = latitude.value
       body.longitude = longitude.value
     }
+    if (boundary.value) body.boundary = boundary.value
+    body.mapHeading = heading.value
     await $fetch(`/api/locations/${locationId.value}`, { method: 'PATCH', body })
     await navigateTo(`/locations/${locationId.value}`)
   }
@@ -369,6 +378,34 @@ async function save() {
             </button>
           </li>
         </ul>
+      </div>
+
+      <div
+        v-if="!isUncategorized"
+        class="card p-4"
+      >
+        <p class="eyebrow mb-2">
+          Yard zone
+        </p>
+        <p class="field-hint mb-3">
+          Draw the usable yard around this site. Existing locations keep their address — you can add the zone here without recreating them.
+        </p>
+        <ClientOnly>
+          <LocationMapEditor
+            :latitude="latitude"
+            :longitude="longitude"
+            :boundary="boundary"
+            :heading="heading"
+            @update:boundary="boundary = $event"
+            @update:heading="heading = $event"
+          />
+          <template #fallback>
+            <div
+              class="location-map place"
+              aria-hidden="true"
+            />
+          </template>
+        </ClientOnly>
       </div>
 
       <button

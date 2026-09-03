@@ -220,7 +220,18 @@ function occupancyPercent(occupancy: number, capacity: number | null): number {
               >{{ row.occupancy }} on site</span>
             </td>
             <td>
+              <NuxtLink
+                v-if="!row.hasBoundary && !row.isUncategorized"
+                :to="`/locations/${row.id}/yard/setup`"
+                class="inline-flex min-h-11 items-center"
+              >
+                <StatusChip
+                  variant="warn"
+                  label="Draw zone"
+                />
+              </NuxtLink>
               <StatusChip
+                v-else
                 :variant="row.hasBoundary ? 'ok' : 'warn'"
                 :label="row.hasBoundary ? 'Boundary drawn' : 'No boundary'"
               />

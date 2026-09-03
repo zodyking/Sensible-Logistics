@@ -151,6 +151,13 @@ async function confirmDelete() {
         Add Equipment
       </NuxtLink>
       <NuxtLink
+        v-if="!data.location.isUncategorized && !data.location.boundary"
+        :to="`/locations/${locationId}/yard/setup`"
+        class="btn-ghost mt-2 w-full"
+      >
+        Draw yard zone
+      </NuxtLink>
+      <NuxtLink
         v-if="!data.location.isUncategorized"
         :to="`/locations/${locationId}/yard`"
         class="btn-ghost mt-2 w-full"
@@ -235,6 +242,14 @@ async function confirmDelete() {
           @click="menuOpen = false; navigateTo(`/locations/${locationId}/yard`)"
         >
           Yard
+        </button>
+        <button
+          v-if="!data.location.isUncategorized && !data.location.boundary"
+          type="button"
+          class="menu-row"
+          @click="menuOpen = false; navigateTo(`/locations/${locationId}/yard/setup`)"
+        >
+          Draw yard zone
         </button>
         <button
           type="button"

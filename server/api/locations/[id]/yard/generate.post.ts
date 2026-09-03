@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { generateYardLayout } from '../../../../services/yard-generate'
-import { requireAdmin } from '../../../../utils/session'
+import { requireAuth } from '../../../../utils/session'
 
 const schema = z.object({
   boundary: z.object({
@@ -9,9 +9,9 @@ const schema = z.object({
   }),
 })
 
-/** Draw a fence, generate the 2D site plan, and persist it. Admin only. */
+/** Draw a fence, generate the 2D site plan, and persist it. */
 export default defineEventHandler(async (event) => {
-  const auth = await requireAdmin(event)
+  const auth = await requireAuth(event)
   const locationId = getRouterParam(event, 'id')
   if (!locationId) {
     throw createError({ statusCode: 400, statusMessage: 'Location id is required.' })

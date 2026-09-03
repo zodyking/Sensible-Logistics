@@ -2659,6 +2659,10 @@
     position: relative;
   }
 
+  .map-frame-wrap.is-drawing .fence-frame {
+    display: none;
+  }
+
   .fence-frame {
     position: absolute;
     inset: 12%;
