@@ -10,6 +10,7 @@ import {
   normalizeHeading,
   pointInPolygon,
   polygonFromBbox,
+  polygonFromRing,
   snapHeadingToStreet,
 } from '../shared/utils/geo'
 
@@ -26,6 +27,20 @@ describe('containerCorners', () => {
     const lats = corners.map(c => c[0])
     const lngs = corners.map(c => c[1])
     expect(Math.max(...lngs) - Math.min(...lngs)).toBeGreaterThan(Math.max(...lats) - Math.min(...lats))
+  })
+})
+
+describe('polygonFromRing', () => {
+  it('closes an open triangle and rejects a two-point line', () => {
+    const polygon = polygonFromRing([
+      [-80.2, 26.1],
+      [-80.19, 26.1],
+      [-80.195, 26.11],
+    ])
+    expect(polygon?.type).toBe('Polygon')
+    expect(polygon?.coordinates[0]).toHaveLength(4)
+    expect(polygon?.coordinates[0]![0]).toEqual(polygon?.coordinates[0]!.at(-1))
+    expect(polygonFromRing([[-80.2, 26.1], [-80.19, 26.1]])).toBeNull()
   })
 })
 

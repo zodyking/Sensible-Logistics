@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { GeoJsonPolygon } from '#shared/utils/geo'
-import { bboxFromPolygon, headingDelta, normalizeHeading } from '#shared/utils/geo'
+import { bboxFromPolygon, headingDelta, normalizeHeading, polygonFromRing } from '#shared/utils/geo'
 import { isPlacedPin } from '#shared/utils/yard-slots'
 import { loadLeaflet, observeMapSize, waitForMapSize } from '~/utils/leaflet-map'
 import { OSM_ATTRIBUTION, osmTileUrl } from '~/utils/map-tiles'
@@ -21,6 +21,8 @@ const emit = defineEmits<{
 
 const mapEl = ref<HTMLElement | null>(null)
 const ready = ref(false)
+const drawing = ref(false)
+const draftPoints = ref<Array<[number, number]>>([])
 const errorMessage = ref('')
 
 type LeafletModule = typeof import('leaflet')
@@ -28,12 +30,16 @@ let L: LeafletModule | null = null
 let map: import('leaflet').Map | null = null
 let fenceLayer: import('leaflet').Polygon | null = null
 let pinMarker: import('leaflet').Marker | null = null
+let draftLayer: import('leaflet').LayerGroup | null = null
 let cancelled = false
 let stopSizeWatch: (() => void) | null = null
 let applyingHeading = false
 
 /** Fraction of the viewport left as margin around the captured fence. */
 const FRAME_INSET = 0.12
+
+const hasFence = computed(() => Boolean(props.boundary?.coordinates?.[0]?.length))
+const canFinishDraw = computed(() => draftPoints.value.length >= 3)
 
 function paintPin() {
   if (!map || !L) return
@@ -56,6 +62,7 @@ function paintFence() {
   if (!map || !L) return
   fenceLayer?.remove()
   fenceLayer = null
+  if (drawing.value) return
   const ring = props.boundary?.coordinates?.[0]
   if (!ring?.length) return
   fenceLayer = L.polygon(ring.map(([lng, lat]) => [lat, lng] as [number, number]), {
@@ -65,6 +72,29 @@ function paintFence() {
     fillOpacity: 0.14,
     interactive: false,
   }).addTo(map)
+}
+
+function paintDraft() {
+  if (!map || !L) return
+  draftLayer?.clearLayers()
+  if (!drawing.value || !draftPoints.value.length) return
+  const latlngs = draftPoints.value.map(([lat, lng]) => [lat, lng] as [number, number])
+  L.polyline(latlngs, {
+    color: '#F0A422',
+    weight: 2,
+    dashArray: '6 4',
+    interactive: false,
+  }).addTo(draftLayer!)
+  for (const [lat, lng] of draftPoints.value) {
+    L.circleMarker([lat, lng], {
+      radius: 7,
+      color: '#0C1E30',
+      weight: 2,
+      fillColor: '#F0A422',
+      fillOpacity: 1,
+      interactive: false,
+    }).addTo(draftLayer!)
+  }
 }
 
 function applyHeading(value: number) {
@@ -114,14 +144,55 @@ function captureFence(): GeoJsonPolygon | null {
     [size.x - ix, size.y - iy],
     [ix, size.y - iy],
   ]
-  const ring = corners.map(([x, y]) => {
+  const vertices = corners.map(([x, y]) => {
     const latlng = map!.containerPointToLatLng(L!.point(x, y))
     return [latlng.lng, latlng.lat] as [number, number]
   })
-  ring.push(ring[0]!)
-  const polygon: GeoJsonPolygon = { type: 'Polygon', coordinates: [ring] }
+  const polygon = polygonFromRing(vertices)
+  if (!polygon) return null
   emit('update:boundary', polygon)
   return polygon
+}
+
+function onMapClick(event: import('leaflet').LeafletMouseEvent) {
+  if (!drawing.value) return
+  draftPoints.value = [...draftPoints.value, [event.latlng.lat, event.latlng.lng]]
+}
+
+function startDraw() {
+  if (!map || !ready.value) return
+  drawing.value = true
+  draftPoints.value = []
+  fenceLayer?.remove()
+  fenceLayer = null
+  map.on('click', onMapClick)
+  paintDraft()
+}
+
+function cancelDraw() {
+  if (!map) return
+  drawing.value = false
+  draftPoints.value = []
+  map.off('click', onMapClick)
+  draftLayer?.clearLayers()
+  paintFence()
+}
+
+function undoVertex() {
+  if (draftPoints.value.length < 1) return
+  draftPoints.value = draftPoints.value.slice(0, -1)
+}
+
+function finishDraw() {
+  const polygon = polygonFromRing(
+    draftPoints.value.map(([lat, lng]) => [lng, lat]),
+  )
+  if (!polygon || !map) return
+  emit('update:boundary', polygon)
+  drawing.value = false
+  draftPoints.value = []
+  map.off('click', onMapClick)
+  draftLayer?.clearLayers()
 }
 
 async function boot() {
@@ -148,6 +219,7 @@ async function boot() {
       maxZoom: 22,
       attribution: OSM_ATTRIBUTION,
     }).addTo(map)
+    draftLayer = L.layerGroup().addTo(map)
     map.on('rotate', onRotate)
     setInitialView()
     paintFence()
@@ -171,10 +243,14 @@ watch(() => props.boundary, () => {
   if (!ready.value) return
   paintFence()
 })
+watch(draftPoints, () => {
+  if (!ready.value) return
+  paintDraft()
+})
 watch(() => [props.latitude, props.longitude] as const, () => {
   if (!ready.value) return
   paintPin()
-  setInitialView()
+  if (!drawing.value && !hasFence.value) setInitialView()
 })
 watch(() => props.heading, (value) => {
   if (!ready.value || !map) return
@@ -191,9 +267,11 @@ onBeforeUnmount(() => {
   stopSizeWatch?.()
   stopSizeWatch = null
   try {
+    map?.off('click', onMapClick)
     map?.off()
     pinMarker?.remove()
     fenceLayer?.remove()
+    draftLayer?.remove()
     map?.remove()
   }
   catch {
@@ -202,6 +280,7 @@ onBeforeUnmount(() => {
   map = null
   fenceLayer = null
   pinMarker = null
+  draftLayer = null
   L = null
 })
 
@@ -213,12 +292,17 @@ defineExpose({
 
 <template>
   <div>
-    <div class="map-frame-wrap">
+    <div
+      class="map-frame-wrap"
+      :class="{ 'is-drawing': drawing }"
+    >
       <div
         ref="mapEl"
         class="location-map place"
         role="application"
-        aria-label="OpenStreetMap. Rotate and pan until the yard fills the frame, then set the fence."
+        :aria-label="drawing
+          ? 'OpenStreetMap. Tap the corners of the usable yard, then finish the zone.'
+          : 'OpenStreetMap. Draw the yard zone by tapping corners, or pan until the yard fills the frame.'"
       />
       <div
         class="fence-frame"
@@ -232,17 +316,57 @@ defineExpose({
       <span aria-hidden="true">✕</span>
       <span>{{ errorMessage }}</span>
     </p>
-    <button
-      type="button"
-      class="btn-dark mt-3 w-full"
-      :disabled="!ready"
-      @click="captureFence"
-    >
-      {{ boundary ? 'Update fence to this view' : 'Set fence to this view' }}
-    </button>
-    <p class="field-hint mt-2">
-      Align to the road, then pan and zoom until the yard fills the gold frame.
-      The fence follows the rotated view, so it stays square to the street.
-    </p>
+    <template v-if="drawing">
+      <p class="field-hint mt-3">
+        Tap each corner of the usable yard. You need at least three points.
+      </p>
+      <button
+        type="button"
+        class="btn-dark mt-3 w-full"
+        :disabled="!canFinishDraw"
+        @click="finishDraw"
+      >
+        Finish zone
+      </button>
+      <div class="mt-2 flex gap-2">
+        <button
+          type="button"
+          class="btn-ghost flex-1"
+          :disabled="draftPoints.length < 1"
+          @click="undoVertex"
+        >
+          Undo point
+        </button>
+        <button
+          type="button"
+          class="btn-ghost flex-1"
+          @click="cancelDraw"
+        >
+          Cancel
+        </button>
+      </div>
+    </template>
+    <template v-else>
+      <button
+        type="button"
+        class="btn-dark mt-3 w-full"
+        :disabled="!ready"
+        @click="startDraw"
+      >
+        {{ hasFence ? 'Redraw zone' : 'Draw zone' }}
+      </button>
+      <button
+        type="button"
+        class="btn-ghost mt-2 w-full"
+        :disabled="!ready"
+        @click="captureFence"
+      >
+        {{ hasFence ? 'Update fence to this view' : 'Use this view as fence' }}
+      </button>
+      <p class="field-hint mt-2">
+        Draw by tapping corners, or align to the road and fill the gold frame.
+        The fence follows the rotated view, so a framed zone stays square to the street.
+      </p>
+    </template>
   </div>
 </template>

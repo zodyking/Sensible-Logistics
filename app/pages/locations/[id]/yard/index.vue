@@ -71,15 +71,12 @@ async function onMoved() {
       :back-to="`/locations/${locationId}`"
       back-label="Location"
     >
-      <template
-        v-if="user?.role === 'ADMIN'"
-        #actions
-      >
+      <template #actions>
         <NuxtLink
           :to="`/locations/${locationId}/yard/setup`"
           class="btn-ghost"
         >
-          {{ origin ? 'Regenerate' : 'Generate plan' }}
+          {{ origin ? 'Regenerate' : 'Draw zone' }}
         </NuxtLink>
       </template>
     </PageHeader>
@@ -113,7 +110,6 @@ async function onMoved() {
         <span>{{ yard.layout.errorMessage || 'Generation failed.' }}</span>
       </p>
       <NuxtLink
-        v-if="user?.role === 'ADMIN'"
         :to="`/locations/${locationId}/yard/setup`"
         class="btn-dark mt-4"
       >
@@ -124,15 +120,16 @@ async function onMoved() {
     <template v-else-if="!origin">
       <EmptyState
         glyph="▦"
-        title="No yard plan yet"
-        description="Draw a fence around the usable yard. The app builds a clean 2D site plan from that boundary — not a satellite photo."
+        :title="locationData?.location.boundary ? 'Zone saved — no 2D plan yet' : 'No yard plan yet'"
+        :description="locationData?.location.boundary
+          ? 'This site already has a yard zone. Generate the clean 2D plan from it, or redraw the zone first.'
+          : 'Draw a zone around the usable yard. The app builds a clean 2D site plan from that boundary — not a satellite photo.'"
       />
       <NuxtLink
-        v-if="user?.role === 'ADMIN'"
         :to="`/locations/${locationId}/yard/setup`"
         class="btn-dark mt-4"
       >
-        Draw fence and generate
+        {{ locationData?.location.boundary ? 'Generate 2D yard' : 'Draw zone and generate' }}
       </NuxtLink>
     </template>
 
