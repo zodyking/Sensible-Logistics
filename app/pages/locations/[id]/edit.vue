@@ -396,6 +396,10 @@ async function save() {
             :longitude="longitude"
             :boundary="boundary"
             :heading="heading"
+            :address-line1="form.addressLine1"
+            :city="form.city"
+            :state="form.state"
+            :postal-code="form.postalCode"
             @update:boundary="boundary = $event"
             @update:heading="heading = $event"
           />

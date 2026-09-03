@@ -10,6 +10,7 @@ import {
   haversineMeters,
   normalizeHeading,
   offsetLatLng,
+  parsePin,
   pointInPolygon,
   rotateLocal,
   type GeoJsonPolygon,
@@ -40,12 +41,10 @@ export function streetHeadingFromMapBearing(mapHeading: number): number {
 }
 
 export function isPlacedPin(
-  latitude: number | null | undefined,
-  longitude: number | null | undefined,
+  latitude: number | string | null | undefined,
+  longitude: number | string | null | undefined,
 ): boolean {
-  if (latitude == null || longitude == null) return false
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return false
-  return !(latitude === 0 && longitude === 0)
+  return parsePin(latitude, longitude) != null
 }
 
 export function locationOrigin(location: {

@@ -30,6 +30,26 @@ export function isValidBbox(box: BoundingBox): boolean {
     && box.south >= -90 && box.north <= 90
 }
 
+/** Coerce API/database numeric strings into a finite WGS 84 component. */
+export function parseCoord(value: number | string | null | undefined): number | null {
+  if (value == null || value === '') return null
+  const n = typeof value === 'number' ? value : Number(String(value).trim())
+  return Number.isFinite(n) ? n : null
+}
+
+/** Site pin. Rejects missing values, non-numeric strings, and the 0,0 placeholder. */
+export function parsePin(
+  latitude: number | string | null | undefined,
+  longitude: number | string | null | undefined,
+): { latitude: number, longitude: number } | null {
+  const lat = parseCoord(latitude)
+  const lng = parseCoord(longitude)
+  if (lat == null || lng == null) return null
+  if (lat === 0 && lng === 0) return null
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null
+  return { latitude: lat, longitude: lng }
+}
+
 /** Photon country codes and display names for United States results. */
 export function isUnitedStatesCountry(value: string | null | undefined): boolean {
   const raw = String(value ?? '').trim().toUpperCase().replace(/\./g, '')

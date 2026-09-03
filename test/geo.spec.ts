@@ -8,6 +8,8 @@ import {
   isUnitedStatesCountry,
   longestEdgeBearing,
   normalizeHeading,
+  parseCoord,
+  parsePin,
   pointInPolygon,
   polygonFromBbox,
   polygonFromRing,
@@ -27,6 +29,16 @@ describe('containerCorners', () => {
     const lats = corners.map(c => c[0])
     const lngs = corners.map(c => c[1])
     expect(Math.max(...lngs) - Math.min(...lngs)).toBeGreaterThan(Math.max(...lats) - Math.min(...lats))
+  })
+})
+
+describe('parsePin', () => {
+  it('accepts numeric strings and rejects 0,0 and blanks', () => {
+    expect(parseCoord('26.1')).toBeCloseTo(26.1)
+    expect(parsePin('26.115', '-80.172')).toEqual({ latitude: 26.115, longitude: -80.172 })
+    expect(parsePin(0, 0)).toBeNull()
+    expect(parsePin('', '-80.1')).toBeNull()
+    expect(parsePin(null, -80.1)).toBeNull()
   })
 })
 
