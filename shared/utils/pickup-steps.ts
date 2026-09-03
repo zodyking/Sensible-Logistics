@@ -7,6 +7,7 @@ export const PICKUP_STEPS = [
   'equipment',
   'containerType',
   'equipmentType',
+  'loadStatus',
   'seal',
   'notes',
   'destination',
@@ -55,8 +56,13 @@ export function pickupSteps(input: {
     }
   }
 
-  if (input.kind === 'CONTAINER' && input.isLoaded === true && (input.manualEntry || input.fromYard)) {
-    steps.push('seal')
+  if (input.kind === 'CONTAINER' && !input.swap) {
+    if (input.fromYard) {
+      steps.push('loadStatus')
+    }
+    if (input.isLoaded === true && (input.manualEntry || input.fromYard)) {
+      steps.push('seal')
+    }
   }
 
   steps.push('notes', 'destination', 'confirm')

@@ -30,7 +30,7 @@ describe('pickupSteps', () => {
     expect(chassis.slice(-2)).toEqual(['destination', 'confirm'])
   })
 
-  it('skips typing, chassis, and load when a yard record is chosen', () => {
+  it('skips typing and chassis but asks loaded/empty when a yard record is chosen', () => {
     const steps = pickupSteps({
       kind: 'CONTAINER',
       fromYard: true,
@@ -38,7 +38,7 @@ describe('pickupSteps', () => {
       needsClassification: true,
       isLoaded: true,
     })
-    expect(steps).toEqual(['kind', 'location', 'inventory', 'seal', 'notes', 'destination', 'confirm'])
+    expect(steps).toEqual(['kind', 'location', 'inventory', 'loadStatus', 'seal', 'notes', 'destination', 'confirm'])
   })
 
   it('requires a seal for a loaded yard container and skips it when empty', () => {
@@ -73,7 +73,7 @@ describe('pickupSteps', () => {
     expect(steps).toContain('seal')
   })
 
-  it('carries loaded or empty on the equipment screen instead of its own step', () => {
+  it('carries loaded or empty on the equipment screen for manual entry', () => {
     const steps = pickupSteps({
       kind: 'CONTAINER',
       fromYard: false,
@@ -82,6 +82,35 @@ describe('pickupSteps', () => {
       isLoaded: false,
     })
     expect(steps).toEqual(['kind', 'location', 'inventory', 'equipment', 'notes', 'destination', 'confirm'])
+  })
+
+  it('always asks loaded/empty for yard-picked containers via loadStatus step', () => {
+    const empty = pickupSteps({
+      kind: 'CONTAINER',
+      fromYard: true,
+      manualEntry: false,
+      needsClassification: false,
+      isLoaded: false,
+    })
+    const loaded = pickupSteps({
+      kind: 'CONTAINER',
+      fromYard: true,
+      manualEntry: false,
+      needsClassification: false,
+      isLoaded: true,
+    })
+    const unset = pickupSteps({
+      kind: 'CONTAINER',
+      fromYard: true,
+      manualEntry: false,
+      needsClassification: false,
+      isLoaded: null,
+    })
+    expect(empty).toContain('loadStatus')
+    expect(loaded).toContain('loadStatus')
+    expect(unset).toContain('loadStatus')
+    expect(empty).not.toContain('equipment')
+    expect(loaded).not.toContain('equipment')
   })
 
   it('does not show the typewriter path until the driver chooses enter-unlisted', () => {

@@ -47,6 +47,7 @@ const STEP_TITLES: Record<Step, string> = {
   equipment: 'Container and chassis',
   containerType: 'Container type',
   equipmentType: 'Container size',
+  loadStatus: 'Loaded or empty?',
   seal: 'Seal',
   notes: 'Notes',
   destination: 'Drop-off',
@@ -411,7 +412,7 @@ async function selectYardContainer(item: YardContainer) {
   rawNumber.value = maskContainerInput(item.numberNormalized || item.number)
   containerType.value = item.containerType
   equipmentType.value = item.equipmentType
-  isLoaded.value = swapMode.value ? true : item.isLoaded
+  isLoaded.value = swapMode.value ? true : null
   sealNumber.value = item.sealNumber ?? ''
   chassisId.value = item.currentChassisId ?? null
   chassisNumber.value = item.chassisNumber ? maskChassisInput(item.chassisNumber) : ''
@@ -421,7 +422,7 @@ async function selectYardContainer(item: YardContainer) {
       container: { isLoaded: boolean, sealNumber: string | null }
       currentChassis: { id: string, number: string } | null
     }>(`/api/containers/${item.id}`)
-    if (!swapMode.value) isLoaded.value = Boolean(detail.container.isLoaded)
+    // Don't override — driver will choose on the loadStatus step
     if (detail.container.sealNumber && !sealNumber.value) sealNumber.value = detail.container.sealNumber
     if (detail.currentChassis) {
       chassisId.value = detail.currentChassis.id
@@ -471,47 +472,35 @@ function chooseKind(kind: TripKind) {
     inventoryQuery.value = ''
   }
   pickupKind.value = kind
-  void next()
 }
 
-async function pickOrigin(location: { id: string, name: string, containers?: YardBox[] }) {
+function pickOrigin(location: { id: string, name: string, containers?: YardBox[] }) {
   chooseOrigin(location)
-  await next()
 }
 
 async function pickYardContainer(item: YardContainer) {
   await selectYardContainer(item)
-  await next()
 }
 
-async function pickYardChassis(item: YardChassis) {
+function pickYardChassis(item: YardChassis) {
   selectYardChassis(item)
-  await next()
 }
 
-async function pickContainerType(type: ContainerType) {
+function pickContainerType(type: ContainerType) {
   containerType.value = type
-  await next()
 }
 
-async function pickEquipmentType(type: EquipmentType) {
+function pickEquipmentType(type: EquipmentType) {
   equipmentType.value = type
-  await next()
 }
 
-async function pickDestination(location: { id: string, name: string }) {
+function pickDestination(location: { id: string, name: string }) {
   chooseDestination(location)
-  await next()
 }
-
-/** Steps whose rows advance on tap need no button; the rest do. */
-const TAP_ADVANCE: Step[] = ['kind', 'location', 'inventory', 'containerType', 'equipmentType', 'destination']
 
 const showNext = computed(() => {
   if (step.value === 'confirm') return false
-  if (!TAP_ADVANCE.includes(step.value)) return true
-  // A claimed trip locks the classification rows, so the button carries the step.
-  return (step.value === 'containerType' || step.value === 'equipmentType') && Boolean(tripId.value)
+  return true
 })
 
 function chooseOrigin(location: { id: string, name: string, containers?: YardBox[] }) {
@@ -572,6 +561,8 @@ const canAdvance = computed(() => {
       return Boolean(containerType.value)
     case 'equipmentType':
       return Boolean(equipmentType.value)
+    case 'loadStatus':
+      return isLoaded.value !== null
     case 'notes':
       return true
     case 'seal':
@@ -1376,6 +1367,42 @@ async function onPhoto(dataUrl: string) {
       </div>
     </template>
 
+    <!-- ── Loaded or empty (yard-picked containers) ─────────── -->
+    <template v-else-if="step === 'loadStatus'">
+      <span class="wiz-label">Is this container loaded or empty?</span>
+      <div class="wiz-group">
+        <div class="wiz-status">
+          <button
+            type="button"
+            class="wiz-status-btn"
+            :aria-pressed="isLoaded === false"
+            @click="isLoaded = false"
+          >
+            <span
+              class="wiz-status-mark"
+              aria-hidden="true"
+            >E</span>
+            <span class="wiz-status-name">Empty</span>
+          </button>
+          <button
+            type="button"
+            class="wiz-status-btn"
+            :aria-pressed="isLoaded === true"
+            @click="isLoaded = true"
+          >
+            <span
+              class="wiz-status-mark"
+              aria-hidden="true"
+            >L</span>
+            <span class="wiz-status-name">Load</span>
+          </button>
+        </div>
+      </div>
+      <p class="wiz-hint">
+        Choose empty if the container has no cargo. Choose load if it is carrying freight.
+      </p>
+    </template>
+
     <!-- ── Seal ────────────────────────────────────────────────── -->
     <template v-else-if="step === 'seal'">
       <span class="wiz-label">Seal</span>
@@ -1534,7 +1561,7 @@ async function onPhoto(dataUrl: string) {
         :disabled="!canAdvance || submitting"
         @click="next"
       >
-        {{ submitting ? 'Working…' : 'Next' }}
+        {{ submitting ? 'Working…' : 'Continue' }}
       </button>
 
       <button
