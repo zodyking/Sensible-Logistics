@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { formatContainerNumber } from '#shared/utils/iso6346'
+import {
+  CONTAINER_TYPE_LABELS,
+  EQUIPMENT_TYPE_SHORT,
+  TRIP_KIND_LABELS,
+  TRIP_STATUS_CHIP,
+  TRIP_STATUS_LABELS,
+} from '#shared/utils/domain'
+import { formatChassisNumber, formatContainerNumber } from '#shared/utils/iso6346'
 import { tripSmsAction } from '#shared/utils/trip-sms'
 import { visibleTimelineEntries } from '#shared/utils/timeline'
 
@@ -20,6 +27,56 @@ const smsOpen = ref(false)
 const contactsOpen = ref(false)
 const canSendSms = computed(() => Boolean(tripSmsAction(data.value?.trip.status)))
 const timeline = computed(() => visibleTimelineEntries(data.value?.timeline ?? []))
+
+const isBareChassis = computed(() =>
+  data.value?.trip.kind === 'BARE_CHASSIS' || (!data.value?.container && Boolean(data.value?.chassis)),
+)
+
+const titleNumber = computed(() => {
+  if (data.value?.container) {
+    return formatContainerNumber(data.value.container.number) || data.value.container.number
+  }
+  if (data.value?.chassis) {
+    return formatChassisNumber(data.value.chassis.number) || data.value.chassis.number
+  }
+  return data.value?.trip.reference ?? 'Trip'
+})
+
+const typeLabel = computed(() => {
+  if (isBareChassis.value) return TRIP_KIND_LABELS.BARE_CHASSIS
+  const type = data.value?.container?.containerType
+  return type ? CONTAINER_TYPE_LABELS[type] : '—'
+})
+
+const loadLabel = computed(() => {
+  if (isBareChassis.value) return 'Bare chassis'
+  return data.value?.trip.isLoaded ? 'Loaded' : 'Empty'
+})
+
+const lengthLabel = computed(() => {
+  const equipment = data.value?.container?.equipmentType
+  return equipment ? EQUIPMENT_TYPE_SHORT[equipment] : null
+})
+
+const chassisDisplay = computed(() => {
+  if (!data.value?.chassis) return 'None'
+  return formatChassisNumber(data.value.chassis.number) || data.value.chassis.number
+})
+
+function placeLabel(name?: string | null, city?: string | null) {
+  const trimmed = name?.trim()
+  if (!trimmed) return { name: 'Not set', city: city?.trim() || '' }
+  return { name: trimmed, city: city?.trim() || '' }
+}
+
+const pickupPlace = computed(() => placeLabel(data.value?.origin?.name, data.value?.origin?.city))
+const dropoffPlace = computed(() => {
+  const place = placeLabel(data.value?.destination?.name, data.value?.destination?.city)
+  if (!data.value?.destination?.name?.trim()) {
+    return { name: 'Choose at drop-off', city: place.city }
+  }
+  return place
+})
 </script>
 
 <template>
@@ -42,86 +99,177 @@ const timeline = computed(() => visibleTimelineEntries(data.value?.timeline ?? [
     </p>
 
     <template v-else-if="data">
-      <PageHeader
-        eyebrow="Trip"
-        :title="data.trip.reference"
-        back-to="/pickups"
-        back-label="Trips"
-      />
-      <p
-        v-if="durationLabel"
-        class="trip-duration mb-4"
-      >
-        {{ durationLabel }}
-      </p>
-
-      <TripCard
-        tone="record"
-        :trip-kind="data.trip.kind === 'BARE_CHASSIS' ? 'BARE_CHASSIS' : 'CONTAINER'"
-        :container-type="data.container?.containerType"
-        :is-loaded="data.trip.isLoaded"
-        :container-number="data.container?.number"
-        :equipment-type="data.container?.equipmentType"
-        :chassis-number="data.chassis?.number"
-        :seal-number="data.trip.sealNumber"
-        :origin-name="data.origin?.name"
-        :destination-name="data.destination?.name"
-        :can-change-dropoff="isLive"
-        @change-dropoff="navigateTo(`/trips/${tripId}/destination`)"
-      >
-        <template
-          v-if="data.container"
-          #number
+      <div class="backbar">
+        <NuxtLink
+          to="/pickups"
+          class="backbtn"
         >
-          <NuxtLink :to="`/containers/${data.container.id}`">
-            {{ formatContainerNumber(data.container.number) || data.container.number }}
+          ‹ Trips
+        </NuxtLink>
+      </div>
+
+      <div class="card trip-record-card">
+        <div class="cd-head">
+          <div class="cd-head-top">
+            <span class="eyebrow">Trip Record</span>
+            <StatusChip
+              :variant="TRIP_STATUS_CHIP[data.trip.status]"
+              :label="TRIP_STATUS_LABELS[data.trip.status]"
+            />
+          </div>
+          <div class="container-no mono">
+            {{ titleNumber }}
+          </div>
+          <p
+            v-if="durationLabel"
+            class="trip-duration"
+          >
+            {{ durationLabel }}
+          </p>
+          <div class="cd-chips">
+            <StatusChip
+              v-if="lengthLabel"
+              plain
+              variant="idle"
+              :label="lengthLabel"
+            />
+            <StatusChip
+              plain
+              variant="idle"
+              :label="typeLabel"
+            />
+            <StatusChip
+              :variant="data.trip.isLoaded ? 'ok' : 'idle'"
+              :label="loadLabel"
+            />
+            <StatusChip
+              plain
+              variant="idle"
+              :label="data.trip.reference"
+            />
+          </div>
+        </div>
+
+        <dl class="trip-spec">
+          <div
+            v-if="!isBareChassis"
+            class="trip-spec-row"
+          >
+            <dt>Container</dt>
+            <dd>
+              <CopyMarking
+                v-if="data.container"
+                kind="container"
+                :value="data.container.number"
+                :display="formatContainerNumber(data.container.number) || data.container.number"
+              />
+              <span v-else>—</span>
+              <NuxtLink
+                v-if="data.container"
+                :to="`/containers/${data.container.id}`"
+                class="trip-spec-open"
+              >
+                Open
+              </NuxtLink>
+            </dd>
+          </div>
+          <div class="trip-spec-row">
+            <dt>Chassis</dt>
+            <dd>
+              <CopyMarking
+                v-if="data.chassis"
+                kind="chassis"
+                :value="data.chassis.number"
+                :display="chassisDisplay"
+              />
+              <span v-else>None</span>
+              <NuxtLink
+                v-if="data.chassis"
+                :to="`/chassis/${data.chassis.id}`"
+                class="trip-spec-open"
+              >
+                Open
+              </NuxtLink>
+            </dd>
+          </div>
+          <div
+            v-if="!isBareChassis"
+            class="trip-spec-row"
+          >
+            <dt>Seal</dt>
+            <dd>
+              <CopyMarking
+                v-if="data.trip.sealNumber"
+                kind="seal"
+                :value="data.trip.sealNumber"
+              />
+              <span v-else>—</span>
+            </dd>
+          </div>
+          <div class="trip-spec-row">
+            <dt>Type</dt>
+            <dd>{{ typeLabel }}</dd>
+          </div>
+          <div class="trip-spec-row">
+            <dt>Load</dt>
+            <dd>{{ loadLabel }}</dd>
+          </div>
+          <div class="trip-spec-row">
+            <dt>Pickup</dt>
+            <dd>
+              <strong>{{ pickupPlace.name }}</strong>
+              <small v-if="pickupPlace.city">{{ pickupPlace.city }}</small>
+            </dd>
+          </div>
+          <div class="trip-spec-row">
+            <dt>Drop-off</dt>
+            <dd>
+              <strong>{{ dropoffPlace.name }}</strong>
+              <small v-if="dropoffPlace.city">{{ dropoffPlace.city }}</small>
+              <button
+                v-if="isLive"
+                type="button"
+                class="trip-spec-open"
+                @click="navigateTo(`/trips/${tripId}/destination`)"
+              >
+                Change
+              </button>
+            </dd>
+          </div>
+        </dl>
+
+        <div class="trip-spec-actions">
+          <NuxtLink
+            v-if="data.container"
+            :to="`/containers/${data.container.id}`"
+            class="menu-row"
+          >
+            Documents
           </NuxtLink>
-        </template>
-      </TripCard>
-
-      <div class="home-actions">
-        <NuxtLink
-          v-if="data.container"
-          :to="`/containers/${data.container.id}`"
-        >
-          <span
-            class="act-ico"
-            aria-hidden="true"
-          >▤</span>
-          Documents
-        </NuxtLink>
-        <button
-          type="button"
-          :disabled="!canSendSms"
-          @click="smsOpen = true"
-        >
-          <span
-            class="act-ico"
-            aria-hidden="true"
-          >✉</span>
-          Send SMS
-        </button>
-        <button
-          type="button"
-          :disabled="!data.origin && !data.destination"
-          @click="contactsOpen = true"
-        >
-          <span
-            class="act-ico"
-            aria-hidden="true"
-          >☎</span>
-          Contacts
-        </button>
-        <NuxtLink
-          v-if="data.container"
-          :to="`/containers/${data.container.id}`"
-        >
-          <span
-            class="act-ico"
-            aria-hidden="true"
-          >☰</span>
-          History
-        </NuxtLink>
+          <button
+            type="button"
+            class="menu-row"
+            :disabled="!canSendSms"
+            @click="smsOpen = true"
+          >
+            Send SMS
+          </button>
+          <button
+            type="button"
+            class="menu-row"
+            :disabled="!data.origin && !data.destination"
+            @click="contactsOpen = true"
+          >
+            Contacts
+          </button>
+          <NuxtLink
+            v-if="data.container"
+            :to="`/containers/${data.container.id}`"
+            class="menu-row"
+          >
+            History
+          </NuxtLink>
+        </div>
       </div>
 
       <NuxtLink
