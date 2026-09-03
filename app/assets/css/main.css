@@ -294,54 +294,140 @@
     align-items: center;
     justify-content: center;
     padding: var(--s5);
-    background: rgb(8 22 36 / 0.72);
-    backdrop-filter: blur(10px);
+    background: transparent;
+    pointer-events: auto;
   }
 
-  .brand-loader-panel {
+  .brand-loader-stage {
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
-    width: min(100%, 320px);
-    padding: 28px 24px 22px;
-    background: #fff;
-    border-radius: 16px;
-    box-shadow: 0 18px 48px rgb(8 22 36 / 0.28);
+    animation: brand-loader-play 5s ease-in-out forwards, brand-loader-breathe 2.6s ease-in-out 5s infinite;
   }
 
-  .brand-loader-bar {
-    display: block;
-    position: relative;
-    width: 88px;
-    height: 2px;
-    margin-top: 18px;
-    overflow: hidden;
-    background: var(--color-line-200);
-    border-radius: 2px;
+  .brand-loader.leaving .brand-loader-stage {
+    animation: brand-loader-leave 0.45s ease-in forwards;
   }
 
-  .brand-loader-bar i {
-    display: block;
-    width: 38%;
-    height: 100%;
-    background: var(--color-amber-500);
-    border-radius: 2px;
-    animation: brand-scan 1.15s ease-in-out infinite;
+  .brand-loader-stage .brand-logo {
+    width: min(78vw, 280px);
+    mix-blend-mode: multiply;
+  }
+
+  .brand-loader-glow {
+    position: absolute;
+    left: 50%;
+    top: 42%;
+    width: min(70vw, 240px);
+    height: min(70vw, 240px);
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background: radial-gradient(circle, rgb(232 168 56 / 0.28) 0%, rgb(47 111 167 / 0.1) 42%, transparent 70%);
+    pointer-events: none;
+    animation: brand-loader-glow 5s ease-in-out infinite;
   }
 
   .brand-loader-caption {
-    margin: 12px 0 0;
+    margin: 14px 0 0;
     font-size: 0.72rem;
     font-weight: 600;
     letter-spacing: 0.16em;
     text-transform: uppercase;
     color: var(--color-ink-500);
     font-family: var(--font-display);
+    animation: brand-loader-caption 5s ease-out both;
   }
 
-  @keyframes brand-scan {
-    0% { transform: translateX(-120%); }
-    100% { transform: translateX(280%); }
+  @keyframes brand-loader-play {
+    0% {
+      opacity: 0;
+      transform: scale(0.86);
+    }
+
+    14% {
+      opacity: 1;
+      transform: scale(1.05);
+    }
+
+    24% {
+      opacity: 1;
+      transform: scale(0.98);
+    }
+
+    34% {
+      transform: scale(1);
+    }
+
+    52% {
+      opacity: 0.86;
+      transform: scale(1.04);
+    }
+
+    70% {
+      opacity: 1;
+      transform: scale(0.99);
+    }
+
+    86% {
+      opacity: 0.92;
+      transform: scale(1.03);
+    }
+
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes brand-loader-glow {
+    0%,
+    100% {
+      opacity: 0.35;
+      transform: translate(-50%, -50%) scale(0.92);
+    }
+
+    45% {
+      opacity: 0.9;
+      transform: translate(-50%, -50%) scale(1.08);
+    }
+  }
+
+  @keyframes brand-loader-caption {
+    0%,
+    12% {
+      opacity: 0;
+    }
+
+    28%,
+    100% {
+      opacity: 1;
+    }
+  }
+
+  @keyframes brand-loader-breathe {
+    0%,
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    50% {
+      opacity: 0.88;
+      transform: scale(1.035);
+    }
+  }
+
+  @keyframes brand-loader-leave {
+    from {
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    to {
+      opacity: 0;
+      transform: scale(0.96);
+    }
   }
 
   .topbar-slot {
