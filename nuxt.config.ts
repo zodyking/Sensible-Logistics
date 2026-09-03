@@ -82,7 +82,7 @@ export default defineNuxtConfig({
     s3AccessKeyId: '',
     s3SecretAccessKey: '',
     public: {
-      appName: 'Gantry',
+      appName: 'Yard Manager',
       mapTilesUrl: '',
       mapSatelliteUrl: '',
       geocoderUrl: '',
@@ -124,9 +124,9 @@ export default defineNuxtConfig({
     manifest: {
       // Baked in at build time — the manifest is a static file, so changing the
       // env var afterwards requires a rebuild.
-      name: process.env.NUXT_PUBLIC_APP_NAME || 'Gantry',
-      short_name: process.env.NUXT_PUBLIC_PWA_SHORT_NAME || 'Gantry',
-      description: process.env.NUXT_PUBLIC_PWA_DESCRIPTION || 'Gantry — driver and yard operations',
+      name: process.env.NUXT_PUBLIC_APP_NAME || 'Yard Manager',
+      short_name: process.env.NUXT_PUBLIC_PWA_SHORT_NAME || 'Yard Manager',
+      description: process.env.NUXT_PUBLIC_PWA_DESCRIPTION || 'Yard Manager — driver and yard operations',
       theme_color: '#0C1E30',
       background_color: '#EDF0F2',
       display: 'standalone',
