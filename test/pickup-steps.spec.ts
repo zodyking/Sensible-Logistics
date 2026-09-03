@@ -133,7 +133,6 @@ describe('pickupSteps', () => {
       needsClassification: false,
       isLoaded: true,
       swap: true,
-      destinationKnown: true,
     })
     const typed = pickupSteps({
       kind: 'CONTAINER',
@@ -142,7 +141,6 @@ describe('pickupSteps', () => {
       needsClassification: true,
       isLoaded: true,
       swap: true,
-      destinationKnown: true,
     })
     expect(yard).toEqual(['inventory', 'seal', 'notes', 'confirm'])
     expect(typed[0]).toBe('inventory')
@@ -152,26 +150,13 @@ describe('pickupSteps', () => {
     expect(typed.slice(-2)).toEqual(['notes', 'confirm'])
   })
 
-  it('asks a swap for the drop-off only when the return leg is unknown', () => {
+  it('keeps the drop-off step on a plain pickup', () => {
     const steps = pickupSteps({
       kind: 'CONTAINER',
       fromYard: true,
       manualEntry: false,
       needsClassification: false,
       isLoaded: true,
-      swap: true,
-    })
-    expect(steps).toEqual(['inventory', 'seal', 'notes', 'destination', 'confirm'])
-  })
-
-  it('keeps the drop-off step on a plain pickup even when one is already set', () => {
-    const steps = pickupSteps({
-      kind: 'CONTAINER',
-      fromYard: true,
-      manualEntry: false,
-      needsClassification: false,
-      isLoaded: true,
-      destinationKnown: true,
     })
     expect(steps.slice(-2)).toEqual(['destination', 'confirm'])
   })
