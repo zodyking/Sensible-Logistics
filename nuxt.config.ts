@@ -82,10 +82,7 @@ export default defineNuxtConfig({
     s3AccessKeyId: '',
     s3SecretAccessKey: '',
     shipcsx: {
-      profileDir: '',
       defaultTerminal: '',
-      email: '',
-      password: '',
       poll: '',
     },
     public: {

@@ -1,4 +1,3 @@
-import { mkdir } from 'node:fs/promises'
 import {
   SHIPCSX_BATCH_SIZE,
   SHIPCSX_LOOKUP_URL,
@@ -9,11 +8,6 @@ import {
   type CsxLookupCard,
 } from '#shared/utils/csx-lookup'
 import { normalizeContainerNumber } from '#shared/utils/iso6346'
-import {
-  SHIPCSX_CHROMIUM_ARGS,
-  resolveShipcsxProfileDir,
-  shipcsxProfileDirFallbacks,
-} from '#shared/utils/shipcsx-profile-dir'
 
 export interface ShipcsxLookupItem {
   equipmentNumber: string
@@ -30,38 +24,19 @@ type PlaywrightModule = typeof import('playwright')
 let queue: Promise<unknown> = Promise.resolve()
 let playwrightModule: PlaywrightModule | null | undefined
 
+const CHROMIUM_ARGS = [
+  '--disable-blink-features=AutomationControlled',
+  '--no-sandbox',
+  '--disable-dev-shm-usage',
+  '--disable-gpu',
+]
+
 function config() {
   const runtime = useRuntimeConfig()
-  const ship = (runtime as { shipcsx?: {
-    profileDir?: string
-    defaultTerminal?: string
-    email?: string
-    password?: string
-  } }).shipcsx
+  const ship = (runtime as { shipcsx?: { defaultTerminal?: string } }).shipcsx
   return {
-    profileDir: resolveShipcsxProfileDir({
-      configured: ship?.profileDir || process.env.NUXT_SHIPCSX_PROFILE_DIR || '',
-      home: process.env.HOME,
-    }),
     defaultTerminal: ship?.defaultTerminal || process.env.NUXT_SHIPCSX_DEFAULT_TERMINAL || '',
-    email: ship?.email || process.env.NUXT_SHIPCSX_EMAIL || '',
-    password: ship?.password || process.env.NUXT_SHIPCSX_PASSWORD || '',
   }
-}
-
-async function ensureProfileDir(preferred: string): Promise<string> {
-  let lastError: unknown
-  for (const dir of shipcsxProfileDirFallbacks(preferred, process.env.HOME)) {
-    try {
-      await mkdir(dir, { recursive: true })
-      return dir
-    }
-    catch (error) {
-      lastError = error
-    }
-  }
-  const detail = lastError instanceof Error ? lastError.message : 'permission denied'
-  throw new Error(`Could not create a writable ShipCSX browser profile (${detail}).`)
 }
 
 export async function withShipcsxLock<T>(work: () => Promise<T>): Promise<T> {
@@ -94,29 +69,16 @@ const STEALTH = `
   Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
 `
 
-const CONTEXT_BASE = {
-  headless: true,
-  locale: 'en-US',
-  timezoneId: 'America/New_York',
-  viewport: { width: 390, height: 844 },
-  isMobile: true,
-  hasTouch: true,
-  userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
-  args: [...SHIPCSX_CHROMIUM_ARGS],
-  chromiumSandbox: false,
-} as const
-
-async function openContext() {
+async function openPage() {
   const { chromium } = await loadPlaywright()
-  const { profileDir: preferred, email, password } = config()
-  const profileDir = await ensureProfileDir(preferred)
-
-  const launched = await chromium.launchPersistentContext(profileDir, {
-    ...CONTEXT_BASE,
-    ignoreDefaultArgs: ['--enable-automation'],
+  const launched = await chromium.launch({
+    headless: true,
+    args: CHROMIUM_ARGS,
+    chromiumSandbox: false,
   }).catch(async (first) => {
-    const retry = await chromium.launchPersistentContext(profileDir, {
-      ...CONTEXT_BASE,
+    const retry = await chromium.launch({
+      headless: true,
+      args: CHROMIUM_ARGS,
       channel: 'chrome',
     }).catch(() => null)
     if (retry) return retry
@@ -127,30 +89,17 @@ async function openContext() {
     throw first instanceof Error ? first : new Error(detail)
   })
 
-  await launched.addInitScript(STEALTH)
-  const page = launched.pages()[0] ?? await launched.newPage()
-  return { context: launched, page, email, password }
-}
-
-async function maybeSignIn(page: import('playwright').Page, email: string, password: string) {
-  const body = (await page.locator('body').innerText().catch(() => '')).toLowerCase()
-  const loginish = /sign in|log in|password/.test(body)
-  if (!loginish) return
-  if (!email || !password) {
-    throw new Error('ShipCSX needs a signed-in profile. Set NUXT_SHIPCSX_EMAIL and NUXT_SHIPCSX_PASSWORD, or sign in once on this server profile.')
-  }
-  const emailBox = page.locator('input[type="email"], input[name="username"], input[name="email"]').first()
-  const passBox = page.locator('input[type="password"]').first()
-  if (await emailBox.count()) {
-    await emailBox.fill(email)
-    await pause()
-  }
-  if (await passBox.count()) {
-    await passBox.fill(password)
-    await pause()
-    await page.locator('button[type="submit"], button:has-text("Sign In"), button:has-text("Log In")').first().click()
-    await page.waitForTimeout(1800)
-  }
+  const context = await launched.newContext({
+    locale: 'en-US',
+    timezoneId: 'America/New_York',
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
+  })
+  await context.addInitScript(STEALTH)
+  const page = await context.newPage()
+  return { browser: launched, context, page }
 }
 
 async function selectTerminal(page: import('playwright').Page, terminal: string) {
@@ -204,14 +153,16 @@ async function fillEquipmentRows(page: import('playwright').Page, equipment: str
 }
 
 async function runLookup(terminal: string, equipment: string[]): Promise<CsxLookupCard[]> {
-  const { context, page, email, password } = await openContext()
+  const { browser, context, page } = await openPage()
   try {
     await page.goto(SHIPCSX_LOOKUP_URL, { waitUntil: 'domcontentloaded', timeout: 45_000 })
     await pause(400, 900)
-    await maybeSignIn(page, email, password)
-    if (!page.url().includes('shipment/lookup')) {
-      await page.goto(SHIPCSX_LOOKUP_URL, { waitUntil: 'domcontentloaded', timeout: 45_000 })
-      await pause(400, 800)
+    const body = (await page.locator('body').innerText().catch(() => '')).toLowerCase()
+    if (/unusual traffic|captcha|access denied|blocked/i.test(body)) {
+      throw new Error('ShipCSX challenged this session. Backing off automatic checks.')
+    }
+    if (!page.url().includes('shipment/lookup') && /sign in|log in/.test(body) && /password/.test(body)) {
+      throw new Error('ShipCSX shipment lookup is not available without a login wall.')
     }
     await selectTerminal(page, terminal)
     await fillEquipmentRows(page, equipment)
@@ -220,17 +171,15 @@ async function runLookup(terminal: string, equipment: string[]): Promise<CsxLook
     await search.click({ timeout: 12_000 })
     await page.waitForTimeout(1600)
     await page.getByText(/Shipment Lookup Results|In-Gate|NOTIFIED/i).first().waitFor({ timeout: 20_000 }).catch(() => undefined)
-    const body = await page.locator('body').innerText()
-    if (/unusual traffic|captcha|access denied|blocked/i.test(body)) {
+    const results = await page.locator('body').innerText()
+    if (/unusual traffic|captcha|access denied|blocked/i.test(results)) {
       throw new Error('ShipCSX challenged this session. Backing off automatic checks.')
     }
-    if (/sign in|log in/i.test(body) && /password/i.test(body)) {
-      throw new Error('ShipCSX needs a signed-in profile. Sign in once on this server profile.')
-    }
-    return parseShipcsxLookupText(body).cards
+    return parseShipcsxLookupText(results).cards
   }
   finally {
     await context.close().catch(() => undefined)
+    await browser.close().catch(() => undefined)
   }
 }
 

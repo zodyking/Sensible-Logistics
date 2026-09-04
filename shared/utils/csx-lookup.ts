@@ -2,7 +2,7 @@ export const SHIPCSX_LOOKUP_URL = 'https://next.shipcsx.com/#/shipment/lookup'
 export const SHIPCSX_REFERENCE = '00'
 export const SHIPCSX_BATCH_SIZE = 3
 export const SHIPCSX_POLL_INTERVAL_MS = 30 * 60 * 1000
-/** Client + server wait for a live Playwright lookup (login + search). */
+/** Client + server wait for a live Playwright lookup (public search, no login). */
 export const SHIPCSX_CHECK_TIMEOUT_MS = 120_000
 export const SHIPCSX_TIMEZONE = 'America/New_York'
 export const SHIPCSX_POLL_START_HOUR = 5
