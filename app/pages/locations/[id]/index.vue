@@ -219,7 +219,7 @@ async function confirmDelete() {
         {{ checkingCsx ? 'Checking ShipCSX…' : 'Check CSX' }}
       </button>
       <NuxtLink
-        v-if="!data.location.isUncategorized && !data.location.boundary"
+        v-if="user?.role === 'ADMIN' && !data.location.isUncategorized && !data.location.boundary"
         :to="`/locations/${locationId}/yard/setup`"
         class="btn-ghost mt-2 w-full"
       >
@@ -358,7 +358,7 @@ async function confirmDelete() {
           Yard
         </button>
         <button
-          v-if="!data.location.isUncategorized && !data.location.boundary"
+          v-if="user?.role === 'ADMIN' && !data.location.isUncategorized && !data.location.boundary"
           type="button"
           class="menu-row"
           @click="menuOpen = false; navigateTo(`/locations/${locationId}/yard/setup`)"

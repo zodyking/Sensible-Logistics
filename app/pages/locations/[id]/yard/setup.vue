@@ -4,6 +4,7 @@ import { isPlausibleYardFence } from '#shared/utils/geo'
 
 const { user } = useUserSession()
 setPageLayout(user.value?.role === 'ADMIN' ? 'admin' : 'default')
+const isAdmin = computed(() => user.value?.role === 'ADMIN')
 
 const route = useRoute()
 const locationId = computed(() => String(route.params.id))
@@ -16,6 +17,10 @@ const heading = ref(0)
 const boundary = ref<GeoJsonPolygon | null>(null)
 const submitting = ref(false)
 const errorMessage = ref('')
+
+if (!isAdmin.value) {
+  await navigateTo(`/locations/${locationId.value}/yard`)
+}
 
 watch(data, (value) => {
   if (!value) return

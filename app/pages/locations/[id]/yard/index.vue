@@ -4,6 +4,7 @@ import type { ContainerType, EquipmentType } from '#shared/utils/domain'
 
 const { user } = useUserSession()
 setPageLayout(user.value?.role === 'ADMIN' ? 'admin' : 'default')
+const isAdmin = computed(() => user.value?.role === 'ADMIN')
 
 const route = useRoute()
 const locationId = computed(() => String(route.params.id))
@@ -61,6 +62,23 @@ function placeChassisOnPavement(id: string) {
 async function onMoved() {
   await Promise.all([refreshLocation(), refreshYard()])
 }
+
+let generatePoll: ReturnType<typeof setInterval> | null = null
+watch(() => yard.value?.layout?.status, (status) => {
+  if (status === 'GENERATING') {
+    generatePoll ??= setInterval(() => {
+      void refreshYard()
+    }, 2500)
+    return
+  }
+  if (generatePoll) {
+    clearInterval(generatePoll)
+    generatePoll = null
+  }
+}, { immediate: true })
+onBeforeUnmount(() => {
+  if (generatePoll) clearInterval(generatePoll)
+})
 </script>
 
 <template>
@@ -73,6 +91,7 @@ async function onMoved() {
     >
       <template #actions>
         <NuxtLink
+          v-if="isAdmin"
           :to="`/locations/${locationId}/yard/setup`"
           class="btn-ghost"
         >
@@ -110,6 +129,7 @@ async function onMoved() {
         <span>{{ yard.layout.errorMessage || 'Generation failed.' }}</span>
       </p>
       <NuxtLink
+        v-if="isAdmin"
         :to="`/locations/${locationId}/yard/setup`"
         class="btn-dark mt-4"
       >
@@ -120,16 +140,24 @@ async function onMoved() {
     <template v-else-if="!origin">
       <EmptyState
         glyph="▦"
-        :title="locationData?.location.boundary ? 'Zone saved — no 2D plan yet' : 'No yard plan yet'"
+        title="Generate a yard plan"
         :description="locationData?.location.boundary
           ? 'This site already has a yard zone. Generate the clean 2D plan from it, or redraw the zone first.'
           : 'Draw a zone around the usable yard. The app builds a clean 2D site plan from that boundary — not a satellite photo.'"
       />
       <NuxtLink
+        v-if="isAdmin && locationData?.location.boundary"
         :to="`/locations/${locationId}/yard/setup`"
         class="btn-dark mt-4"
       >
-        {{ locationData?.location.boundary ? 'Generate 2D yard' : 'Draw zone and generate' }}
+        Generate 2D yard
+      </NuxtLink>
+      <NuxtLink
+        v-else-if="isAdmin"
+        :to="`/locations/${locationId}/yard/setup`"
+        class="btn-dark mt-4"
+      >
+        Draw zone and generate
       </NuxtLink>
     </template>
 

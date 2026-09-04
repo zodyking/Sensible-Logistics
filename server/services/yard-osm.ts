@@ -13,6 +13,7 @@ import {
   type YardFeatureDraft,
   type YardLayoutOrigin,
   type YardSlotDraft,
+  cleanGeneratedFeatures,
 } from '#shared/utils/yard-plan'
 
 const OVERPASS_URL = 'https://overpass-api.de/api/interpreter'
@@ -185,10 +186,11 @@ export async function generateYardFromOsm(
     else warnings.push('No paved area was detected; the drawn fence is the operating surface.')
   }
 
+  const cleaned = cleanGeneratedFeatures(features, origin)
   const slots = suggestSlots({
-    pavement: features.filter(item => item.type === 'PAVEMENT'),
-    buildings: features.filter(item => item.type === 'BUILDING'),
-    roads: features.filter(item => item.type === 'ROAD' || item.type === 'DRIVEWAY'),
+    pavement: cleaned.filter(item => item.type === 'PAVEMENT'),
+    buildings: cleaned.filter(item => item.type === 'BUILDING'),
+    roads: cleaned.filter(item => item.type === 'ROAD' || item.type === 'DRIVEWAY'),
     rotationDeg: origin.rotationDeg,
     planeWidth: origin.planeWidth,
     planeHeight: origin.planeHeight,
@@ -198,7 +200,7 @@ export async function generateYardFromOsm(
     ok: true,
     generatorVersion: YARD_GENERATOR_VERSION,
     origin,
-    features,
+    features: cleaned,
     slots,
     warnings,
     engine: 'osm-fallback',

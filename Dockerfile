@@ -79,7 +79,7 @@ COPY --chown=nuxt:nodejs server/yard /app/yard
 RUN chmod +x ./entrypoint.sh \
   && chown -R nuxt:nodejs /opt/openocr /app/ocr /app/yard \
   && pip3 install --break-system-packages --no-cache-dir \
-    -r /app/yard/requirements.txt || true
+    -r /app/yard/requirements.txt
 
 # ShipCSX lookups need Chromium and a writable profile. `/app` is root-owned,
 # so the profile lives under HOME=/tmp. Playwright is installed here (Debian)
