@@ -107,10 +107,10 @@ export default defineNuxtConfig({
     preset: 'node-server',
     // Camera JPEGs are sent as data URLs (~1.3× the binary). 1 MB drops them.
     maxRequestBodySize: 20 * 1024 * 1024,
-    // Dynamic `import('playwright')` is otherwise dropped from the server bundle.
-    externals: {
-      traceInclude: ['playwright', 'playwright-core'],
-    },
+    // Do not set `externals.traceInclude: ['playwright']`. Nitro already
+    // traces the dynamic `import('playwright')` from shipcsx-browser. That
+    // option is file paths, so `'playwright'` becomes `/app/playwright` and
+    // `nuxt build` fails in Docker. The runner installs Chromium afterwards.
   },
 
   vite: {
