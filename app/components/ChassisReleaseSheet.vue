@@ -4,6 +4,8 @@ defineProps<{
   title?: string
   message: string
   busy?: boolean
+  cancelLabel?: string
+  confirmLabel?: string
 }>()
 
 const emit = defineEmits<{
@@ -28,7 +30,7 @@ const emit = defineEmits<{
         :disabled="busy"
         @click="emit('close')"
       >
-        Keep it there
+        {{ cancelLabel || 'Keep it there' }}
       </button>
       <button
         type="button"
@@ -36,7 +38,7 @@ const emit = defineEmits<{
         :disabled="busy"
         @click="emit('confirm')"
       >
-        {{ busy ? 'Releasing…' : 'Release and use' }}
+        {{ busy ? 'Releasing…' : (confirmLabel || 'Release and use') }}
       </button>
     </div>
   </BottomSheet>

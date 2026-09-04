@@ -4,6 +4,7 @@ import { invalidateTripLists } from '~/utils/trip-lists'
 export type DriverHold = {
   containerId: string
   driverName: string
+  containerNumber?: string | null
 }
 
 /**
@@ -16,7 +17,7 @@ export function useDriverReleasePrompt() {
   let resolver: ((ok: boolean) => void) | null = null
 
   const promptText = computed(() =>
-    hold.value ? driverHoldPrompt(hold.value.driverName) : '',
+    hold.value ? driverHoldPrompt(hold.value.driverName, hold.value.containerNumber) : '',
   )
 
   function decide(ok: boolean) {
@@ -36,12 +37,14 @@ export function useDriverReleasePrompt() {
   async function releaseIfNeeded(input: {
     containerId?: string | null
     driverName?: string | null
+    containerNumber?: string | null
   } | null | undefined) {
     if (!input?.containerId) return true
 
     const ok = await ask({
       containerId: input.containerId,
-      driverName: input.driverName,
+      driverName: input.driverName ?? '',
+      containerNumber: input.containerNumber,
     })
     if (!ok) return false
 

@@ -126,6 +126,7 @@ async function checkPool() {
         const released = await releaseDriverIfNeeded({
           containerId: found.id,
           driverName: resolution.value.holder.driverName,
+          containerNumber: found.number,
         })
         if (released) resolution.value = await resolveNumber(normalized.value)
       }
@@ -583,8 +584,10 @@ async function onPhoto(dataUrl: string) {
 
     <ChassisReleaseSheet
       :open="Boolean(driverHold)"
-      title="Container attached to a driver"
+      title="Driver has this container"
       :message="driverHoldText"
+      cancel-label="Keep it with them"
+      confirm-label="Release and proceed"
       :busy="driverReleasing"
       @close="decideDriverRelease(false)"
       @confirm="decideDriverRelease(true)"

@@ -39,7 +39,7 @@ export interface PoolResolution {
   validationErrors: string[]
   validationWarnings: string[]
   container: Container | null
-  /** Populated only for CONFLICT. */
+  /** Populated when a driver currently holds the container. */
   holder: ConflictHolder | null
   /** Human-readable explanation shown on the resolution screen. */
   message: string
@@ -97,7 +97,7 @@ export async function previewResolution(
         outcome: 'CONFLICT',
         container,
         holder,
-        message: 'Another driver already has an active claim on this container.',
+        message: `${holder.driverName} currently has this container.`,
       }
     }
     return {

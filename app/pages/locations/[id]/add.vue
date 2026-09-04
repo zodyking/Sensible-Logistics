@@ -17,7 +17,7 @@ import {
   normalizeContainerNumber,
   validateContainerNumber,
 } from '#shared/utils/iso6346'
-import { driverHoldPrompt } from '#shared/utils/driver-hold'
+import { containerIsHeldByDriver } from '#shared/utils/driver-hold'
 import { driverOcrMessage } from '#shared/utils/ocr-parse'
 
 const { user } = useUserSession()
@@ -58,8 +58,6 @@ const {
   decide: decideDriverRelease,
   releaseIfNeeded: releaseDriverIfNeeded,
 } = useDriverReleasePrompt()
-const promptedDriverHold = ref('')
-
 const normalized = computed(() => normalizeContainerNumber(rawNumber.value))
 const validation = computed(() => validateContainerNumber(rawNumber.value))
 const showValidation = computed(() => kind.value === 'CONTAINER' && normalized.value.length >= 11)
@@ -114,26 +112,37 @@ watch(kind, () => {
   if (kind.value !== 'CONTAINER') resolution.value = null
 })
 
-async function offerDriverRelease(current: Resolution | null, force = false) {
-  const containerId = current?.container?.id
-  const holder = current?.holder
-  if (!containerId || !holder) return current
-  if (!force && promptedDriverHold.value === containerId) return current
-  promptedDriverHold.value = containerId
-  const released = await releaseDriverIfNeeded({
-    containerId,
-    driverName: holder.driverName,
+function isHeldByDriver(current: Resolution | null | undefined) {
+  if (!current) return false
+  if (current.holder) return true
+  return containerIsHeldByDriver(current.container?.activePoolState)
+}
+
+let releasePrompt: Promise<Resolution | null> | null = null
+
+async function offerDriverRelease(current: Resolution | null) {
+  if (releasePrompt) return releasePrompt
+  releasePrompt = (async () => {
+    const containerId = current?.container?.id
+    if (!containerId || !isHeldByDriver(current)) return current
+    const released = await releaseDriverIfNeeded({
+      containerId,
+      driverName: current.holder?.driverName,
+      containerNumber: current.container?.number ?? normalized.value,
+    })
+    if (!released) return current
+    const next = await resolveNumber(normalized.value)
+    resolution.value = next
+    return next
+  })().finally(() => {
+    releasePrompt = null
   })
-  if (!released) return current
-  const next = await resolveNumber(normalized.value)
-  resolution.value = next
-  return next
+  return releasePrompt
 }
 
 watch(normalized, async (value) => {
   if (kind.value !== 'CONTAINER') return
   resolution.value = null
-  promptedDriverHold.value = ''
   if (value.length < 11) return
   resolving.value = true
   try {
@@ -141,13 +150,18 @@ watch(normalized, async (value) => {
     const found = resolution.value.container
     if (found?.containerType) containerType.value = found.containerType
     if (found?.equipmentType) equipmentType.value = found.equipmentType
-    if (resolution.value?.holder) void offerDriverRelease(resolution.value)
   }
   catch (error) {
     errorMessage.value = apiErrorMessage(error, 'Could not check the active pool.')
   }
   finally {
     resolving.value = false
+  }
+})
+
+watch(step, (current) => {
+  if (current === 'confirm' && isHeldByDriver(resolution.value)) {
+    void offerDriverRelease(resolution.value)
   }
 })
 
@@ -188,9 +202,6 @@ function chooseKind(nextKind: TripKind) {
 
 async function next() {
   errorMessage.value = ''
-  if (step.value === 'equipment' && resolution.value?.holder) {
-    await offerDriverRelease(resolution.value)
-  }
   const index = stepIndex.value
   if (index < STEPS.value.length - 1) step.value = STEPS.value[index + 1]!
 }
@@ -216,10 +227,11 @@ const showNext = computed(() => {
 })
 
 async function confirm() {
-  if (submitting.value) return
+  if (submitting.value || driverReleasing.value) return
   errorMessage.value = ''
-  if (resolution.value?.holder) {
-    await offerDriverRelease(resolution.value, true)
+  if (isHeldByDriver(resolution.value)) {
+    const next = await offerDriverRelease(resolution.value)
+    if (isHeldByDriver(next)) return
   }
   if (chassisNumber.value.trim()) {
     try {
@@ -506,19 +518,12 @@ async function onPhoto(dataUrl: string) {
           <span>Checking the active pool…</span>
         </p>
         <p
-          v-else-if="kind === 'CONTAINER' && resolution"
-          class="banner mt-4"
-          :class="resolution.holder ? 'warn' : 'info'"
+          v-else-if="kind === 'CONTAINER' && resolution && !isHeldByDriver(resolution)"
+          class="banner info mt-4"
           role="status"
         >
           <span aria-hidden="true">▸</span>
-          <span>
-            {{
-              resolution.holder
-                ? driverHoldPrompt(resolution.holder.driverName)
-                : resolution.message
-            }}
-          </span>
+          <span>{{ resolution.message }}</span>
         </p>
         <DevicePhotoInput
           class="btn-ghost mt-4 w-full"
@@ -653,8 +658,10 @@ async function onPhoto(dataUrl: string) {
     />
     <ChassisReleaseSheet
       :open="Boolean(driverHold)"
-      title="Container attached to a driver"
+      title="Driver has this container"
       :message="driverHoldText"
+      cancel-label="Keep it with them"
+      confirm-label="Release and proceed"
       :busy="driverReleasing"
       @close="decideDriverRelease(false)"
       @confirm="decideDriverRelease(true)"

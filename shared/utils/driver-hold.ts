@@ -1,7 +1,13 @@
+import { formatContainerNumber } from './iso6346'
+
 /** Driver-facing copy when a scanned box is still on a live movement. */
-export function driverHoldPrompt(driverName: string | null | undefined): string {
-  const name = driverName?.trim() || 'a driver'
-  return `This container is attached to ${name}. Would you like to release it?`
+export function driverHoldPrompt(
+  driverName: string | null | undefined,
+  containerNumber?: string | null,
+): string {
+  const name = driverName?.trim() || 'Another driver'
+  const box = formatContainerNumber(containerNumber ?? '') || containerNumber?.trim() || 'this container'
+  return `${name} currently has ${box}. Release it and add it here?`
 }
 
 export function containerIsHeldByDriver(state: string | null | undefined): boolean {
