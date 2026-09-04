@@ -3,6 +3,7 @@ import { bboxFromPolygon, polygonFromBbox } from '../shared/utils/geo'
 import {
   bufferBbox,
   chassisFootprintMeters,
+  cleanGeneratedFeatures,
   fenceToPavement,
   geometryToGeo,
   geometryToLocal,
@@ -102,6 +103,49 @@ describe('suggested slots', () => {
     const hit = nearestSlot(10.5, 10.2, [{ x: 10, y: 10, rotation: 90, id: 'A01' }])
     expect(hit?.id).toBe('A01')
     expect(nearestSlot(40, 40, [{ x: 10, y: 10, rotation: 0 }])).toBeNull()
+  })
+})
+
+describe('cleanGeneratedFeatures', () => {
+  it('clips to the plane and drops container-sized pavement blobs', () => {
+    const origin = layoutFromBoundary(fence)!.origin
+    const cleaned = cleanGeneratedFeatures([
+      {
+        type: 'PAVEMENT',
+        localGeometry: {
+          type: 'Polygon',
+          coordinates: [[[-10, -10], [origin.planeWidth + 10, -10], [origin.planeWidth + 10, origin.planeHeight + 10], [-10, origin.planeHeight + 10], [-10, -10]]],
+        },
+        geoGeometry: fence,
+        source: 'ORTHO',
+        confidence: 0.6,
+      },
+      {
+        type: 'PAVEMENT',
+        localGeometry: {
+          type: 'Polygon',
+          coordinates: [[[10, 10], [12.4, 10], [12.4, 22], [10, 22], [10, 10]]],
+        },
+        geoGeometry: fence,
+        source: 'ORTHO',
+        confidence: 0.5,
+      },
+      {
+        type: 'BUILDING',
+        localGeometry: {
+          type: 'Polygon',
+          coordinates: [[[40, 40], [60, 40], [60, 60], [40, 60], [40, 40]]],
+        },
+        geoGeometry: fence,
+        source: 'OSM',
+        confidence: 0.9,
+      },
+    ], origin)
+    const pavement = cleaned.filter(item => item.type === 'PAVEMENT')
+    expect(pavement).toHaveLength(1)
+    const ring = pavement[0]!.localGeometry.type === 'Polygon' ? pavement[0]!.localGeometry.coordinates[0]! : []
+    expect(ring.every(([x, y]) => x >= 0 && y >= 0 && x <= origin.planeWidth && y <= origin.planeHeight)).toBe(true)
+    expect(cleaned.some(item => item.type === 'BUILDING')).toBe(true)
   })
 })
 

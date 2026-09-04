@@ -6194,6 +6194,10 @@ html.keyboard-open .a-shell {
   height: var(--app-height, 100dvh);
 }
 
+.yard-stage {
+  position: relative;
+}
+
 .yard-view {
   position: relative;
   width: 100%;
@@ -6225,6 +6229,32 @@ html.keyboard-open .a-shell {
 .yard-hint {
   font-size: 0.75rem;
   color: var(--color-ink-500);
+}
+
+.yard-scale {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  pointer-events: none;
+  color: #2c2c28;
+}
+
+.yard-scale i {
+  display: block;
+  height: 7px;
+  border-bottom: 2px solid #2c2c28;
+  border-left: 2px solid #2c2c28;
+  border-right: 2px solid #2c2c28;
+}
+
+.yard-scale small {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
 }
 
 .tile-toggle {

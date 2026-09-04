@@ -63,6 +63,7 @@ const snap = ref(false)
 const editMode = ref(false)
 const showSlots = ref(true)
 const errorMessage = ref('')
+const scaleBarPx = ref(80)
 
 let stage: Konva.Stage | null = null
 let world: Konva.Group | null = null
@@ -198,6 +199,25 @@ function paint(stageNode: Konva.Stage) {
     for (const feature of props.features.filter(item => item.type === type)) {
       for (const points of geometryPoints(feature.localGeometry)) {
         if (points.length < 4) continue
+        if (type === 'RAIL') {
+          world.add(new Konva.Line({
+            points,
+            closed: true,
+            stroke: YARD_STYLE.rail,
+            strokeWidth: 1.8,
+            lineJoin: 'round',
+            listening: false,
+          }))
+          world.add(new Konva.Line({
+            points,
+            closed: true,
+            stroke: YARD_STYLE.ground,
+            strokeWidth: 0.55,
+            lineJoin: 'round',
+            listening: false,
+          }))
+          continue
+        }
         const shape = new Konva.Line({
           points,
           closed: feature.localGeometry.type !== 'LineString' && feature.localGeometry.type !== 'MultiLineString',
@@ -267,6 +287,7 @@ function paint(stageNode: Konva.Stage) {
   }
 
   fit(stageNode, world)
+  scaleBarPx.value = Math.max(36, 20 * world.scaleX())
   layer.draw()
 }
 
@@ -489,11 +510,20 @@ watch(() => [props.features, props.containers, props.chassis, props.slots, editM
       <span>{{ errorMessage }}</span>
     </p>
 
-    <div
-      ref="host"
-      class="yard-view"
-      role="application"
-      aria-label="Top-down yard plan. Drag containers and chassis to place them."
-    />
+    <div class="yard-stage">
+      <div
+        ref="host"
+        class="yard-view"
+        role="application"
+        aria-label="Top-down yard plan. Drag containers and chassis to place them."
+      />
+      <div
+        class="yard-scale"
+        aria-hidden="true"
+      >
+        <i :style="{ width: `${scaleBarPx}px` }" />
+        <small>20 m</small>
+      </div>
+    </div>
   </div>
 </template>

@@ -23,7 +23,7 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
-GENERATOR_VERSION = '1'
+GENERATOR_VERSION = '2'
 BUFFER_METERS = 50
 SIMPLIFY_METERS = 0.8
 METERS_PER_DEG_LAT = 110540.0
@@ -240,6 +240,74 @@ def _square_building(geometry: dict) -> dict:
         return geometry
     squared = [[minx, miny], [maxx, miny], [maxx, maxy], [minx, maxy], [minx, miny]]
     return {'type': 'Polygon', 'coordinates': [squared]}
+
+
+def _clip_to_plane(geometry: dict, origin: dict) -> dict:
+    def clamp(x: float, y: float):
+        return [
+            min(origin['planeWidth'], max(0.0, x)),
+            min(origin['planeHeight'], max(0.0, y)),
+        ]
+    return {'type': geometry['type'], 'coordinates': _map_coords(geometry.get('coordinates'), clamp)}
+
+
+def _temp_object_size(geometry: dict) -> bool:
+    if geometry.get('type') != 'Polygon':
+        return False
+    ring = geometry['coordinates'][0]
+    xs = [p[0] for p in ring]
+    ys = [p[1] for p in ring]
+    short = min(max(xs) - min(xs), max(ys) - min(ys))
+    long = max(max(xs) - min(xs), max(ys) - min(ys))
+    return 2.0 <= short <= 4.5 and 5.0 <= long <= 16.0
+
+
+def _centroid(geometry: dict) -> tuple[float, float] | None:
+    ring = None
+    if geometry.get('type') == 'Polygon':
+        ring = geometry['coordinates'][0]
+    elif geometry.get('type') == 'MultiPolygon':
+        ring = geometry['coordinates'][0][0]
+    if not ring:
+        return None
+    return sum(p[0] for p in ring) / len(ring), sum(p[1] for p in ring) / len(ring)
+
+
+def _subtract_blockers(pavement: dict, blockers: list[dict]) -> dict:
+    try:
+        from shapely.geometry import shape
+        geom = shape(pavement)
+        for blocker in blockers:
+            geom = geom.difference(shape(blocker))
+        if geom.is_empty:
+            return pavement
+        if geom.geom_type == 'MultiPolygon':
+            geom = max(geom.geoms, key=lambda g: g.area)
+        return json.loads(json.dumps(geom.__geo_interface__))
+    except Exception:
+        return pavement
+
+
+def _clean_features(features: list[dict], origin: dict) -> list[dict]:
+    blockers = [f['localGeometry'] for f in features if f['type'] in {'BUILDING', 'ROAD'}]
+    cleaned: list[dict] = []
+    for feature in features:
+        local = _clip_to_plane(feature['localGeometry'], origin)
+        if feature['type'] == 'PAVEMENT' and _temp_object_size(local):
+            continue
+        if feature['type'] == 'PAVEMENT' and blockers:
+            local = _subtract_blockers(local, blockers)
+        if feature['type'] == 'VEGETATION':
+            centre = _centroid(local)
+            if not centre:
+                continue
+            cx, cy = centre
+            margin = 14.0
+            if not (cx < margin or cy < margin or cx > origin['planeWidth'] - margin or cy > origin['planeHeight'] - margin):
+                continue
+        feature = {**feature, 'localGeometry': local, 'geoGeometry': _local_to_geo(local, origin)}
+        cleaned.append(feature)
+    return cleaned
 
 
 def _feature(kind: str, local: dict, origin: dict, source: str, confidence: float) -> dict:
@@ -496,6 +564,7 @@ def generate(payload: dict) -> dict:
         local = _geo_to_local(boundary, origin)
         features.insert(0, _feature('PAVEMENT', _simplify(local), origin, 'OSM', 0.4))
 
+    features = _clean_features(features, origin)
     slots = _suggest_slots(features, origin, origin['rotationDeg'])
     return {
         'ok': True,

@@ -21,6 +21,7 @@ import {
   type YardFeatureDraft,
   type YardLayoutOrigin,
   type YardSlotDraft,
+  cleanGeneratedFeatures,
 } from '#shared/utils/yard-plan'
 import { generateYardFromOsm, type YardGenerateResult } from './yard-osm'
 
@@ -138,7 +139,10 @@ async function persistPlan(
   ))
 
   const allowed = new Set<string>(YARD_FEATURE_TYPES)
-  const drafts: YardFeatureDraft[] = plan.features.filter(feature => allowed.has(feature.type))
+  const drafts: YardFeatureDraft[] = cleanGeneratedFeatures(
+    plan.features.filter(feature => allowed.has(feature.type)),
+    plan.origin,
+  )
   if (drafts.length) {
     await db.insert(yardFeatures).values(drafts.map(feature => ({
       companyId: auth.companyId,

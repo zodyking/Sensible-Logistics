@@ -17,7 +17,7 @@ import {
 } from './geo'
 
 export const YARD_BUFFER_METERS = 50
-export const YARD_GENERATOR_VERSION = '1'
+export const YARD_GENERATOR_VERSION = '2'
 export const YARD_SIMPLIFY_METERS = 0.8
 
 export const YARD_FEATURE_TYPES = [
@@ -276,6 +276,55 @@ export function keepManualFeatures<T extends { manuallyModified: boolean }>(exis
 
 export function chassisFootprintMeters(): { length: number, width: number } {
   return { length: 12.2, width: 2.5 }
+}
+
+export function clipGeometryToPlane(geometry: GeoJsonGeometry, origin: YardLayoutOrigin): GeoJsonGeometry {
+  const clamp = (a: number, b: number): [number, number] => [
+    Math.min(origin.planeWidth, Math.max(0, a)),
+    Math.min(origin.planeHeight, Math.max(0, b)),
+  ]
+  return mapGeometry(geometry, clamp)
+}
+
+function isTempObjectSize(box: { minX: number, minY: number, maxX: number, maxY: number }): boolean {
+  const short = Math.min(box.maxX - box.minX, box.maxY - box.minY)
+  const long = Math.max(box.maxX - box.minX, box.maxY - box.minY)
+  return short >= 2 && short <= 4.5 && long >= 5 && long <= 16
+}
+
+/**
+ * Cartographic cleanup after OSM/ortho generation: clip to the plane, drop
+ * container-sized ortho blobs from pavement, omit pavement that sits under
+ * buildings or public roads, and keep vegetation only at the perimeter.
+ */
+export function cleanGeneratedFeatures(
+  features: YardFeatureDraft[],
+  origin: YardLayoutOrigin,
+): YardFeatureDraft[] {
+  const blockers = features.filter(item => item.type === 'BUILDING' || item.type === 'ROAD')
+  const clipped = features.map(feature => ({
+    ...feature,
+    localGeometry: clipGeometryToPlane(feature.localGeometry, origin),
+  }))
+  return clipped.filter((feature) => {
+    const box = geometryBbox(feature.localGeometry)
+    if (!box) return false
+    if (feature.type === 'PAVEMENT' && isTempObjectSize(box)) return false
+    if (feature.type === 'PAVEMENT') {
+      const cx = (box.minX + box.maxX) / 2
+      const cy = (box.minY + box.maxY) / 2
+      if (blockers.some(item => featureContains(item, cx, cy))) return false
+    }
+    if (feature.type === 'VEGETATION') {
+      const cx = (box.minX + box.maxX) / 2
+      const cy = (box.minY + box.maxY) / 2
+      const margin = 14
+      return cx < margin || cy < margin
+        || cx > origin.planeWidth - margin
+        || cy > origin.planeHeight - margin
+    }
+    return true
+  })
 }
 
 function polygonContainsPoint(ring: [number, number][], x: number, y: number): boolean {

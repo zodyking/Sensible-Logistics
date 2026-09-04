@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { generateYardLayout } from '../../../../services/yard-generate'
-import { requireAuth } from '../../../../utils/session'
+import { requireAdmin } from '../../../../utils/session'
 import { isPlausibleYardFence } from '#shared/utils/geo'
 
 const schema = z.object({
@@ -12,7 +12,7 @@ const schema = z.object({
 
 /** Draw a fence, generate the 2D site plan, and persist it. */
 export default defineEventHandler(async (event) => {
-  const auth = await requireAuth(event)
+  const auth = await requireAdmin(event)
   const locationId = getRouterParam(event, 'id')
   if (!locationId) {
     throw createError({ statusCode: 400, statusMessage: 'Location id is required.' })
