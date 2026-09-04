@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { SHIPCSX_REFERENCE, matchShipcsxTerminalOption, shipcsxEquipmentParts } from '#shared/utils/csx-lookup'
+import { SHIPCSX_REFERENCE, SHIPCSX_TERMINALS, matchShipcsxTerminalOption, shipcsxEquipmentParts } from '#shared/utils/csx-lookup'
 
 const route = useRoute()
 const { user } = useUserSession()
@@ -14,9 +14,6 @@ const reference = ref(SHIPCSX_REFERENCE)
 const terminal = ref('')
 const submitting = ref(false)
 const formError = ref('')
-const terminalError = ref('')
-const loadingTerminals = ref(true)
-const terminals = ref<string[]>([])
 
 useHead({ title: 'Check CSX' })
 
@@ -26,51 +23,29 @@ function applyContainerNumber(raw: string) {
   serial.value = parts?.number ?? ''
 }
 
+function applySuggestedTerminal(wanted?: string | null) {
+  if (terminal.value) return
+  const match = matchShipcsxTerminalOption([...SHIPCSX_TERMINALS], wanted || '')
+  if (match) terminal.value = match
+}
+
 watch(() => data.value?.container, (container) => {
   if (!container || initial.value || serial.value) return
   applyContainerNumber(container.numberNormalized || container.number)
 }, { immediate: true })
 
-function pickTerminal(names: string[], wanted: string) {
-  return matchShipcsxTerminalOption(names, wanted) || wanted || names[0] || ''
-}
-
-async function loadTerminals(refresh = false) {
-  loadingTerminals.value = true
-  terminalError.value = ''
-  try {
-    const result = await $fetch('/api/shipcsx/terminals', {
-      query: refresh ? { refresh: '1' } : undefined,
-      timeout: 90_000,
-    })
-    terminals.value = result.terminals
-    const wanted = terminal.value || data.value?.suggestedTerminal || ''
-    terminal.value = pickTerminal(result.terminals, wanted)
-    if (result.error) terminalError.value = result.error
-  }
-  catch (err) {
-    terminalError.value = apiErrorMessage(err, 'Could not load CSX locations.')
-  }
-  finally {
-    loadingTerminals.value = false
-  }
-}
+watch(() => data.value?.suggestedTerminal, applySuggestedTerminal, { immediate: true })
 
 onMounted(() => {
   if (data.value?.shipcsxCheck?.status === 'running') {
     navigateTo(`/containers/${id.value}`)
     return
   }
-  loadTerminals()
-})
-
-watch(() => data.value?.suggestedTerminal, (wanted) => {
-  if (!wanted || terminal.value) return
-  terminal.value = pickTerminal(terminals.value, wanted)
+  applySuggestedTerminal(data.value?.suggestedTerminal)
 })
 
 const canSubmit = computed(() => {
-  return Boolean(shipcsxEquipmentParts(`${initial.value}${serial.value}`) && terminal.value && !submitting.value && !loadingTerminals.value)
+  return Boolean(shipcsxEquipmentParts(`${initial.value}${serial.value}`) && terminal.value && !submitting.value)
 })
 
 async function submitCheck() {
@@ -124,12 +99,12 @@ const backTo = computed(() => `/containers/${id.value}`)
 
     <template v-else-if="data">
       <p
-        v-if="formError || terminalError"
+        v-if="formError"
         class="banner err"
         role="alert"
       >
         <span aria-hidden="true">✕</span>
-        <span>{{ formError || terminalError }}</span>
+        <span>{{ formError }}</span>
       </p>
 
       <span class="wiz-label">Container info</span>
@@ -206,23 +181,13 @@ const backTo = computed(() => `/containers/${id.value}`)
             id="csx-terminal"
             v-model="terminal"
             class="input"
-            :disabled="loadingTerminals || !terminals.length"
             aria-label="CSX terminal"
           >
-            <option
-              v-if="loadingTerminals"
-              value=""
-            >
-              Loading from ShipCSX…
+            <option value="">
+              Select terminal
             </option>
             <option
-              v-else-if="!terminals.length"
-              value=""
-            >
-              No locations yet
-            </option>
-            <option
-              v-for="name in terminals"
+              v-for="name in SHIPCSX_TERMINALS"
               :key="name"
               :value="name"
             >
@@ -232,16 +197,8 @@ const backTo = computed(() => `/containers/${id.value}`)
         </div>
       </div>
       <p class="wiz-hint">
-        {{ loadingTerminals ? 'Reading the terminal list from ShipCSX…' : 'Names come from the ShipCSX dropdown.' }}
+        North Bergen, Little Ferry, South Kearny, Elizabeth, and Newark.
       </p>
-      <button
-        type="button"
-        class="wiz-text-btn"
-        :disabled="loadingTerminals"
-        @click="loadTerminals(true)"
-      >
-        {{ loadingTerminals ? 'Loading…' : 'Reload locations' }}
-      </button>
 
       <div class="wiz-actions">
         <button
