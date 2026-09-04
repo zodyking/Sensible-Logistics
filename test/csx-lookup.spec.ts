@@ -12,6 +12,7 @@ import {
   cleanShipcsxTerminalNames,
   pickShipcsxTerminal,
   resolveShipcsxTerminalName,
+  wizardShipcsxTerminal,
   SHIPCSX_TERMINALS,
 } from '../shared/utils/csx-lookup'
 
@@ -93,6 +94,12 @@ describe('ShipCSX terminal names', () => {
       destType: 'RAIL_TERMINAL',
       destName: 'South Kearny',
     })).toBe('South Kearny')
+  })
+
+  it('only accepts a Check CSX wizard pick from the five facilities', () => {
+    expect(wizardShipcsxTerminal('Little Ferry')).toBe('Little Ferry')
+    expect(wizardShipcsxTerminal('NJ Yard')).toBeNull()
+    expect(wizardShipcsxTerminal('')).toBeNull()
   })
 })
 describe('ShipCSX terminal option match', () => {

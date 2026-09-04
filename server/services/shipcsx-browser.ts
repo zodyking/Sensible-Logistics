@@ -3,6 +3,7 @@ import {
   SHIPCSX_LOOKUP_URL,
   SHIPCSX_REFERENCE,
   pickShipcsxTerminal,
+  wizardShipcsxTerminal,
   chunkShipcsxEquipment,
   cleanShipcsxTerminalNames,
   matchLookupCard,
@@ -448,7 +449,8 @@ export async function lookupShipcsxShipments(input: {
   reference?: string
   onStep?: ShipcsxLookupStepHandler
 }): Promise<ShipcsxLookupHit[]> {
-  const terminal = pickShipcsxTerminal(input.terminal)
+  const terminal = wizardShipcsxTerminal(input.terminal)
+  if (!terminal) throw new Error('Choose a CSX location.')
   const items = input.items.filter(item => normalizeContainerNumber(item.equipmentNumber))
   if (!items.length) return []
   const reference = (input.reference ?? SHIPCSX_REFERENCE).trim() || SHIPCSX_REFERENCE

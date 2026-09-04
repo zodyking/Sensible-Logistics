@@ -26,22 +26,23 @@ describe('shipcsxPublicError', () => {
     expect(shipcsxPublicError('ShipCSX shipment lookup is not available without a login wall.'))
       .toBe('ShipCSX asked for a login. Shipment lookup should work without an account.')
     expect(shipcsxPublicError('Set a ShipCSX terminal name on the rail location or NUXT_SHIPCSX_DEFAULT_TERMINAL.'))
-      .toBe('Choose a CSX location and check again.')
+      .toBe('Choose a CSX location on Check CSX and try again.')
     expect(shipcsxPublicError('EACCES: permission denied, mkdir \'/app/.data\''))
       .toBe('Couldn\'t open the ShipCSX browser on this server.')
     expect(shipcsxPublicError('locator.click: Timeout 12000ms exceeded. Call log: - waiting for getByRole(\'button\', { name: /search/i })'))
-      .toBe('ShipCSX search never became ready. Check the rail terminal name and try again.')
+      .toBe('ShipCSX search never became ready. Check the CSX location and try again.')
     expect(shipcsxPublicError('ShipCSX did not return lookup results. Search may still be disabled.'))
-      .toBe('ShipCSX search never became ready. Check the rail terminal name and try again.')
+      .toBe('ShipCSX search never became ready. Check the CSX location and try again.')
   })
 })
 
 describe('shipcsxMetaLine', () => {
   it('joins the compact facts', () => {
     expect(shipcsxMetaLine({
+      terminalName: 'North Bergen',
       loadEmpty: 'Empty',
       waybillDate: '09/01/26',
       gateWindow: '05:00–21:00',
-    })).toBe('Empty · Waybill 09/01/26 · 05:00–21:00')
+    })).toBe('North Bergen · Empty · Waybill 09/01/26 · 05:00–21:00')
   })
 })

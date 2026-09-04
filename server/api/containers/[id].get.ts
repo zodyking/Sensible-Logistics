@@ -13,9 +13,9 @@ import {
 import { assertTenant, requireAuth } from '../../utils/session'
 import { latestSnapshotsForContainers } from '../../services/csx-releases'
 import { getShipcsxCheckJob } from '../../services/shipcsx-jobs'
-import { resolveShipcsxTerminal } from '../../services/shipcsx-poll'
 import { sliceCurrentServiceLife, summarizeServiceLife } from '#shared/utils/service-life'
 import { normalizeContainerNumber } from '#shared/utils/iso6346'
+import { wizardShipcsxTerminal } from '#shared/utils/csx-lookup'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -111,7 +111,7 @@ export default defineEventHandler(async (event) => {
     .orderBy(desc(documents.createdAt))
 
   const [shipcsx] = await latestSnapshotsForContainers(db, auth.companyId, [containerId])
-  const suggestedTerminal = await resolveShipcsxTerminal(db, auth.companyId, containerId)
+  const suggestedTerminal = wizardShipcsxTerminal(shipcsx?.terminalName) ?? ''
 
   return {
     container,
