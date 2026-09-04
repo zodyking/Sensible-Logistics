@@ -82,15 +82,11 @@ services:
       NUXT_PUBLIC_MAP_TILES_URL: ${NUXT_PUBLIC_MAP_TILES_URL:-}
       NUXT_PUBLIC_GEOCODER_URL: ${NUXT_PUBLIC_GEOCODER_URL:-}
       SKIP_MIGRATIONS: ${SKIP_MIGRATIONS:-false}
-      # ShipCSX live lookup. Email/password sign Chromium in; the default
-      # terminal is used when a box is not on a live trip to a rail location.
-      NUXT_SHIPCSX_EMAIL: ${NUXT_SHIPCSX_EMAIL:-}
-      NUXT_SHIPCSX_PASSWORD: ${NUXT_SHIPCSX_PASSWORD:-}
+      # Public ShipCSX shipment lookup (no login). Chromium is launched per
+      # request; results go to Postgres. Set a default terminal when a box is
+      # not on a live trip to a rail location.
       NUXT_SHIPCSX_DEFAULT_TERMINAL: ${NUXT_SHIPCSX_DEFAULT_TERMINAL:-}
-      NUXT_SHIPCSX_PROFILE_DIR: ${NUXT_SHIPCSX_PROFILE_DIR:-/tmp/shipcsx-profile}
       NUXT_SHIPCSX_POLL: ${NUXT_SHIPCSX_POLL:-}
-    volumes:
-      - shipcsx-profile:/tmp/shipcsx-profile
     # No host ports. Dokploy's panel already owns 3000; Traefik reaches this
     # container on PORT (3847) through the compose network.
     networks:
@@ -98,7 +94,6 @@ services:
 
 volumes:
   seaweed-data:
-  shipcsx-profile:
 
 networks:
   container-tracker:

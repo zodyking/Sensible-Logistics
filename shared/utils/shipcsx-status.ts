@@ -35,8 +35,8 @@ export function shipcsxPublicError(raw: string | null | undefined): string {
   if (/playwright is not installed/i.test(text)) {
     return 'ShipCSX lookup is not set up on this server yet.'
   }
-  if (/signed-in profile|sign in once|password/i.test(text)) {
-    return 'ShipCSX is not signed in on this server.'
+  if (/login wall|signed-in profile|sign in once|password/i.test(text)) {
+    return 'ShipCSX asked for a login. Shipment lookup should work without an account.'
   }
   if (/terminal name|default_terminal|NUXT_SHIPCSX_DEFAULT_TERMINAL/i.test(text)) {
     return 'Set a ShipCSX terminal name on the rail location.'
@@ -48,7 +48,7 @@ export function shipcsxPublicError(raw: string | null | undefined): string {
     return 'ShipCSX lookup is not set up on this server yet.'
   }
   if (/eacces|permission denied|mkdir/i.test(text)) {
-    return 'ShipCSX could not store its browser profile on this server.'
+    return 'Couldn\'t open the ShipCSX browser on this server.'
   }
   return text
 }

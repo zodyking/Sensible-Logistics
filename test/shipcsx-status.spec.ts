@@ -23,12 +23,12 @@ describe('shipcsxPublicError', () => {
   it('hides install and login internals', () => {
     expect(shipcsxPublicError('Playwright is not installed. Run npx playwright install chromium.'))
       .toBe('ShipCSX lookup is not set up on this server yet.')
-    expect(shipcsxPublicError('ShipCSX needs a signed-in profile. Set NUXT_SHIPCSX_EMAIL'))
-      .toBe('ShipCSX is not signed in on this server.')
+    expect(shipcsxPublicError('ShipCSX shipment lookup is not available without a login wall.'))
+      .toBe('ShipCSX asked for a login. Shipment lookup should work without an account.')
     expect(shipcsxPublicError('Set a ShipCSX terminal name on the rail location or NUXT_SHIPCSX_DEFAULT_TERMINAL.'))
       .toBe('Set a ShipCSX terminal name on the rail location.')
     expect(shipcsxPublicError('EACCES: permission denied, mkdir \'/app/.data\''))
-      .toBe('ShipCSX could not store its browser profile on this server.')
+      .toBe('Couldn\'t open the ShipCSX browser on this server.')
   })
 })
 
