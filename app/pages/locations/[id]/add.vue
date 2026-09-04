@@ -17,6 +17,7 @@ import {
   normalizeContainerNumber,
   validateContainerNumber,
 } from '#shared/utils/iso6346'
+import { driverHoldPrompt } from '#shared/utils/driver-hold'
 import { driverOcrMessage } from '#shared/utils/ocr-parse'
 
 const { user } = useUserSession()
@@ -50,6 +51,14 @@ const capturedPhoto = ref('')
 const readingPhoto = ref(false)
 const ocrMessage = ref('')
 const { conflict: chassisConflict, releasing: chassisReleasing, promptText: chassisConflictText, decide: decideChassisRelease, releaseIfNeeded } = useChassisReleasePrompt()
+const {
+  hold: driverHold,
+  releasing: driverReleasing,
+  promptText: driverHoldText,
+  decide: decideDriverRelease,
+  releaseIfNeeded: releaseDriverIfNeeded,
+} = useDriverReleasePrompt()
+const promptedDriverHold = ref('')
 
 const normalized = computed(() => normalizeContainerNumber(rawNumber.value))
 const validation = computed(() => validateContainerNumber(rawNumber.value))
@@ -105,9 +114,25 @@ watch(kind, () => {
   if (kind.value !== 'CONTAINER') resolution.value = null
 })
 
+async function offerDriverRelease(current: Resolution | null) {
+  const containerId = current?.container?.id
+  const holder = current?.holder
+  if (!containerId || !holder || promptedDriverHold.value === containerId) return current
+  promptedDriverHold.value = containerId
+  const released = await releaseDriverIfNeeded({
+    containerId,
+    driverName: holder.driverName,
+  })
+  if (!released) return current
+  const next = await resolveNumber(normalized.value)
+  resolution.value = next
+  return next
+}
+
 watch(normalized, async (value) => {
   if (kind.value !== 'CONTAINER') return
   resolution.value = null
+  promptedDriverHold.value = ''
   if (value.length < 11) return
   resolving.value = true
   try {
@@ -115,6 +140,7 @@ watch(normalized, async (value) => {
     const found = resolution.value.container
     if (found?.containerType) containerType.value = found.containerType
     if (found?.equipmentType) equipmentType.value = found.equipmentType
+    if (resolution.value?.holder) void offerDriverRelease(resolution.value)
   }
   catch (error) {
     errorMessage.value = apiErrorMessage(error, 'Could not check the active pool.')
@@ -126,9 +152,7 @@ watch(normalized, async (value) => {
 
 const blocked = computed(() => {
   if (kind.value !== 'CONTAINER') return false
-  if (resolution.value?.outcome === 'CONFLICT') return true
-  const state = resolution.value?.container?.activePoolState
-  return state === 'PICKUP_IN_PROGRESS' || state === 'DRIVER_CUSTODY'
+  return Boolean(resolution.value?.holder)
 })
 
 const canAdvance = computed(() => {
@@ -167,8 +191,12 @@ function chooseKind(nextKind: TripKind) {
   void next()
 }
 
-function next() {
+async function next() {
   errorMessage.value = ''
+  if (step.value === 'equipment' && resolution.value?.holder) {
+    const current = await offerDriverRelease(resolution.value)
+    if (current?.holder) return
+  }
   const index = stepIndex.value
   if (index < STEPS.value.length - 1) step.value = STEPS.value[index + 1]!
 }
@@ -196,6 +224,10 @@ const showNext = computed(() => {
 async function confirm() {
   if (submitting.value) return
   errorMessage.value = ''
+  if (resolution.value?.holder) {
+    const current = await offerDriverRelease(resolution.value)
+    if (current?.holder) return
+  }
   if (chassisNumber.value.trim()) {
     try {
       const found = await $fetch('/api/chassis', {
@@ -489,8 +521,8 @@ async function onPhoto(dataUrl: string) {
           <span aria-hidden="true">▸</span>
           <span>
             {{
-              blocked && resolution.outcome !== 'CONFLICT'
-                ? 'A driver currently holds this container. Finish or cancel that movement first.'
+              resolution.holder
+                ? driverHoldPrompt(resolution.holder.driverName)
                 : resolution.message
             }}
           </span>
@@ -625,6 +657,14 @@ async function onPhoto(dataUrl: string) {
       :busy="chassisReleasing"
       @close="decideChassisRelease(false)"
       @confirm="decideChassisRelease(true)"
+    />
+    <ChassisReleaseSheet
+      :open="Boolean(driverHold)"
+      title="Container attached to a driver"
+      :message="driverHoldText"
+      :busy="driverReleasing"
+      @close="decideDriverRelease(false)"
+      @confirm="decideDriverRelease(true)"
     />
   </section>
 </template>

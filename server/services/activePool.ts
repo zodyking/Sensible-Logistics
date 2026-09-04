@@ -88,13 +88,23 @@ export async function previewResolution(
     }
   }
 
-  if (isClaimed(container) && container.currentDriverId && container.currentDriverId !== driverId) {
+  if (isClaimed(container) && container.currentDriverId) {
+    const holder = await loadHolder(db, companyId, container)
+    if (container.currentDriverId !== driverId) {
+      return {
+        ...base,
+        outcome: 'CONFLICT',
+        container,
+        holder,
+        message: 'Another driver already has an active claim on this container.',
+      }
+    }
     return {
       ...base,
-      outcome: 'CONFLICT',
+      outcome: 'REUSE_ACTIVE',
       container,
-      holder: await loadHolder(db, companyId, container),
-      message: 'Another driver already has an active claim on this container.',
+      holder,
+      message: `${holder.driverName} currently holds this container.`,
     }
   }
 

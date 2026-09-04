@@ -370,7 +370,7 @@ export async function addContainerAtLocation(
     if (existing && (existing.activePoolState === 'PICKUP_IN_PROGRESS' || existing.activePoolState === 'DRIVER_CUSTODY')) {
       throw createError({
         statusCode: 409,
-        statusMessage: 'A driver currently holds this container. Finish or cancel that movement first.',
+        statusMessage: 'A driver currently holds this container. Release it to add it here.',
       })
     }
 
