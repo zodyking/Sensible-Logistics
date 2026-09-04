@@ -8,6 +8,7 @@ import {
 } from '#shared/utils/domain'
 import type { ContainerType, EquipmentType, TripKind, TripStatus } from '#shared/utils/domain'
 import { formatChassisNumber, formatContainerNumber } from '#shared/utils/iso6346'
+import { isBareChassisTrip, tripEquipmentTitle } from '#shared/utils/trip-title'
 
 const props = defineProps<{
   tripKind?: TripKind | null
@@ -27,9 +28,11 @@ const props = defineProps<{
 
 const emit = defineEmits<{ changeDropoff: [] }>()
 
-const isBareChassis = computed(() =>
-  props.tripKind === 'BARE_CHASSIS' || (!props.containerNumber && Boolean(props.chassisNumber)),
-)
+const isBareChassis = computed(() => isBareChassisTrip({
+  kind: props.tripKind,
+  containerNumber: props.containerNumber,
+  chassisNumber: props.chassisNumber,
+}))
 
 const displayContainer = computed(() => {
   const formatted = formatContainerNumber(props.containerNumber || '')
@@ -41,7 +44,11 @@ const displayChassis = computed(() => {
   return formatChassisNumber(props.chassisNumber) || props.chassisNumber
 })
 
-const titleNumber = computed(() => isBareChassis.value ? displayChassis.value : displayContainer.value)
+const titleNumber = computed(() => tripEquipmentTitle({
+  kind: props.tripKind,
+  containerNumber: props.containerNumber,
+  chassisNumber: props.chassisNumber,
+}))
 
 const typeLabel = computed(() => {
   if (isBareChassis.value) return TRIP_KIND_LABELS.BARE_CHASSIS
