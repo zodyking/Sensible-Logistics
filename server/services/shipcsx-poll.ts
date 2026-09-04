@@ -13,6 +13,7 @@ import {
   SHIPCSX_POLL_INTERVAL_MS,
   SHIPCSX_REFERENCE,
   isShipcsxPollWindow,
+  resolveShipcsxTerminalName,
   type CsxLookupTab,
 } from '#shared/utils/csx-lookup'
 import { normalizeContainerNumber } from '#shared/utils/iso6346'
@@ -44,9 +45,6 @@ export async function resolveShipcsxTerminal(
     ))
     .limit(1)
 
-  if (live?.destTerminal) return live.destTerminal
-  if (live?.destType === 'RAIL_TERMINAL' && live.destName) return live.destName
-
   const [rail] = await db
     .select({ shipcsxTerminal: locations.shipcsxTerminal, name: locations.name })
     .from(locations)
@@ -57,7 +55,14 @@ export async function resolveShipcsxTerminal(
     ))
     .limit(1)
 
-  return rail?.shipcsxTerminal || defaultShipcsxTerminal() || rail?.name || ''
+  return resolveShipcsxTerminalName({
+    destTerminal: live?.destTerminal,
+    destName: live?.destName,
+    destType: live?.destType,
+    railTerminal: rail?.shipcsxTerminal,
+    railName: rail?.name,
+    defaultTerminal: defaultShipcsxTerminal(),
+  })
 }
 
 export async function listCustomerBoxesForShipcsx(

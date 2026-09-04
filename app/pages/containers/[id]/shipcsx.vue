@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { SHIPCSX_REFERENCE, SHIPCSX_TERMINALS, matchShipcsxTerminalOption, shipcsxEquipmentParts } from '#shared/utils/csx-lookup'
+import { SHIPCSX_REFERENCE, SHIPCSX_TERMINALS, pickShipcsxTerminal, shipcsxEquipmentParts } from '#shared/utils/csx-lookup'
 
 const route = useRoute()
 const { user } = useUserSession()
@@ -24,9 +24,11 @@ function applyContainerNumber(raw: string) {
 }
 
 function applySuggestedTerminal(wanted?: string | null) {
-  if (terminal.value) return
-  const match = matchShipcsxTerminalOption([...SHIPCSX_TERMINALS], wanted || '')
-  if (match) terminal.value = match
+  if (!wanted) {
+    if (!terminal.value) terminal.value = pickShipcsxTerminal()
+    return
+  }
+  terminal.value = pickShipcsxTerminal(wanted)
 }
 
 watch(() => data.value?.container, (container) => {
@@ -34,7 +36,11 @@ watch(() => data.value?.container, (container) => {
   applyContainerNumber(container.numberNormalized || container.number)
 }, { immediate: true })
 
-watch(() => data.value?.suggestedTerminal, applySuggestedTerminal, { immediate: true })
+watch(
+  () => data.value?.suggestedTerminal || data.value?.shipcsx?.terminalName,
+  applySuggestedTerminal,
+  { immediate: true },
+)
 
 onMounted(() => {
   if (data.value?.shipcsxCheck?.status === 'running') {
