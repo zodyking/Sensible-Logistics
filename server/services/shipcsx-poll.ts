@@ -16,6 +16,7 @@ import {
   type CsxLookupTab,
 } from '#shared/utils/csx-lookup'
 import { normalizeContainerNumber } from '#shared/utils/iso6346'
+import { shipcsxPublicError } from '#shared/utils/shipcsx-status'
 
 export interface ShipcsxEligibleBox {
   containerId: string
@@ -126,7 +127,7 @@ export async function recordShipcsxHits(
         waybillDate: hit.waybillDate,
         inGateReadiness: hit.inGateReadiness,
         gateWindow: hit.gateWindow,
-        error: hit.error,
+        error: hit.error ? shipcsxPublicError(hit.error) : null,
         rawPayload: { ...hit },
         checkedAt: now,
       })
@@ -164,7 +165,7 @@ export async function checkShipcsxForItems(
       }))))
     }
     catch (error) {
-      const message = error instanceof Error ? error.message : 'Could not check ShipCSX.'
+      const message = shipcsxPublicError(error instanceof Error ? error.message : '')
       saved.push(...await recordShipcsxHits(db, companyId, batch.map(item => ({
         containerId: item.containerId,
         equipmentNumber: item.equipmentNumber,

@@ -14,12 +14,12 @@ describe('resolveShipcsxProfileDir', () => {
     })).toBe('/tmp/shipcsx-profile')
   })
 
-  it('resolves a relative configured path against cwd', () => {
+  it('ignores a relative .data path under /app and uses /tmp', () => {
     expect(resolveShipcsxProfileDir({
       configured: '.data/shipcsx-profile',
       home: '/tmp',
       cwd: '/app',
-    })).toBe('/app/.data/shipcsx-profile')
+    })).toBe('/tmp/shipcsx-profile')
   })
 
   it('uses HOME/shipcsx-profile when nothing is configured', () => {
@@ -45,9 +45,8 @@ describe('resolveShipcsxProfileDir', () => {
 })
 
 describe('shipcsxProfileDirFallbacks', () => {
-  it('falls back to /tmp when the configured path is under /app', () => {
+  it('never tries to mkdir under /app', () => {
     expect(shipcsxProfileDirFallbacks('/app/.data/shipcsx-profile', '/tmp')).toEqual([
-      '/app/.data/shipcsx-profile',
       '/tmp/shipcsx-profile',
     ])
   })
