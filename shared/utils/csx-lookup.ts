@@ -1,5 +1,13 @@
 export const SHIPCSX_LOOKUP_URL = 'https://next.shipcsx.com/#/shipment/lookup'
 export const SHIPCSX_REFERENCE = '0000'
+/** CSX facility names we check. Fixed list — do not scrape ShipCSX for terminals. */
+export const SHIPCSX_TERMINALS = [
+  'North Bergen',
+  'Little Ferry',
+  'South Kearny',
+  'Elizabeth',
+  'Newark',
+] as const
 export const SHIPCSX_BATCH_SIZE = 3
 export const SHIPCSX_POLL_INTERVAL_MS = 30 * 60 * 1000
 /** Client + server wait for a live Playwright lookup (public search, no login). */

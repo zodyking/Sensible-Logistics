@@ -1,4 +1,3 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import {
   SHIPCSX_BATCH_SIZE,
   SHIPCSX_LOOKUP_URL,
@@ -45,11 +44,7 @@ const CHROMIUM_ARGS = [
 ]
 
 const DESKTOP_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
-const TERMINAL_CACHE_PATH = '/tmp/shipcsx-terminals.json'
-const TERMINAL_CACHE_MS = 24 * 60 * 60 * 1000
 const TYPE_DELAY_MS = 45
-
-type TerminalCache = { fetchedAt: number, names: string[] }
 
 function config() {
   const runtime = useRuntimeConfig()
@@ -219,18 +214,6 @@ async function menuOptionLocators(page: Page): Promise<Locator> {
     .or(page.locator('ion-alert button, .alert-radio-label, ion-select-option'))
 }
 
-async function collectOpenMenuNames(page: Page): Promise<string[]> {
-  const options = await menuOptionLocators(page)
-  const count = await options.count()
-  if (!count) return []
-  const labels: string[] = []
-  for (let i = 0; i < count; i++) {
-    const text = (await options.nth(i).innerText().catch(() => '')).trim()
-    if (text) labels.push(text)
-  }
-  return cleanShipcsxTerminalNames(labels)
-}
-
 async function scrollMenuToOption(page: Page, wanted: string): Promise<boolean> {
   const options = await menuOptionLocators(page)
   const count = await options.count()
@@ -309,24 +292,6 @@ async function selectTerminal(page: Page, terminal: string) {
     return
   }
   throw new Error(`Could not select ShipCSX terminal "${terminal}".`)
-}
-
-async function readTerminalNames(page: Page): Promise<string[]> {
-  const native = await nativeTerminalSelect(page)
-  if (native) {
-    const names = cleanShipcsxTerminalNames(await native.locator('option').allTextContents())
-    if (names.length) return names
-  }
-  const trigger = terminalTrigger(page)
-  if (!(await trigger.count())) return []
-  await trigger.scrollIntoViewIfNeeded().catch(() => undefined)
-  await trigger.click({ timeout: 15_000 })
-  await pause(400, 800)
-  const names = await collectOpenMenuNames(page)
-  await page.keyboard.press('Escape').catch(() => undefined)
-  const cancel = page.getByRole('button', { name: /cancel/i }).first()
-  if (await cancel.count()) await cancel.click().catch(() => undefined)
-  return names
 }
 
 async function fillReferenceRows(page: Page, count: number, reference: string) {
@@ -430,55 +395,6 @@ async function withLookupPage<T>(work: (page: Page) => Promise<T>): Promise<T> {
   finally {
     await context.close().catch(() => undefined)
     await browser.close().catch(() => undefined)
-  }
-}
-
-async function scrapeShipcsxTerminals(): Promise<string[]> {
-  return withLookupPage(async (page) => {
-    await page.goto(SHIPCSX_LOOKUP_URL, { waitUntil: 'domcontentloaded', timeout: 45_000 })
-    await waitForLookupForm(page)
-    assertLookupPage(await bodyText(page), page.url())
-    const names = await readTerminalNames(page)
-    if (!names.length) throw new Error('Could not load CSX terminal names from ShipCSX.')
-    return names
-  })
-}
-
-async function loadTerminalCache(): Promise<TerminalCache | null> {
-  try {
-    const raw = JSON.parse(await readFile(TERMINAL_CACHE_PATH, 'utf8')) as TerminalCache
-    if (!Array.isArray(raw.names) || !raw.names.length) return null
-    return raw
-  }
-  catch {
-    return null
-  }
-}
-
-async function saveTerminalCache(names: string[]) {
-  await mkdir('/tmp', { recursive: true }).catch(() => undefined)
-  await writeFile(TERMINAL_CACHE_PATH, JSON.stringify({ fetchedAt: Date.now(), names } satisfies TerminalCache)).catch(() => undefined)
-}
-
-export async function listShipcsxTerminals(input?: { refresh?: boolean }): Promise<{
-  terminals: string[]
-  cachedAt: number | null
-  source: 'live' | 'cache'
-}> {
-  const cached = await loadTerminalCache()
-  if (!input?.refresh && cached && Date.now() - cached.fetchedAt < TERMINAL_CACHE_MS) {
-    return { terminals: cached.names, cachedAt: cached.fetchedAt, source: 'cache' }
-  }
-  try {
-    const names = await withShipcsxLock(() => scrapeShipcsxTerminals())
-    await saveTerminalCache(names)
-    return { terminals: names, cachedAt: Date.now(), source: 'live' }
-  }
-  catch (error) {
-    if (cached?.names.length) {
-      return { terminals: cached.names, cachedAt: cached.fetchedAt, source: 'cache' }
-    }
-    throw error
   }
 }
 
