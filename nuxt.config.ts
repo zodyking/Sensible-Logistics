@@ -110,6 +110,10 @@ export default defineNuxtConfig({
     preset: 'node-server',
     // Camera JPEGs are sent as data URLs (~1.3× the binary). 1 MB drops them.
     maxRequestBodySize: 20 * 1024 * 1024,
+    // Dynamic `import('playwright')` is otherwise dropped from the server bundle.
+    externals: {
+      traceInclude: ['playwright', 'playwright-core'],
+    },
   },
 
   vite: {

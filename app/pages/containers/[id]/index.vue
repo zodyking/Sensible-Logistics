@@ -7,6 +7,7 @@ import {
 } from '#shared/utils/domain'
 import { formatChassisNumber, formatContainerNumber } from '#shared/utils/iso6346'
 import { visibleTimelineEntries } from '#shared/utils/timeline'
+import { SHIPCSX_CHECK_TIMEOUT_MS } from '#shared/utils/csx-lookup'
 import { shipcsxMetaLine, shipcsxPublicError, shipcsxStatusLabel } from '#shared/utils/shipcsx-status'
 
 const route = useRoute()
@@ -21,7 +22,10 @@ async function checkCsx() {
   checkingCsx.value = true
   csxError.value = ''
   try {
-    await $fetch(`/api/containers/${route.params.id}/shipcsx`, { method: 'POST' })
+    await $fetch(`/api/containers/${route.params.id}/shipcsx`, {
+      method: 'POST',
+      timeout: SHIPCSX_CHECK_TIMEOUT_MS,
+    })
     await refresh()
   }
   catch (err) {

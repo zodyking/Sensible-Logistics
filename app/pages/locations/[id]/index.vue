@@ -2,6 +2,7 @@
 import { CONTAINER_TYPE_LABELS, EQUIPMENT_TYPE_SHORT, LOCATION_TYPE_LABELS } from '#shared/utils/domain'
 import { formatChassisNumber, formatContainerNumber } from '#shared/utils/iso6346'
 import { formatPhoneDisplay, toE164 } from '#shared/utils/phone'
+import { SHIPCSX_CHECK_TIMEOUT_MS } from '#shared/utils/csx-lookup'
 import { shipcsxPublicError } from '#shared/utils/shipcsx-status'
 
 const { user } = useUserSession()
@@ -29,7 +30,10 @@ async function checkLocationCsx() {
   checkingCsx.value = true
   csxError.value = ''
   try {
-    await $fetch(`/api/locations/${locationId.value}/shipcsx`, { method: 'POST' })
+    await $fetch(`/api/locations/${locationId.value}/shipcsx`, {
+      method: 'POST',
+      timeout: SHIPCSX_CHECK_TIMEOUT_MS,
+    })
     await refresh()
   }
   catch (err) {

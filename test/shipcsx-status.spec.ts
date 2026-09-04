@@ -27,6 +27,8 @@ describe('shipcsxPublicError', () => {
       .toBe('ShipCSX is not signed in on this server.')
     expect(shipcsxPublicError('Set a ShipCSX terminal name on the rail location or NUXT_SHIPCSX_DEFAULT_TERMINAL.'))
       .toBe('Set a ShipCSX terminal name on the rail location.')
+    expect(shipcsxPublicError('EACCES: permission denied, mkdir \'/app/.data\''))
+      .toBe('ShipCSX could not store its browser profile on this server.')
   })
 })
 

@@ -1,5 +1,4 @@
 import { mkdir } from 'node:fs/promises'
-import { resolve } from 'node:path'
 import {
   SHIPCSX_BATCH_SIZE,
   SHIPCSX_LOOKUP_URL,
@@ -10,6 +9,11 @@ import {
   type CsxLookupCard,
 } from '#shared/utils/csx-lookup'
 import { normalizeContainerNumber } from '#shared/utils/iso6346'
+import {
+  SHIPCSX_CHROMIUM_ARGS,
+  resolveShipcsxProfileDir,
+  shipcsxProfileDirFallbacks,
+} from '#shared/utils/shipcsx-profile-dir'
 
 export interface ShipcsxLookupItem {
   equipmentNumber: string
@@ -35,11 +39,29 @@ function config() {
     password?: string
   } }).shipcsx
   return {
-    profileDir: ship?.profileDir || process.env.NUXT_SHIPCSX_PROFILE_DIR || resolve(process.cwd(), '.data/shipcsx-profile'),
+    profileDir: resolveShipcsxProfileDir({
+      configured: ship?.profileDir || process.env.NUXT_SHIPCSX_PROFILE_DIR || '',
+      home: process.env.HOME,
+    }),
     defaultTerminal: ship?.defaultTerminal || process.env.NUXT_SHIPCSX_DEFAULT_TERMINAL || '',
     email: ship?.email || process.env.NUXT_SHIPCSX_EMAIL || '',
     password: ship?.password || process.env.NUXT_SHIPCSX_PASSWORD || '',
   }
+}
+
+async function ensureProfileDir(preferred: string): Promise<string> {
+  let lastError: unknown
+  for (const dir of shipcsxProfileDirFallbacks(preferred, process.env.HOME)) {
+    try {
+      await mkdir(dir, { recursive: true })
+      return dir
+    }
+    catch (error) {
+      lastError = error
+    }
+  }
+  const detail = lastError instanceof Error ? lastError.message : 'permission denied'
+  throw new Error(`Could not create a writable ShipCSX browser profile (${detail}).`)
 }
 
 export async function withShipcsxLock<T>(work: () => Promise<T>): Promise<T> {
@@ -72,32 +94,38 @@ const STEALTH = `
   Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
 `
 
+const CONTEXT_BASE = {
+  headless: true,
+  locale: 'en-US',
+  timezoneId: 'America/New_York',
+  viewport: { width: 390, height: 844 },
+  isMobile: true,
+  hasTouch: true,
+  userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
+  args: [...SHIPCSX_CHROMIUM_ARGS],
+  chromiumSandbox: false,
+} as const
+
 async function openContext() {
   const { chromium } = await loadPlaywright()
-  const { profileDir, email, password } = config()
-  await mkdir(profileDir, { recursive: true })
+  const { profileDir: preferred, email, password } = config()
+  const profileDir = await ensureProfileDir(preferred)
 
   const launched = await chromium.launchPersistentContext(profileDir, {
-    headless: true,
-    locale: 'en-US',
-    timezoneId: 'America/New_York',
-    viewport: { width: 390, height: 844 },
-    isMobile: true,
-    hasTouch: true,
-    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
-    args: ['--disable-blink-features=AutomationControlled'],
+    ...CONTEXT_BASE,
     ignoreDefaultArgs: ['--enable-automation'],
-  }).catch(async () => chromium.launchPersistentContext(profileDir, {
-    channel: 'chrome',
-    headless: true,
-    locale: 'en-US',
-    timezoneId: 'America/New_York',
-    viewport: { width: 390, height: 844 },
-    isMobile: true,
-    hasTouch: true,
-    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
-    args: ['--disable-blink-features=AutomationControlled'],
-  }))
+  }).catch(async (first) => {
+    const retry = await chromium.launchPersistentContext(profileDir, {
+      ...CONTEXT_BASE,
+      channel: 'chrome',
+    }).catch(() => null)
+    if (retry) return retry
+    const detail = first instanceof Error ? first.message : 'Chromium failed to launch'
+    if (/executable|browser|chromium|playwright/i.test(detail)) {
+      throw new Error('Playwright Chromium is not installed. The server image needs `npx playwright install chromium`.')
+    }
+    throw first instanceof Error ? first : new Error(detail)
+  })
 
   await launched.addInitScript(STEALTH)
   const page = launched.pages()[0] ?? await launched.newPage()
