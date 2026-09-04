@@ -14,7 +14,25 @@ export function containerIsHeldByDriver(state: string | null | undefined): boole
   return state === 'PICKUP_IN_PROGRESS' || state === 'DRIVER_CUSTODY'
 }
 
-/** Resolve must surface a hold from pool state alone — currentDriverId can be missing. */
-export function resolutionReportsDriverHold(state: string | null | undefined): boolean {
-  return containerIsHeldByDriver(state)
+export function containerHasDriverClaim(container: {
+  activePoolState?: string | null
+  currentDriverId?: string | null
+  activeMovementId?: string | null
+} | null | undefined): boolean {
+  if (!container) return false
+  return containerIsHeldByDriver(container.activePoolState)
+    || Boolean(container.currentDriverId)
+    || Boolean(container.activeMovementId)
+}
+
+/** Resolve must surface a hold from pool state or leftover claim fields. */
+export function resolutionReportsDriverHold(
+  state: string | null | undefined,
+  extras?: { currentDriverId?: string | null, activeMovementId?: string | null },
+): boolean {
+  return containerHasDriverClaim({
+    activePoolState: state,
+    currentDriverId: extras?.currentDriverId,
+    activeMovementId: extras?.activeMovementId,
+  })
 }

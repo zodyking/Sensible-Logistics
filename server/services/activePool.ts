@@ -89,7 +89,10 @@ export async function previewResolution(
     }
   }
 
-  if (resolutionReportsDriverHold(container.activePoolState)) {
+  if (resolutionReportsDriverHold(container.activePoolState, {
+    currentDriverId: container.currentDriverId,
+    activeMovementId: container.activeMovementId,
+  })) {
     const holder = await loadHolder(db, companyId, container)
     if (container.currentDriverId && container.currentDriverId !== driverId) {
       return {
@@ -131,24 +134,27 @@ export async function previewResolution(
 /** Resolve who currently holds a contested container, for the conflict screen. */
 async function loadHolder(db: DbExecutor, companyId: string, container: Container): Promise<ConflictHolder> {
   let driverName = 'Another driver'
-  if (container.currentDriverId) {
-    const [row] = await db
-      .select({ firstName: users.firstName, lastName: users.lastName })
-      .from(drivers)
-      .innerJoin(users, eq(users.id, drivers.userId))
-      .where(and(eq(drivers.id, container.currentDriverId), eq(drivers.companyId, companyId)))
-      .limit(1)
-    if (row) driverName = `${row.firstName} ${row.lastName}`
-  }
-
+  let driverId = container.currentDriverId ?? ''
   let tripReference: string | null = null
+
   if (container.activeMovementId) {
     const [trip] = await db
-      .select({ reference: trips.reference })
+      .select({ reference: trips.reference, driverId: trips.driverId })
       .from(trips)
       .where(eq(trips.id, container.activeMovementId))
       .limit(1)
     tripReference = trip?.reference ?? null
+    if (!driverId && trip?.driverId) driverId = trip.driverId
+  }
+
+  if (driverId) {
+    const [row] = await db
+      .select({ firstName: users.firstName, lastName: users.lastName })
+      .from(drivers)
+      .innerJoin(users, eq(users.id, drivers.userId))
+      .where(and(eq(drivers.id, driverId), eq(drivers.companyId, companyId)))
+      .limit(1)
+    if (row) driverName = `${row.firstName} ${row.lastName}`
   }
 
   let believedLocationName: string | null = null
@@ -162,7 +168,7 @@ async function loadHolder(db: DbExecutor, companyId: string, container: Containe
   }
 
   return {
-    driverId: container.currentDriverId ?? '',
+    driverId,
     driverName,
     tripId: container.activeMovementId,
     tripReference,

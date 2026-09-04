@@ -17,7 +17,7 @@ import {
   normalizeContainerNumber,
   validateContainerNumber,
 } from '#shared/utils/iso6346'
-import { containerIsHeldByDriver } from '#shared/utils/driver-hold'
+import { containerHasDriverClaim, containerIsHeldByDriver } from '#shared/utils/driver-hold'
 import { driverOcrMessage } from '#shared/utils/ocr-parse'
 
 const { user } = useUserSession()
@@ -115,7 +115,7 @@ watch(kind, () => {
 function isHeldByDriver(current: Resolution | null | undefined) {
   if (!current) return false
   if (current.holder) return true
-  return containerIsHeldByDriver(current.container?.activePoolState)
+  return containerHasDriverClaim(current.container) || containerIsHeldByDriver(current.container?.activePoolState)
 }
 
 let releasePrompt: Promise<Resolution | null> | null = null

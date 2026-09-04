@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { containerIsHeldByDriver, driverHoldPrompt, resolutionReportsDriverHold } from '../shared/utils/driver-hold'
+import { containerHasDriverClaim, containerIsHeldByDriver, driverHoldPrompt, resolutionReportsDriverHold } from '../shared/utils/driver-hold'
 
 describe('driverHoldPrompt', () => {
   it('names the driver and container on the release sheet', () => {
@@ -28,5 +28,22 @@ describe('containerIsHeldByDriver', () => {
   it('reports a hold even when the driver id was cleared', () => {
     expect(resolutionReportsDriverHold('DRIVER_CUSTODY')).toBe(true)
     expect(resolutionReportsDriverHold('AT_LOCATION')).toBe(false)
+  })
+
+  it('reports leftover driver or live-trip claims at a yard', () => {
+    expect(containerHasDriverClaim({
+      activePoolState: 'AT_LOCATION',
+      currentDriverId: 'drv-1',
+      activeMovementId: 'trip-1',
+    })).toBe(true)
+    expect(resolutionReportsDriverHold('AT_LOCATION', {
+      currentDriverId: 'drv-1',
+      activeMovementId: null,
+    })).toBe(true)
+    expect(containerHasDriverClaim({
+      activePoolState: 'AT_LOCATION',
+      currentDriverId: null,
+      activeMovementId: null,
+    })).toBe(false)
   })
 })
