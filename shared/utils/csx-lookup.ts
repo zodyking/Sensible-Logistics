@@ -143,8 +143,13 @@ export function shipcsxEquipmentParts(equipmentNumber: string): ShipcsxEquipment
 
 /** Map a stored or typed name onto the five CSX facilities, else North Bergen. */
 export function pickShipcsxTerminal(wanted?: string | null): ShipcsxTerminalName {
+  return wizardShipcsxTerminal(wanted) ?? SHIPCSX_TERMINALS[0]
+}
+
+/** Terminal the Check CSX wizard may send. No rail-location fallback. */
+export function wizardShipcsxTerminal(wanted?: string | null): ShipcsxTerminalName | null {
   const match = matchShipcsxTerminalOption([...SHIPCSX_TERMINALS], wanted ?? '')
-  return (match as ShipcsxTerminalName | null) ?? SHIPCSX_TERMINALS[0]
+  return (match as ShipcsxTerminalName | null) ?? null
 }
 
 /** Prefer a live trip or rail name when it matches a CSX facility we check. */

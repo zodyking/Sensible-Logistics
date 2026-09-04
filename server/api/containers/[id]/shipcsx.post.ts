@@ -5,11 +5,11 @@ import { assertTenant, requireAuth } from '../../../utils/session'
 import { checkShipcsxForItems } from '../../../services/shipcsx-poll'
 import { beginShipcsxCheckJob, finishShipcsxCheckJob, getShipcsxCheckJob, setShipcsxCheckStep } from '../../../services/shipcsx-jobs'
 import { normalizeContainerNumber } from '#shared/utils/iso6346'
-import { SHIPCSX_REFERENCE, shipcsxEquipmentParts } from '#shared/utils/csx-lookup'
+import { SHIPCSX_REFERENCE, SHIPCSX_TERMINALS, shipcsxEquipmentParts, wizardShipcsxTerminal } from '#shared/utils/csx-lookup'
 import { shipcsxPublicError } from '#shared/utils/shipcsx-status'
 
 const schema = z.object({
-  terminal: z.string().trim().min(1, 'Choose a CSX location.').max(120),
+  terminal: z.enum(SHIPCSX_TERMINALS),
   equipmentNumber: z.string().trim().min(4).max(20),
   reference: z.string().trim().max(40).optional(),
 })
@@ -37,6 +37,10 @@ export default defineEventHandler(async (event) => {
 
   const equipmentNumber = normalizeContainerNumber(body.equipmentNumber)
   const reference = body.reference?.trim() || SHIPCSX_REFERENCE
+  const terminal = wizardShipcsxTerminal(body.terminal)
+  if (!terminal) {
+    throw createError({ statusCode: 422, statusMessage: 'Choose a CSX location.' })
+  }
   const job = beginShipcsxCheckJob(id)
 
   void Promise.resolve().then(async () => {
@@ -44,7 +48,7 @@ export default defineEventHandler(async (event) => {
       await checkShipcsxForItems(db, auth.companyId, [{
         containerId: id,
         equipmentNumber,
-        terminal: body.terminal,
+        terminal,
       }], {
         reference,
         onStep: step => setShipcsxCheckStep(id, step),

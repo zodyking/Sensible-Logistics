@@ -14,6 +14,7 @@ export interface ShipcsxStatusInput {
   waybillDate?: string | null
   gateWindow?: string | null
   loadEmpty?: string | null
+  terminalName?: string | null
   error?: string | null
   checkedAt?: Date | string | null
 }
@@ -38,17 +39,17 @@ export function shipcsxPublicError(raw: string | null | undefined): string {
   if (/login wall|signed-in profile|sign in once|password/i.test(text)) {
     return 'ShipCSX asked for a login. Shipment lookup should work without an account.'
   }
-  if (/not in the dropdown|could not select/i.test(text)) {
-    return 'That ShipCSX terminal name does not match the CSX list. Edit the rail location and use the name from the dropdown.'
+  if (/not in the dropdown|could not select|choose a csx location/i.test(text)) {
+    return 'Choose a CSX location on Check CSX and try again.'
   }
   if (/terminal name|default_terminal|NUXT_SHIPCSX_DEFAULT_TERMINAL|rail location/i.test(text)) {
-    return 'Choose a CSX location and check again.'
+    return 'Choose a CSX location on Check CSX and try again.'
   }
   if (/challenged|captcha|blocked/i.test(text)) {
     return 'ShipCSX blocked this check. Try again later.'
   }
   if (/locator\.|timeout \d+ms exceeded|getByRole|waiting for|did not load|never became|did not return lookup results/i.test(text)) {
-    return 'ShipCSX search never became ready. Check the rail terminal name and try again.'
+    return 'ShipCSX search never became ready. Check the CSX location and try again.'
   }
   if (/browser|chromium|executable/i.test(text)) {
     return 'ShipCSX lookup is not set up on this server yet.'
@@ -61,7 +62,12 @@ export function shipcsxPublicError(raw: string | null | undefined): string {
 
 export function shipcsxMetaLine(snapshot: ShipcsxStatusInput | null | undefined): string {
   if (!snapshot) return ''
-  return [snapshot.loadEmpty, snapshot.waybillDate && `Waybill ${snapshot.waybillDate}`, snapshot.gateWindow]
+  return [
+    snapshot.terminalName,
+    snapshot.loadEmpty,
+    snapshot.waybillDate && `Waybill ${snapshot.waybillDate}`,
+    snapshot.gateWindow,
+  ]
     .filter(Boolean)
     .join(' · ')
 }

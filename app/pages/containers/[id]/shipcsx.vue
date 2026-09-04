@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { SHIPCSX_REFERENCE, SHIPCSX_TERMINALS, pickShipcsxTerminal, shipcsxEquipmentParts } from '#shared/utils/csx-lookup'
+import { SHIPCSX_REFERENCE, SHIPCSX_TERMINALS, shipcsxEquipmentParts, wizardShipcsxTerminal } from '#shared/utils/csx-lookup'
+import { readWizardTerminal, rememberWizardTerminal } from '~/utils/shipcsx-wizard'
 
 const route = useRoute()
 const { user } = useUserSession()
@@ -11,7 +12,7 @@ const { data, status, error } = await useFetch(() => `/api/containers/${id.value
 const initial = ref('')
 const serial = ref('')
 const reference = ref(SHIPCSX_REFERENCE)
-const terminal = ref('')
+const terminal = ref(readWizardTerminal(id.value) ?? '')
 const submitting = ref(false)
 const formError = ref('')
 
@@ -23,12 +24,9 @@ function applyContainerNumber(raw: string) {
   serial.value = parts?.number ?? ''
 }
 
-function applySuggestedTerminal(wanted?: string | null) {
-  if (!wanted) {
-    if (!terminal.value) terminal.value = pickShipcsxTerminal()
-    return
-  }
-  terminal.value = pickShipcsxTerminal(wanted)
+function applyLastWizardTerminal(wanted?: string | null) {
+  const match = wizardShipcsxTerminal(wanted) ?? readWizardTerminal(id.value)
+  if (match) terminal.value = match
 }
 
 watch(() => data.value?.container, (container) => {
@@ -37,8 +35,8 @@ watch(() => data.value?.container, (container) => {
 }, { immediate: true })
 
 watch(
-  () => data.value?.suggestedTerminal || data.value?.shipcsx?.terminalName,
-  applySuggestedTerminal,
+  () => data.value?.shipcsx?.terminalName || data.value?.suggestedTerminal,
+  applyLastWizardTerminal,
   { immediate: true },
 )
 
@@ -47,22 +45,24 @@ onMounted(() => {
     navigateTo(`/containers/${id.value}`)
     return
   }
-  applySuggestedTerminal(data.value?.suggestedTerminal)
+  applyLastWizardTerminal(data.value?.shipcsx?.terminalName || data.value?.suggestedTerminal)
 })
 
 const canSubmit = computed(() => {
-  return Boolean(shipcsxEquipmentParts(`${initial.value}${serial.value}`) && terminal.value && !submitting.value)
+  return Boolean(shipcsxEquipmentParts(`${initial.value}${serial.value}`) && wizardShipcsxTerminal(terminal.value) && !submitting.value)
 })
 
 async function submitCheck() {
-  if (!canSubmit.value) return
+  const chosen = wizardShipcsxTerminal(terminal.value)
+  if (!canSubmit.value || !chosen) return
   formError.value = ''
   submitting.value = true
+  rememberWizardTerminal(id.value, chosen)
   try {
     await $fetch(`/api/containers/${id.value}/shipcsx`, {
       method: 'POST',
       body: {
-        terminal: terminal.value,
+        terminal: chosen,
         equipmentNumber: `${initial.value}${serial.value}`,
         reference: reference.value.trim() || SHIPCSX_REFERENCE,
       },
@@ -203,7 +203,7 @@ const backTo = computed(() => `/containers/${id.value}`)
         </div>
       </div>
       <p class="wiz-hint">
-        North Bergen, Little Ferry, South Kearny, Elizabeth, and Newark.
+        ShipCSX searches this terminal. North Bergen, Little Ferry, South Kearny, Elizabeth, or Newark.
       </p>
 
       <div class="wiz-actions">
