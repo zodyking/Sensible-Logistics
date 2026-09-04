@@ -3,6 +3,7 @@ import type { DbExecutor } from '../utils/db'
 import { containers, drivers, locations, trips, users } from '../database/schema'
 import type { Container } from '../database/schema'
 import { normalizeContainerNumber, validateContainerNumber } from '#shared/utils/iso6346'
+import { resolutionReportsDriverHold } from '#shared/utils/driver-hold'
 
 /**
  * Active container pool resolution (spec 5.3).
@@ -88,9 +89,9 @@ export async function previewResolution(
     }
   }
 
-  if (isClaimed(container) && container.currentDriverId) {
+  if (resolutionReportsDriverHold(container.activePoolState)) {
     const holder = await loadHolder(db, companyId, container)
-    if (container.currentDriverId !== driverId) {
+    if (container.currentDriverId && container.currentDriverId !== driverId) {
       return {
         ...base,
         outcome: 'CONFLICT',

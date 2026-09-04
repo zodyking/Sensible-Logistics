@@ -809,18 +809,23 @@ export async function releaseContainerFromDriver(
     }, {
       eventId: crypto.randomUUID(),
       tripId: live.id,
-      reason: 'Released so another driver could scan the container.',
+      reason: 'Released so the container could be added on site.',
     })
-    return { ok: true, containerId }
   }
 
+  const [fresh] = await db
+    .select()
+    .from(containers)
+    .where(and(eq(containers.id, containerId), eq(containers.companyId, auth.companyId)))
+    .limit(1)
+  const parked = Boolean(fresh?.currentLocationId ?? container.currentLocationId)
   const now = new Date()
   await db
     .update(containers)
     .set({
       currentDriverId: null,
       activeMovementId: null,
-      activePoolState: container.currentLocationId ? 'AT_LOCATION' : 'AVAILABLE',
+      activePoolState: parked ? 'AT_LOCATION' : 'AVAILABLE',
       lastActivityAt: now,
       updatedAt: now,
       version: sql`${containers.version} + 1`,

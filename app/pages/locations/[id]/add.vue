@@ -114,10 +114,11 @@ watch(kind, () => {
   if (kind.value !== 'CONTAINER') resolution.value = null
 })
 
-async function offerDriverRelease(current: Resolution | null) {
+async function offerDriverRelease(current: Resolution | null, force = false) {
   const containerId = current?.container?.id
   const holder = current?.holder
-  if (!containerId || !holder || promptedDriverHold.value === containerId) return current
+  if (!containerId || !holder) return current
+  if (!force && promptedDriverHold.value === containerId) return current
   promptedDriverHold.value = containerId
   const released = await releaseDriverIfNeeded({
     containerId,
@@ -150,11 +151,6 @@ watch(normalized, async (value) => {
   }
 })
 
-const blocked = computed(() => {
-  if (kind.value !== 'CONTAINER') return false
-  return Boolean(resolution.value?.holder)
-})
-
 const canAdvance = computed(() => {
   switch (step.value) {
     case 'kind':
@@ -166,7 +162,6 @@ const canAdvance = computed(() => {
       return validation.value.structureValid
         && chassisOk.value
         && isLoaded.value !== null
-        && !blocked.value
         && !resolving.value
         && Boolean(resolution.value)
         && !readingPhoto.value
@@ -194,8 +189,7 @@ function chooseKind(nextKind: TripKind) {
 async function next() {
   errorMessage.value = ''
   if (step.value === 'equipment' && resolution.value?.holder) {
-    const current = await offerDriverRelease(resolution.value)
-    if (current?.holder) return
+    await offerDriverRelease(resolution.value)
   }
   const index = stepIndex.value
   if (index < STEPS.value.length - 1) step.value = STEPS.value[index + 1]!
@@ -225,8 +219,7 @@ async function confirm() {
   if (submitting.value) return
   errorMessage.value = ''
   if (resolution.value?.holder) {
-    const current = await offerDriverRelease(resolution.value)
-    if (current?.holder) return
+    await offerDriverRelease(resolution.value, true)
   }
   if (chassisNumber.value.trim()) {
     try {
@@ -515,7 +508,7 @@ async function onPhoto(dataUrl: string) {
         <p
           v-else-if="kind === 'CONTAINER' && resolution"
           class="banner mt-4"
-          :class="blocked ? 'err' : 'info'"
+          :class="resolution.holder ? 'warn' : 'info'"
           role="status"
         >
           <span aria-hidden="true">▸</span>

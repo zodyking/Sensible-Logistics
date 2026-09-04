@@ -1,10 +1,11 @@
-import { and, eq, isNull, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import type { Database, DbExecutor } from '../utils/db'
 import {
   chassis,
   containerPlacements,
   containers,
   locations,
+  trips,
 } from '../database/schema'
 import type { Container, Location } from '../database/schema'
 import { eventExists, recordEvent } from './events'
@@ -282,6 +283,39 @@ async function parkChassisAtLocation(
     .where(and(eq(chassis.id, input.unit.id), eq(chassis.companyId, auth.companyId)))
 }
 
+const LIVE_ADD_TRIP_STATUSES = ['PICKUP_IN_PROGRESS', 'IN_TRANSIT', 'DROPOFF_IN_PROGRESS'] as const
+
+/** Drop leftover live trips so an on-site add can record the box where it sits. */
+async function closeLiveTripsForContainer(
+  tx: DbExecutor,
+  companyId: string,
+  containerId: string,
+) {
+  const live = await tx
+    .select({ id: trips.id })
+    .from(trips)
+    .where(and(
+      eq(trips.companyId, companyId),
+      eq(trips.containerId, containerId),
+      inArray(trips.status, [...LIVE_ADD_TRIP_STATUSES]),
+    ))
+
+  const now = new Date()
+  for (const trip of live) {
+    await tx
+      .update(containers)
+      .set({ activeMovementId: null, updatedAt: now })
+      .where(and(eq(containers.companyId, companyId), eq(containers.activeMovementId, trip.id)))
+    await tx
+      .update(trips)
+      .set({ swapPairTripId: null, updatedAt: now })
+      .where(eq(trips.swapPairTripId, trip.id))
+    await tx
+      .delete(trips)
+      .where(and(eq(trips.id, trip.id), eq(trips.companyId, companyId)))
+  }
+}
+
 async function followChassisWithContainer(
   tx: DbExecutor,
   auth: AuthContext,
@@ -367,11 +401,8 @@ export async function addContainerAtLocation(
       .limit(1)
       .for('update')
 
-    if (existing && (existing.activePoolState === 'PICKUP_IN_PROGRESS' || existing.activePoolState === 'DRIVER_CUSTODY')) {
-      throw createError({
-        statusCode: 409,
-        statusMessage: 'A driver currently holds this container. Release it to add it here.',
-      })
+    if (existing) {
+      await closeLiveTripsForContainer(tx, auth.companyId, existing.id)
     }
 
     let container = existing
