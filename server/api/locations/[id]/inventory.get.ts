@@ -1,7 +1,9 @@
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { chassis, containers } from '../../../database/schema'
+import { listOpenCsxReleases } from '../../../services/csx-releases'
 import { locationIdsAtSameAddress } from '../../../services/location-sites'
 import { requireAuth } from '../../../utils/session'
+import { csxInventoryId } from '#shared/utils/csx-releases'
 
 /**
  * On-site equipment for New Pickup — same occupancy rule as location cards:
@@ -64,8 +66,26 @@ export default defineEventHandler(async (event) => {
     ))
     .orderBy(chassis.numberNormalized)
 
+  const releases = await listOpenCsxReleases(db, auth.companyId, locationIds)
+  const known = new Set(containerRows.map(row => row.numberNormalized))
+  const csxReleases = releases.map(row => ({
+    id: row.containerId || csxInventoryId(row.id),
+    releaseId: row.id,
+    number: row.containerNumber,
+    numberNormalized: row.containerNumberNormalized,
+    pickupNumber: row.pickupNumber,
+    containerType: null as string | null,
+    equipmentType: null as string | null,
+    isLoaded: false,
+    sealNumber: null,
+    currentChassisId: null,
+    chassisNumber: null,
+    csxRelease: true,
+  }))
+
   return {
     containers: containerRows,
     chassis: chassisRows,
+    csxReleases: csxReleases.filter(row => !known.has(row.numberNormalized)),
   }
 })

@@ -34,12 +34,15 @@ const form = reactive({
   mainPhone: '',
   contactName: '',
   contactPhone: '',
+  shipcsxTerminal: '',
   addressQuery: '',
   addressLine1: '',
   city: '',
   state: '',
   postalCode: '',
 })
+
+const isTerminus = computed(() => form.type === 'MARINE_TERMINAL' || form.type === 'RAIL_TERMINAL')
 
 const latitude = ref<number | null>(null)
 const longitude = ref<number | null>(null)
@@ -64,6 +67,7 @@ onMounted(async () => {
         mainPhone: string | null
         contactName: string | null
         contactPhone: string | null
+        shipcsxTerminal?: string | null
         addressLine1: string | null
         city: string | null
         state: string | null
@@ -82,6 +86,7 @@ onMounted(async () => {
     form.mainPhone = formatPhoneInput(loc.mainPhone)
     form.contactName = loc.contactName ?? ''
     form.contactPhone = formatPhoneInput(loc.contactPhone)
+    form.shipcsxTerminal = loc.shipcsxTerminal ?? ''
     form.addressLine1 = loc.addressLine1 ?? ''
     form.city = loc.city ?? ''
     form.state = loc.state ?? ''
@@ -213,6 +218,7 @@ async function save() {
     }
     if (boundary.value) body.boundary = boundary.value
     body.mapHeading = heading.value
+    if (isTerminus.value) body.shipcsxTerminal = form.shipcsxTerminal.trim() || null
     await $fetch(`/api/locations/${locationId.value}`, { method: 'PATCH', body })
     await navigateTo(`/locations/${locationId.value}`)
   }
@@ -327,6 +333,20 @@ async function save() {
             @input="onPhoneInput('contactPhone', $event)"
           >
           <small class="field-hint">Optional.</small>
+        </label>
+
+        <label
+          v-if="isTerminus"
+          class="field !mb-0 mt-4"
+        >
+          <span>ShipCSX terminal</span>
+          <input
+            v-model="form.shipcsxTerminal"
+            class="input"
+            placeholder="North Bergen"
+            autocomplete="off"
+          >
+          <small class="field-hint">Exact name as it appears in the ShipCSX terminal list.</small>
         </label>
       </div>
 

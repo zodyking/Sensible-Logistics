@@ -11,6 +11,7 @@ import {
   users,
 } from '../../database/schema'
 import { assertTenant, requireAuth } from '../../utils/session'
+import { latestSnapshotsForContainers } from '../../services/csx-releases'
 import { sliceCurrentServiceLife, summarizeServiceLife } from '#shared/utils/service-life'
 
 /** Container record: identity, current state, current service-life pickups/drop-offs. */
@@ -94,6 +95,8 @@ export default defineEventHandler(async (event) => {
     .where(and(eq(documents.companyId, auth.companyId), eq(documents.containerId, id), isNull(documents.deletedAt)))
     .orderBy(desc(documents.createdAt))
 
+  const [shipcsx] = await latestSnapshotsForContainers(db, auth.companyId, [id])
+
   return {
     container,
     currentLocation: currentLocation ?? null,
@@ -103,5 +106,6 @@ export default defineEventHandler(async (event) => {
     serviceLife,
     timeline,
     documents: files,
+    shipcsx: shipcsx ?? null,
   }
 })

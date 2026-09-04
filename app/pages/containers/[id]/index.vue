@@ -11,7 +11,25 @@ import { visibleTimelineEntries } from '#shared/utils/timeline'
 const route = useRoute()
 const { user } = useUserSession()
 setPageLayout(user.value?.role === 'ADMIN' ? 'admin' : 'default')
-const { data, status, error } = await useFetch(() => `/api/containers/${route.params.id}`)
+const { data, status, error, refresh } = await useFetch(() => `/api/containers/${route.params.id}`)
+const checkingCsx = ref(false)
+const csxError = ref('')
+
+async function checkCsx() {
+  if (checkingCsx.value) return
+  checkingCsx.value = true
+  csxError.value = ''
+  try {
+    await $fetch(`/api/containers/${route.params.id}/shipcsx`, { method: 'POST' })
+    await refresh()
+  }
+  catch (err) {
+    csxError.value = apiErrorMessage(err, 'Could not check ShipCSX.')
+  }
+  finally {
+    checkingCsx.value = false
+  }
+}
 
 useHead({ title: () => data.value?.container.number ?? 'Container' })
 
@@ -185,6 +203,35 @@ const timeline = computed(() => visibleTimelineEntries(data.value?.timeline ?? [
             Edit information
           </NuxtLink>
         </div>
+
+        <div class="trip-spec">
+          <div class="trip-spec-row">
+            <dt>ShipCSX</dt>
+            <dd>
+              <strong>{{ data.shipcsx?.inGateReadiness || data.shipcsx?.resultTab?.replace('_', '-') || 'Not checked' }}</strong>
+              <small v-if="data.shipcsx?.waybillDate">Waybill {{ data.shipcsx.waybillDate }}</small>
+              <small v-if="data.shipcsx?.gateWindow">{{ data.shipcsx.gateWindow }}</small>
+              <small v-if="data.shipcsx?.loadEmpty">{{ data.shipcsx.loadEmpty }}</small>
+              <small v-if="data.shipcsx?.error">{{ data.shipcsx.error }}</small>
+              <button
+                type="button"
+                class="trip-spec-open"
+                :disabled="checkingCsx"
+                @click="checkCsx"
+              >
+                {{ checkingCsx ? 'Checking…' : 'Check CSX' }}
+              </button>
+            </dd>
+          </div>
+        </div>
+        <p
+          v-if="csxError"
+          class="banner err mx-4 mb-3"
+          role="alert"
+        >
+          <span aria-hidden="true">✕</span>
+          <span>{{ csxError }}</span>
+        </p>
 
         <div
           class="section-label"

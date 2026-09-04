@@ -31,6 +31,7 @@ const schema = z.object({
   mainPhone: usPhone,
   contactName: z.string().trim().max(120).nullish(),
   contactPhone: usPhone,
+  shipcsxTerminal: z.string().trim().max(120).nullish(),
 }).refine(body => Object.values(body).some(value => value !== undefined), {
   message: 'Nothing to update.',
 })
@@ -76,6 +77,7 @@ export default defineEventHandler(async (event) => {
       ...(body.mainPhone !== undefined ? { mainPhone: body.mainPhone ? toE164(body.mainPhone) : null } : {}),
       ...(body.contactName !== undefined ? { contactName: body.contactName ?? null } : {}),
       ...(body.contactPhone !== undefined ? { contactPhone: body.contactPhone ? toE164(body.contactPhone) : null } : {}),
+      ...(body.shipcsxTerminal !== undefined ? { shipcsxTerminal: body.shipcsxTerminal ?? null } : {}),
       ...(body.boundary !== undefined ? { boundary: body.boundary } : {}),
       normalizedAddress: normalizeAddress(nextAddress),
       updatedAt: new Date(),

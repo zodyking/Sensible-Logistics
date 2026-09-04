@@ -3,7 +3,7 @@ import { ACTIVE_POOL_LABELS, CONTAINER_TYPES, CONTAINER_TYPE_LABELS, EQUIPMENT_T
 import type { ContainerType, EquipmentType, TripKind } from '#shared/utils/domain'
 import { PICKUP_STEPS, pickupSteps } from '#shared/utils/pickup-steps'
 import type { PickupStep } from '#shared/utils/pickup-steps'
-import { mergeSiteContainers } from '#shared/utils/pickup-inventory'
+import { mergeCsxReleases, mergeSiteContainers } from '#shared/utils/pickup-inventory'
 import { filterLocations } from '#shared/utils/location-search'
 import {
   formatChassisNumber,
@@ -26,12 +26,14 @@ type YardBox = {
   id: string
   number: string
   numberNormalized?: string | null
-  containerType: ContainerType
-  equipmentType: EquipmentType
+  containerType: ContainerType | null
+  equipmentType: EquipmentType | null
   isLoaded: boolean
   sealNumber?: string | null
   currentChassisId?: string | null
   chassisNumber?: string | null
+  pickupNumber?: string | null
+  csxRelease?: boolean
 }
 
 type YardChassis = {
@@ -122,6 +124,7 @@ const originOptions = computed(() =>
 const inventory = ref<{
   containers: YardBox[]
   chassis: YardChassis[]
+  csxReleases?: YardBox[]
 } | null>(null)
 const inventoryPending = ref(false)
 const inventoryQuery = ref('')
@@ -168,13 +171,18 @@ watch(originLocationId, async (id) => {
 })
 
 const yardContainers = computed(() => {
-  const base = mergeSiteContainers(originContainers.value, inventory.value?.containers ?? [])
+  const onSite = mergeSiteContainers(originContainers.value, inventory.value?.containers ?? [])
+  const base = mergeCsxReleases(onSite, inventory.value?.csxReleases ?? [])
   const needle = inventoryQuery.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
   if (!needle) return base
   return base.filter(item =>
-    (item.numberNormalized || item.number).toUpperCase().replace(/[^A-Z0-9]/g, '').includes(needle),
+    (item.numberNormalized || item.number).toUpperCase().replace(/[^A-Z0-9]/g, '').includes(needle)
+    || (item.pickupNumber ?? '').toUpperCase().includes(needle),
   )
 })
+
+const csxYardContainers = computed(() => yardContainers.value.filter(item => item.csxRelease))
+const siteYardContainers = computed(() => yardContainers.value.filter(item => !item.csxRelease))
 
 const yardChassis = computed(() => {
   const items = inventory.value?.chassis ?? []
@@ -416,6 +424,7 @@ async function selectYardContainer(item: YardContainer) {
   sealNumber.value = item.sealNumber ?? ''
   chassisId.value = item.currentChassisId ?? null
   chassisNumber.value = item.chassisNumber ? maskChassisInput(item.chassisNumber) : ''
+  if (item.csxRelease || item.id.startsWith('csx:')) return
   if (item.currentChassisId && item.chassisNumber && item.sealNumber != null) return
   try {
     const detail = await $fetch<{
@@ -1048,11 +1057,46 @@ async function onPhoto(dataUrl: string) {
         Loading what’s on site…
       </p>
 
-      <template v-if="pickupKind === 'CONTAINER' && yardContainers.length">
+      <template v-if="pickupKind === 'CONTAINER' && csxYardContainers.length">
+        <span class="wiz-label">CSX empties</span>
+        <div class="wiz-group">
+          <button
+            v-for="item in csxYardContainers"
+            :key="item.id"
+            type="button"
+            class="wiz-pick"
+            :aria-pressed="selectedYardId === item.id"
+            @click="pickYardContainer(item)"
+          >
+            <span class="wiz-pick-ico">
+              <EquipmentIcon
+                name="container"
+                :size="34"
+              />
+            </span>
+            <span class="wiz-pick-main">
+              <b>{{ formatContainerNumber(item.numberNormalized || item.number) }}</b>
+              <small>Pickup {{ item.pickupNumber }} · Empty</small>
+            </span>
+            <span
+              v-if="selectedYardId === item.id"
+              class="wiz-check"
+              aria-hidden="true"
+            >✓</span>
+            <span
+              v-else
+              class="wiz-chev"
+              aria-hidden="true"
+            >›</span>
+          </button>
+        </div>
+      </template>
+
+      <template v-if="pickupKind === 'CONTAINER' && siteYardContainers.length">
         <span class="wiz-label">{{ swapMode ? (originName ? `On site at ${originName}` : 'On site at drop-off') : 'On site now' }}</span>
         <div class="wiz-group">
           <button
-            v-for="item in yardContainers"
+            v-for="item in siteYardContainers"
             :key="item.id"
             type="button"
             class="wiz-pick"
@@ -1124,7 +1168,7 @@ async function onPhoto(dataUrl: string) {
       </template>
 
       <EmptyState
-        v-else-if="!inventoryPending"
+        v-if="!inventoryPending && ((pickupKind === 'BARE_CHASSIS' && !yardChassis.length) || (pickupKind === 'CONTAINER' && !yardContainers.length))"
         glyph="▦"
         :title="pickupKind === 'BARE_CHASSIS' ? 'No chassis on site' : 'No containers on site'"
         :description="inventoryQuery.trim()

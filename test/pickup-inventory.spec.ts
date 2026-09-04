@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mergeSiteContainers } from '../shared/utils/pickup-inventory'
+import { mergeCsxReleases, mergeSiteContainers } from '../shared/utils/pickup-inventory'
 
 describe('pickup site inventory', () => {
   it('unions location and inventory rows so a box only in one list still appears', () => {
@@ -21,5 +21,16 @@ describe('pickup site inventory', () => {
       [{ id: 'load', isLoaded: true }],
     )
     expect(merged.map(item => item.id)).toEqual(['empty', 'load'])
+  })
+
+  it('appends open CSX releases that are not already on site', () => {
+    const merged = mergeCsxReleases(
+      [{ id: 'a', numberNormalized: 'KOSU495338' }],
+      [
+        { id: 'csx:1', numberNormalized: 'KOSU495338', pickupNumber: 'DUP' },
+        { id: 'csx:2', numberNormalized: 'TCLU1234567', pickupNumber: 'PKP1' },
+      ],
+    )
+    expect(merged.map(item => item.id)).toEqual(['a', 'csx:2'])
   })
 })

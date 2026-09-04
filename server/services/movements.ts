@@ -14,6 +14,7 @@ import { claimContainerForPickup, nextTripReference, releasePickupClaim } from '
 import { eventExists, recordEvent } from './events'
 import { resolvePlacement, writePlacement, type GeoPlacementInput } from './placements'
 import { locationIdsAtSameAddress } from './location-sites'
+import { claimCsxReleaseForTrip, confirmCsxReleaseForTrip, reopenCsxReleaseForTrip } from './csx-releases'
 import type { AuthContext } from '../utils/session'
 import { formatContainerNumber, normalizeContainerNumber } from '#shared/utils/iso6346'
 import type { ContainerStatus, TripKind } from '#shared/utils/domain'
@@ -225,9 +226,27 @@ export async function startPickup(
       { activeMovementId: trip.id },
     )
 
-    const [container] = await tx.select().from(containers).where(eq(containers.id, claim.container.id)).limit(1)
+    const release = await claimCsxReleaseForTrip(tx, {
+      companyId: auth.companyId,
+      originLocationId: input.originLocationId ?? null,
+      containerNumber: claim.container.numberNormalized || claim.container.number,
+      containerId: claim.container.id,
+      tripId: trip.id,
+    })
+    if (release?.pickupNumber) {
+      await tx
+        .update(trips)
+        .set({
+          referenceNumbers: { ...trip.referenceNumbers, csxPickup: release.pickupNumber },
+          updatedAt: new Date(),
+        })
+        .where(eq(trips.id, trip.id))
+    }
 
-    return { trip, container: container!, outcome: claim.outcome, replayed: false }
+    const [container] = await tx.select().from(containers).where(eq(containers.id, claim.container.id)).limit(1)
+    const [freshTrip] = await tx.select().from(trips).where(eq(trips.id, trip.id)).limit(1)
+
+    return { trip: freshTrip ?? trip, container: container!, outcome: claim.outcome, replayed: false }
   })
 }
 
@@ -484,6 +503,25 @@ export async function confirmPickup(
 
     const [container] = await tx.select().from(containers).where(eq(containers.id, trip.containerId)).limit(1)
 
+    const release = await confirmCsxReleaseForTrip(tx, {
+      companyId: auth.companyId,
+      tripId: trip.id,
+      originLocationId: trip.originLocationId,
+      containerNumber: container?.numberNormalized || container?.number,
+      containerId: trip.containerId,
+    })
+    if (release?.pickupNumber) {
+      const [withRef] = await tx
+        .update(trips)
+        .set({
+          referenceNumbers: { ...(updatedTrip?.referenceNumbers ?? trip.referenceNumbers), csxPickup: release.pickupNumber },
+          updatedAt: now,
+        })
+        .where(eq(trips.id, trip.id))
+        .returning()
+      return { trip: withRef ?? updatedTrip!, container: container!, replayed: false }
+    }
+
     return { trip: updatedTrip!, container: container!, replayed: false }
   })
 }
@@ -708,6 +746,7 @@ export async function cancelPickup(
       swapPairTripId: null,
       updatedAt: now,
     }
+    await reopenCsxReleaseForTrip(tx, auth.companyId, trip.id)
     await discardTrip(tx, auth.companyId, trip.id)
 
     const [otherLive] = await tx

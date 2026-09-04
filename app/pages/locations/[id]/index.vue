@@ -9,7 +9,45 @@ setPageLayout(user.value?.role === 'ADMIN' ? 'admin' : 'default')
 const route = useRoute()
 const locationId = computed(() => String(route.params.id))
 
-const { data, status, error } = await useFetch(() => `/api/locations/${locationId.value}`)
+const { data, status, error, refresh } = await useFetch(() => `/api/locations/${locationId.value}`)
+const checkingCsx = ref(false)
+const csxError = ref('')
+
+const isTerminus = computed(() => {
+  const type = data.value?.location.type
+  return type === 'MARINE_TERMINAL' || type === 'RAIL_TERMINAL'
+})
+const isCustomer = computed(() => data.value?.location.type === 'CUSTOMER')
+
+function snapshotFor(containerId: string) {
+  return data.value?.csxSnapshots?.find(row => row.containerId === containerId) ?? null
+}
+
+async function checkLocationCsx() {
+  if (checkingCsx.value) return
+  checkingCsx.value = true
+  csxError.value = ''
+  try {
+    await $fetch(`/api/locations/${locationId.value}/shipcsx`, { method: 'POST' })
+    await refresh()
+  }
+  catch (err) {
+    csxError.value = apiErrorMessage(err, 'Could not check ShipCSX.')
+  }
+  finally {
+    checkingCsx.value = false
+  }
+}
+
+async function cancelRelease(releaseId: string) {
+  try {
+    await $fetch(`/api/locations/${locationId.value}/csx-releases/${releaseId}`, { method: 'DELETE' })
+    await refresh()
+  }
+  catch (err) {
+    csxError.value = apiErrorMessage(err, 'Could not cancel that release.')
+  }
+}
 
 useHead({ title: () => data.value?.location.name ?? 'Location' })
 
@@ -144,12 +182,37 @@ async function confirmDelete() {
         :occupancy="data.occupancy"
       />
 
+      <p
+        v-if="csxError"
+        class="banner err"
+        role="alert"
+      >
+        <span aria-hidden="true">✕</span>
+        <span>{{ csxError }}</span>
+      </p>
+
       <NuxtLink
         :to="`/locations/${locationId}/add`"
         class="btn-dark mt-4 w-full"
       >
         Add Equipment
       </NuxtLink>
+      <NuxtLink
+        v-if="isTerminus"
+        :to="`/locations/${locationId}/csx`"
+        class="btn-ghost mt-2 w-full"
+      >
+        Upload CSX pickup list
+      </NuxtLink>
+      <button
+        v-if="isCustomer && data.containers.length"
+        type="button"
+        class="btn-ghost mt-2 w-full"
+        :disabled="checkingCsx"
+        @click="checkLocationCsx"
+      >
+        {{ checkingCsx ? 'Checking ShipCSX…' : 'Check CSX' }}
+      </button>
       <NuxtLink
         v-if="!data.location.isUncategorized && !data.location.boundary"
         :to="`/locations/${locationId}/yard/setup`"
@@ -164,6 +227,40 @@ async function confirmDelete() {
       >
         Yard
       </NuxtLink>
+
+      <template v-if="isTerminus">
+        <div class="section-label mt-6">
+          <span>CSX empties · {{ data.csxReleases?.length ?? 0 }}</span>
+        </div>
+        <div
+          v-if="data.csxReleases?.length"
+          class="card rowlist"
+        >
+          <div
+            v-for="item in data.csxReleases"
+            :key="item.id"
+            class="row"
+          >
+            <span class="row-main">
+              <b class="font-mono">{{ formatContainerNumber(item.containerNumber) || item.containerNumber }}</b>
+              <small>Pickup {{ item.pickupNumber }}</small>
+            </span>
+            <button
+              type="button"
+              class="trip-spec-open"
+              @click="cancelRelease(item.id)"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+        <EmptyState
+          v-else
+          glyph="┼"
+          title="No CSX pickups listed"
+          description="Empties to pull from this terminal go here. They do not stay on the yard after a return."
+        />
+      </template>
 
       <div class="section-label mt-6">
         <span>On site · {{ data.occupancy }}</span>
@@ -191,6 +288,9 @@ async function confirmDelete() {
               · {{ EQUIPMENT_TYPE_SHORT[item.equipmentType] }}
               · {{ item.isLoaded ? 'Loaded' : 'Empty' }}
               <template v-if="item.chassisNumber"> · {{ formatChassisNumber(item.chassisNumber) }}</template>
+              <template v-if="snapshotFor(item.id)?.inGateReadiness">
+                · {{ snapshotFor(item.id)?.inGateReadiness }}
+              </template>
             </small>
           </span>
           <span

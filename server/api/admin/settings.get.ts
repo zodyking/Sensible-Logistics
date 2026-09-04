@@ -4,6 +4,7 @@ import { useGeocoder } from '../../services/geocoding'
 import { useMail } from '../../services/mail'
 import { useOcrService } from '../../services/ocr'
 import { useObjectStorage } from '../../services/storage'
+import { shipcsxHealth } from '../../services/shipcsx-poll'
 import { requireAdmin } from '../../utils/session'
 
 /**
@@ -45,10 +46,11 @@ export default defineEventHandler(async (event) => {
     .where(eq(companies.id, auth.companyId))
     .limit(1)
 
-  const [ocr, storage, geocoder] = await Promise.all([
+  const [ocr, storage, geocoder, shipcsx] = await Promise.all([
     useOcrService().healthCheck(),
     useObjectStorage().healthCheck(),
     useGeocoder().healthCheck(),
+    shipcsxHealth(db, auth.companyId),
   ])
 
   const [adminCount] = await db
@@ -75,6 +77,16 @@ export default defineEventHandler(async (event) => {
       { key: 'tiles', name: 'Planetiler / PMTiles vector tiles', healthy: false, detail: 'Regional tile archive not generated yet.', phase: 'Phase 2' },
       { key: 'realtime', name: 'WebSocket live updates', healthy: false, detail: 'Polling is used in Phase 1.', phase: 'Phase 2' },
       { key: 'jobs', name: 'pg-boss background jobs', healthy: false, detail: 'Job queue not enabled in Phase 1.', phase: 'Phase 2' },
+      {
+        key: 'shipcsx',
+        name: 'ShipCSX lookup',
+        healthy: !shipcsx.lastError,
+        detail: shipcsx.lastError
+          || (shipcsx.lastFinishedAt
+            ? `Last check ${shipcsx.lastFinishedAt.toISOString()} · ${shipcsx.checkedCount} boxes`
+            : 'No poll yet. Enable NUXT_SHIPCSX_POLL or check a container.'),
+        phase: 'Phase 1',
+      },
     ],
     retention: {
       timecardMonths: 6,

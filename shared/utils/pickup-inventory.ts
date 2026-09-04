@@ -14,3 +14,17 @@ export function mergeSiteContainers<T extends { id: string }>(
   }
   return [...byId.values()]
 }
+
+export function mergeCsxReleases<T extends { id: string, numberNormalized?: string | null, number?: string }>(
+  onSite: T[],
+  releases: T[],
+): T[] {
+  const seen = new Set(onSite.map(item => (item.numberNormalized || item.number || item.id).toUpperCase().replace(/[^A-Z0-9]/g, '')))
+  const extra = releases.filter((item) => {
+    const key = (item.numberNormalized || item.number || item.id).toUpperCase().replace(/[^A-Z0-9]/g, '')
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+  return [...onSite, ...extra]
+}

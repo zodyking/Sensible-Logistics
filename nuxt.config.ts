@@ -81,6 +81,13 @@ export default defineNuxtConfig({
     s3Bucket: '',
     s3AccessKeyId: '',
     s3SecretAccessKey: '',
+    shipcsx: {
+      profileDir: '',
+      defaultTerminal: '',
+      email: '',
+      password: '',
+      poll: '',
+    },
     public: {
       appName: 'Yard Manager',
       mapTilesUrl: '',
