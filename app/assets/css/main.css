@@ -5109,6 +5109,37 @@
     margin-bottom: var(--s4);
   }
 
+  .csx-block {
+    padding: var(--s4);
+    border-top: 1px solid var(--color-line-200);
+  }
+
+  .csx-block-head {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: var(--s3);
+  }
+
+  .csx-block-head strong {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--color-ink-900);
+  }
+
+  .csx-block-meta {
+    margin: 0 0 var(--s3);
+    font-size: var(--text-xs);
+    color: var(--color-ink-500);
+  }
+
+  .csx-block-note {
+    margin: 0 0 var(--s3);
+    font-size: var(--text-xs);
+    line-height: 1.4;
+    color: var(--color-ink-600);
+  }
+
   .trip-spec {
     margin: 0;
     border-top: 1px solid var(--color-line-200);

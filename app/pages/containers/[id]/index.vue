@@ -7,6 +7,7 @@ import {
 } from '#shared/utils/domain'
 import { formatChassisNumber, formatContainerNumber } from '#shared/utils/iso6346'
 import { visibleTimelineEntries } from '#shared/utils/timeline'
+import { shipcsxMetaLine, shipcsxPublicError, shipcsxStatusLabel } from '#shared/utils/shipcsx-status'
 
 const route = useRoute()
 const { user } = useUserSession()
@@ -24,7 +25,7 @@ async function checkCsx() {
     await refresh()
   }
   catch (err) {
-    csxError.value = apiErrorMessage(err, 'Could not check ShipCSX.')
+    csxError.value = shipcsxPublicError(apiErrorMessage(err, 'Could not check ShipCSX.'))
   }
   finally {
     checkingCsx.value = false
@@ -104,6 +105,13 @@ const serviceCaption = computed(() => {
   return 'Pickups, drop-offs, and chassis changes for the current service life.'
 })
 const timeline = computed(() => visibleTimelineEntries(data.value?.timeline ?? []))
+const csxStatus = computed(() => shipcsxStatusLabel(data.value?.shipcsx))
+const csxMeta = computed(() => shipcsxMetaLine(data.value?.shipcsx))
+const csxNote = computed(() => {
+  if (csxError.value) return csxError.value
+  const raw = data.value?.shipcsx?.error
+  return raw ? shipcsxPublicError(raw) : ''
+})
 </script>
 
 <template>
@@ -204,34 +212,33 @@ const timeline = computed(() => visibleTimelineEntries(data.value?.timeline ?? [
           </NuxtLink>
         </div>
 
-        <div class="trip-spec">
-          <div class="trip-spec-row">
-            <dt>ShipCSX</dt>
-            <dd>
-              <strong>{{ data.shipcsx?.inGateReadiness || data.shipcsx?.resultTab?.replace('_', '-') || 'Not checked' }}</strong>
-              <small v-if="data.shipcsx?.waybillDate">Waybill {{ data.shipcsx.waybillDate }}</small>
-              <small v-if="data.shipcsx?.gateWindow">{{ data.shipcsx.gateWindow }}</small>
-              <small v-if="data.shipcsx?.loadEmpty">{{ data.shipcsx.loadEmpty }}</small>
-              <small v-if="data.shipcsx?.error">{{ data.shipcsx.error }}</small>
-              <button
-                type="button"
-                class="trip-spec-open"
-                :disabled="checkingCsx"
-                @click="checkCsx"
-              >
-                {{ checkingCsx ? 'Checking…' : 'Check CSX' }}
-              </button>
-            </dd>
+        <div class="csx-block">
+          <div class="csx-block-head">
+            <span class="eyebrow">ShipCSX</span>
+            <strong>{{ csxStatus }}</strong>
           </div>
+          <p
+            v-if="csxMeta"
+            class="csx-block-meta"
+          >
+            {{ csxMeta }}
+          </p>
+          <p
+            v-if="csxNote"
+            class="csx-block-note"
+            role="status"
+          >
+            {{ csxNote }}
+          </p>
+          <button
+            type="button"
+            class="btn-ghost w-full"
+            :disabled="checkingCsx"
+            @click="checkCsx"
+          >
+            {{ checkingCsx ? 'Checking…' : (data.shipcsx ? 'Check again' : 'Check CSX') }}
+          </button>
         </div>
-        <p
-          v-if="csxError"
-          class="banner err mx-4 mb-3"
-          role="alert"
-        >
-          <span aria-hidden="true">✕</span>
-          <span>{{ csxError }}</span>
-        </p>
 
         <div
           class="section-label"
