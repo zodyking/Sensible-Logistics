@@ -220,6 +220,14 @@ const capturedPhoto = ref('')
 const readingPhoto = ref(false)
 const ocrMessage = ref('')
 const { conflict: chassisConflict, releasing: chassisReleasing, promptText: chassisConflictText, decide: decideChassisRelease, releaseIfNeeded } = useChassisReleasePrompt()
+const {
+  hold: driverHold,
+  releasing: driverReleasing,
+  promptText: driverHoldText,
+  decide: decideDriverRelease,
+  releaseIfNeeded: releaseDriverIfNeeded,
+} = useDriverReleasePrompt()
+const promptedDriverHold = ref('')
 
 /* --- ISO 6346 validation (mirrors the server implementation) ----- */
 const normalized = computed(() => normalizeContainerNumber(rawNumber.value))
@@ -238,6 +246,16 @@ async function checkPool() {
     const found = resolution.value.container
     if (found?.containerType) containerType.value = found.containerType
     if (found?.equipmentType) equipmentType.value = found.equipmentType
+    if (resolution.value.outcome === 'CONFLICT' && resolution.value.holder && found?.id) {
+      if (promptedDriverHold.value !== found.id) {
+        promptedDriverHold.value = found.id
+        const released = await releaseDriverIfNeeded({
+          containerId: found.id,
+          driverName: resolution.value.holder.driverName,
+        })
+        if (released) resolution.value = await resolveNumber(normalized.value)
+      }
+    }
   }
   catch (error) {
     errorMessage.value = apiErrorMessage(error, 'Could not check the active pool.')
@@ -249,6 +267,7 @@ async function checkPool() {
 
 watch(normalized, (value) => {
   resolution.value = null
+  promptedDriverHold.value = ''
   if (value.length === 11) checkPool()
 }, { immediate: true })
 
@@ -1350,8 +1369,7 @@ async function onPhoto(dataUrl: string) {
             </div>
           </div>
           <p class="mt-4 text-sm text-[var(--color-ink-500)]">
-            A second pickup cannot be started for this container. Contact dispatch or an administrator to
-            resolve the conflict.
+            Confirm release to take this container, or leave it with {{ resolution.holder.driverName }}.
           </p>
         </div>
 
@@ -1601,6 +1619,14 @@ async function onPhoto(dataUrl: string) {
       :busy="chassisReleasing"
       @close="decideChassisRelease(false)"
       @confirm="decideChassisRelease(true)"
+    />
+    <ChassisReleaseSheet
+      :open="Boolean(driverHold)"
+      title="Container attached to a driver"
+      :message="driverHoldText"
+      :busy="driverReleasing"
+      @close="decideDriverRelease(false)"
+      @confirm="decideDriverRelease(true)"
     />
   </section>
 </template>

@@ -1,4 +1,4 @@
-import { and, eq, inArray, ne, sql } from 'drizzle-orm'
+import { and, eq, inArray, ne, or, sql } from 'drizzle-orm'
 import type { Database, DbExecutor } from '../utils/db'
 import {
   chassis as chassisTable,
@@ -768,6 +768,66 @@ export async function cancelPickup(
 
     return { trip: snapshot }
   })
+}
+
+/**
+ * Take a container off a live driver claim so it can be scanned into a yard
+ * or started on a new pickup. Cancels the open trip when one exists.
+ */
+export async function releaseContainerFromDriver(
+  db: Database,
+  auth: AuthContext,
+  containerId: string,
+): Promise<{ ok: true, containerId: string }> {
+  const [container] = await db
+    .select()
+    .from(containers)
+    .where(and(eq(containers.id, containerId), eq(containers.companyId, auth.companyId)))
+    .limit(1)
+
+  if (!container) {
+    throw createError({ statusCode: 404, statusMessage: 'Container not found.' })
+  }
+
+  const [live] = await db
+    .select()
+    .from(trips)
+    .where(and(
+      eq(trips.companyId, auth.companyId),
+      inArray(trips.status, [...LIVE_TRIP_STATUSES]),
+      or(
+        eq(trips.containerId, containerId),
+        container.activeMovementId ? eq(trips.id, container.activeMovementId) : sql`false`,
+      ),
+    ))
+    .limit(1)
+
+  if (live?.driverId) {
+    await cancelPickup(db, {
+      ...auth,
+      driverId: live.driverId,
+    }, {
+      eventId: crypto.randomUUID(),
+      tripId: live.id,
+      reason: 'Released so another driver could scan the container.',
+    })
+    return { ok: true, containerId }
+  }
+
+  const now = new Date()
+  await db
+    .update(containers)
+    .set({
+      currentDriverId: null,
+      activeMovementId: null,
+      activePoolState: container.currentLocationId ? 'AT_LOCATION' : 'AVAILABLE',
+      lastActivityAt: now,
+      updatedAt: now,
+      version: sql`${containers.version} + 1`,
+    })
+    .where(and(eq(containers.id, containerId), eq(containers.companyId, auth.companyId)))
+
+  return { ok: true, containerId }
 }
 
 export interface CompleteDropoffInput {

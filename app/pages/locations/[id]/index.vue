@@ -282,7 +282,16 @@ async function confirmDelete() {
             aria-hidden="true"
           />
           <span class="row-main">
-            <b class="font-mono">{{ formatContainerNumber(item.number) || item.number }}</b>
+            <span class="row-titleline">
+              <b class="font-mono">{{ formatContainerNumber(item.number) || item.number }}</b>
+              <span
+                v-if="item.occupancy"
+                class="row-occupancy"
+              >
+                <em>{{ item.occupancy.daysLabel }}</em>
+                <small>{{ item.occupancy.pickedUpLabel }}</small>
+              </span>
+            </span>
             <small>
               {{ CONTAINER_TYPE_LABELS[item.containerType] }}
               · {{ EQUIPMENT_TYPE_SHORT[item.equipmentType] }}
