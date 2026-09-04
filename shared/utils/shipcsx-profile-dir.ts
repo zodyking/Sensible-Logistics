@@ -3,6 +3,14 @@ import { resolve } from 'node:path'
 /** Last-resort profile path. The app user can write `/tmp` in the Docker image. */
 export const SHIPCSX_TMP_PROFILE_DIR = '/tmp/shipcsx-profile'
 
+/** Docker WORKDIR is `/app` and is root-owned — never mkdir here. */
+export function isUnwritableAppProfileDir(dir: string, cwd = process.cwd()): boolean {
+  const normalized = resolve(dir)
+  if (normalized === '/app' || normalized.startsWith('/app/')) return true
+  const root = resolve(cwd)
+  return normalized === resolve(root, '.data') || normalized.startsWith(`${resolve(root, '.data')}/`)
+}
+
 export const SHIPCSX_CHROMIUM_ARGS = [
   '--disable-blink-features=AutomationControlled',
   '--no-sandbox',
@@ -21,14 +29,19 @@ export function resolveShipcsxProfileDir(options: {
   home?: string | null
   cwd?: string | null
 } = {}): string {
+  const cwd = options.cwd ?? process.cwd()
   const configured = options.configured?.trim()
   if (configured) {
-    return configured.startsWith('/')
+    const absolute = configured.startsWith('/')
       ? configured
-      : resolve(options.cwd ?? process.cwd(), configured)
+      : resolve(cwd, configured)
+    if (!isUnwritableAppProfileDir(absolute, cwd)) return absolute
   }
   const home = (options.home ?? process.env.HOME ?? '').trim()
-  if (home && home !== '/') return resolve(home, 'shipcsx-profile')
+  if (home && home !== '/') {
+    const underHome = resolve(home, 'shipcsx-profile')
+    if (!isUnwritableAppProfileDir(underHome, cwd)) return underHome
+  }
   return SHIPCSX_TMP_PROFILE_DIR
 }
 
@@ -39,5 +52,5 @@ export function shipcsxProfileDirFallbacks(primary: string, home?: string | null
     homeDir && homeDir !== '/' ? resolve(homeDir, 'shipcsx-profile') : '',
     SHIPCSX_TMP_PROFILE_DIR,
   ].filter(Boolean)
-  return [...new Set([primary, ...extras])]
+  return [...new Set([primary, ...extras])].filter(dir => !isUnwritableAppProfileDir(dir))
 }
