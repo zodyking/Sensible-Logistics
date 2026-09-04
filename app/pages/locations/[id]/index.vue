@@ -2,6 +2,7 @@
 import { CONTAINER_TYPE_LABELS, EQUIPMENT_TYPE_SHORT, LOCATION_TYPE_LABELS } from '#shared/utils/domain'
 import { formatChassisNumber, formatContainerNumber } from '#shared/utils/iso6346'
 import { formatPhoneDisplay, toE164 } from '#shared/utils/phone'
+import { shipcsxPublicError } from '#shared/utils/shipcsx-status'
 
 const { user } = useUserSession()
 setPageLayout(user.value?.role === 'ADMIN' ? 'admin' : 'default')
@@ -32,7 +33,7 @@ async function checkLocationCsx() {
     await refresh()
   }
   catch (err) {
-    csxError.value = apiErrorMessage(err, 'Could not check ShipCSX.')
+    csxError.value = shipcsxPublicError(apiErrorMessage(err, 'Could not check ShipCSX.'))
   }
   finally {
     checkingCsx.value = false

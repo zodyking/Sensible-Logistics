@@ -150,17 +150,33 @@ export async function checkShipcsxForItems(
 
   const saved = []
   for (const [terminal, batch] of byTerminal) {
-    const hits = await lookupShipcsxShipments({
-      terminal,
-      items: batch.map(item => ({
-        equipmentNumber: item.equipmentNumber,
+    try {
+      const hits = await lookupShipcsxShipments({
+        terminal,
+        items: batch.map(item => ({
+          equipmentNumber: item.equipmentNumber,
+          containerId: item.containerId,
+        })),
+      })
+      saved.push(...await recordShipcsxHits(db, companyId, hits.map(hit => ({
+        ...hit,
+        terminal,
+      }))))
+    }
+    catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not check ShipCSX.'
+      saved.push(...await recordShipcsxHits(db, companyId, batch.map(item => ({
         containerId: item.containerId,
-      })),
-    })
-    saved.push(...await recordShipcsxHits(db, companyId, hits.map(hit => ({
-      ...hit,
-      terminal,
-    }))))
+        equipmentNumber: item.equipmentNumber,
+        terminal,
+        resultTab: 'NOT_FOUND' as const,
+        loadEmpty: null,
+        waybillDate: null,
+        inGateReadiness: null,
+        gateWindow: null,
+        error: message,
+      }))))
+    }
   }
   return saved
 }

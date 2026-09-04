@@ -84,7 +84,7 @@ USER nuxt
 EXPOSE 3847
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
-  CMD wget --quiet --tries=1 --spider http://127.0.0.1:3847/api/health || exit 1
+  CMD wget --quiet --tries=1 -O /dev/null http://127.0.0.1:3847/api/health || exit 1
 
 ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["node", "/app/.output/server/index.mjs"]
