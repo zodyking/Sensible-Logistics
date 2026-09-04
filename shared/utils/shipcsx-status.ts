@@ -41,8 +41,8 @@ export function shipcsxPublicError(raw: string | null | undefined): string {
   if (/not in the dropdown|could not select/i.test(text)) {
     return 'That ShipCSX terminal name does not match the CSX list. Edit the rail location and use the name from the dropdown.'
   }
-  if (/terminal name|default_terminal|NUXT_SHIPCSX_DEFAULT_TERMINAL/i.test(text)) {
-    return 'Set a ShipCSX terminal name on the rail location.'
+  if (/terminal name|default_terminal|NUXT_SHIPCSX_DEFAULT_TERMINAL|rail location/i.test(text)) {
+    return 'Choose a CSX location and check again.'
   }
   if (/challenged|captcha|blocked/i.test(text)) {
     return 'ShipCSX blocked this check. Try again later.'

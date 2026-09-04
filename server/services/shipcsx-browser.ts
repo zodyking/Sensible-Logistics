@@ -2,6 +2,7 @@ import {
   SHIPCSX_BATCH_SIZE,
   SHIPCSX_LOOKUP_URL,
   SHIPCSX_REFERENCE,
+  pickShipcsxTerminal,
   chunkShipcsxEquipment,
   cleanShipcsxTerminalNames,
   matchLookupCard,
@@ -447,8 +448,7 @@ export async function lookupShipcsxShipments(input: {
   reference?: string
   onStep?: ShipcsxLookupStepHandler
 }): Promise<ShipcsxLookupHit[]> {
-  const terminal = input.terminal.trim()
-  if (!terminal) throw new Error('Set a ShipCSX terminal name on the rail location or NUXT_SHIPCSX_DEFAULT_TERMINAL.')
+  const terminal = pickShipcsxTerminal(input.terminal)
   const items = input.items.filter(item => normalizeContainerNumber(item.equipmentNumber))
   if (!items.length) return []
   const reference = (input.reference ?? SHIPCSX_REFERENCE).trim() || SHIPCSX_REFERENCE
@@ -483,5 +483,5 @@ export async function lookupShipcsxShipments(input: {
 }
 
 export function defaultShipcsxTerminal(): string {
-  return config().defaultTerminal
+  return pickShipcsxTerminal(config().defaultTerminal)
 }

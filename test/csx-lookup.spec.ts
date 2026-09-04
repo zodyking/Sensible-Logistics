@@ -10,6 +10,8 @@ import {
   shipcsxPageLooksLikeChallenge,
   shipcsxPageLooksLikeLogin,
   cleanShipcsxTerminalNames,
+  pickShipcsxTerminal,
+  resolveShipcsxTerminalName,
   SHIPCSX_TERMINALS,
 } from '../shared/utils/csx-lookup'
 
@@ -79,6 +81,18 @@ describe('ShipCSX terminal names', () => {
   it('matches a stored rail name onto the fixed facility list', () => {
     expect(matchShipcsxTerminalOption([...SHIPCSX_TERMINALS], 'south kearny, nj')).toBe('South Kearny')
     expect(matchShipcsxTerminalOption([...SHIPCSX_TERMINALS], 'Fairburn')).toBeNull()
+  })
+
+  it('defaults a missing rail location to North Bergen', () => {
+    expect(pickShipcsxTerminal(null)).toBe('North Bergen')
+    expect(pickShipcsxTerminal('NJ Yard')).toBe('North Bergen')
+    expect(pickShipcsxTerminal('Little Ferry')).toBe('Little Ferry')
+    expect(resolveShipcsxTerminalName({ destName: 'NJ Yard', destType: 'COMPANY_YARD' }))
+      .toBe('North Bergen')
+    expect(resolveShipcsxTerminalName({
+      destType: 'RAIL_TERMINAL',
+      destName: 'South Kearny',
+    })).toBe('South Kearny')
   })
 })
 describe('ShipCSX terminal option match', () => {

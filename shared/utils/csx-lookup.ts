@@ -8,6 +8,7 @@ export const SHIPCSX_TERMINALS = [
   'Elizabeth',
   'Newark',
 ] as const
+export type ShipcsxTerminalName = (typeof SHIPCSX_TERMINALS)[number]
 export const SHIPCSX_BATCH_SIZE = 3
 export const SHIPCSX_POLL_INTERVAL_MS = 30 * 60 * 1000
 /** Client + server wait for a live Playwright lookup (public search, no login). */
@@ -138,6 +139,35 @@ export function shipcsxEquipmentParts(equipmentNumber: string): ShipcsxEquipment
   const match = compact.match(/^([A-Z]{4})(\d{6})/)
   if (!match?.[1] || !match[2]) return null
   return { initial: match[1], number: match[2] }
+}
+
+/** Map a stored or typed name onto the five CSX facilities, else North Bergen. */
+export function pickShipcsxTerminal(wanted?: string | null): ShipcsxTerminalName {
+  const match = matchShipcsxTerminalOption([...SHIPCSX_TERMINALS], wanted ?? '')
+  return (match as ShipcsxTerminalName | null) ?? SHIPCSX_TERMINALS[0]
+}
+
+/** Prefer a live trip or rail name when it matches a CSX facility we check. */
+export function resolveShipcsxTerminalName(input: {
+  destTerminal?: string | null
+  destName?: string | null
+  destType?: string | null
+  railTerminal?: string | null
+  railName?: string | null
+  defaultTerminal?: string | null
+} = {}): ShipcsxTerminalName {
+  const candidates = [
+    input.destTerminal,
+    input.destType === 'RAIL_TERMINAL' ? input.destName : null,
+    input.railTerminal,
+    input.defaultTerminal,
+    input.railName,
+  ]
+  for (const value of candidates) {
+    const match = matchShipcsxTerminalOption([...SHIPCSX_TERMINALS], value || '')
+    if (match) return match as ShipcsxTerminalName
+  }
+  return SHIPCSX_TERMINALS[0]
 }
 
 /** Pick the ShipCSX dropdown label that matches the rail location's stored name. */
