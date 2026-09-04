@@ -52,6 +52,16 @@ async function bundleTrip(db: Db, trip: Trip) {
 
 type BundledTrip = Awaited<ReturnType<typeof bundleTrip>>
 
+function tripPrimaryAction(bundle: BundledTrip) {
+  if (bundle.trip.status === 'PICKUP_IN_PROGRESS') {
+    return { label: 'Continue pickup', to: `/pickups/new?trip=${bundle.trip.id}` }
+  }
+  if (!bundle.destination) {
+    return { label: 'Set drop-off', to: `/trips/${bundle.trip.id}/destination` }
+  }
+  return { label: 'Arrive', to: `/trips/${bundle.trip.id}/dropoff` }
+}
+
 function withPrimaryAction(bundle: BundledTrip, extraLive: BundledTrip | null) {
   const continuePickup = bundle.trip.status === 'PICKUP_IN_PROGRESS'
     ? bundle
@@ -66,9 +76,7 @@ function withPrimaryAction(bundle: BundledTrip, extraLive: BundledTrip | null) {
 
   return {
     ...bundle,
-    primaryAction: continuePickup
-      ? { label: 'Continue pickup', to: `/pickups/new?trip=${continuePickup.trip.id}` }
-      : { label: 'Arrive', to: `/trips/${arriveTrip.trip.id}/dropoff` },
+    primaryAction: tripPrimaryAction(continuePickup ?? arriveTrip),
   }
 }
 
@@ -100,9 +108,7 @@ export default defineEventHandler(async (event) => {
   const swapPartner = partner
     ? {
         ...partner,
-        primaryAction: partner.trip.status === 'PICKUP_IN_PROGRESS'
-          ? { label: 'Continue pickup', to: `/pickups/new?trip=${partner.trip.id}` }
-          : { label: 'Arrive', to: `/trips/${partner.trip.id}/dropoff` },
+        primaryAction: tripPrimaryAction(partner),
       }
     : null
 

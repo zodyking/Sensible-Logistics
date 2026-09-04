@@ -133,8 +133,8 @@ async function arrive() {
             @click="retainChassis = true"
           >
             <span class="wiz-pick-main">
-              <b>{{ data.trip.kind === 'BARE_CHASSIS' ? 'Keep with you' : 'Keep attached' }}</b>
-              <small>{{ data.trip.kind === 'BARE_CHASSIS' ? 'Stay assigned after this stop' : 'Chassis stays on the box' }}</small>
+              <b>{{ data.trip.kind === 'BARE_CHASSIS' ? 'Keep with you' : 'Drop container + chassis' }}</b>
+              <small>{{ data.trip.kind === 'BARE_CHASSIS' ? 'Stay assigned after this stop' : 'Both stay at this location' }}</small>
             </span>
             <span
               v-if="retainChassis === true"
@@ -154,8 +154,8 @@ async function arrive() {
             @click="retainChassis = false"
           >
             <span class="wiz-pick-main">
-              <b>{{ data.trip.kind === 'BARE_CHASSIS' ? 'Park here' : 'Unhook' }}</b>
-              <small>{{ data.trip.kind === 'BARE_CHASSIS' ? 'Leave the chassis at this location' : 'Chassis stays at this location' }}</small>
+              <b>{{ data.trip.kind === 'BARE_CHASSIS' ? 'Park here' : 'Drop container only' }}</b>
+              <small>{{ data.trip.kind === 'BARE_CHASSIS' ? 'Leave the chassis at this location' : 'You keep the chassis for the next move' }}</small>
             </span>
             <span
               v-if="retainChassis === false"

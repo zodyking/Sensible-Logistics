@@ -835,6 +835,60 @@ export async function releaseContainerFromDriver(
   return { ok: true, containerId }
 }
 
+async function continueChassisOnlyTrip(
+  tx: DbExecutor,
+  auth: AuthContext & { driverId: string },
+  input: { chassisId: string, originLocationId: string, now: Date },
+): Promise<Trip> {
+  const reference = await nextTripReference(tx, auth.companyId)
+  const [trip] = await tx
+    .insert(trips)
+    .values({
+      companyId: auth.companyId,
+      reference,
+      driverId: auth.driverId,
+      containerId: null,
+      chassisId: input.chassisId,
+      originLocationId: input.originLocationId,
+      destinationLocationId: null,
+      status: 'IN_TRANSIT',
+      kind: 'BARE_CHASSIS',
+      isLoaded: false,
+      pickedUpAt: input.now,
+    })
+    .returning()
+
+  if (!trip) {
+    throw createError({ statusCode: 500, statusMessage: 'Could not open the chassis movement.' })
+  }
+
+  await recordEvent(tx, {
+    id: crypto.randomUUID(),
+    companyId: auth.companyId,
+    containerId: null,
+    eventType: 'PICKUP_CONFIRMED',
+    occurredAt: input.now,
+    actorUserId: auth.userId,
+    actorDriverId: auth.driverId,
+    tripId: trip.id,
+    locationId: input.originLocationId,
+    chassisId: input.chassisId,
+    payload: { kind: 'BARE_CHASSIS', continuedFromDropoff: true },
+  })
+
+  await tx
+    .update(chassisTable)
+    .set({
+      currentContainerId: null,
+      currentLocationId: null,
+      status: 'IN_USE',
+      updatedAt: input.now,
+    })
+    .where(and(eq(chassisTable.id, input.chassisId), eq(chassisTable.companyId, auth.companyId)))
+
+  return trip
+}
+
 export interface CompleteDropoffInput {
   eventId: string
   tripId: string
@@ -859,7 +913,7 @@ export async function completeDropoff(
   db: Database,
   auth: AuthContext & { driverId: string },
   input: CompleteDropoffInput,
-): Promise<{ trip: Trip, container: Container | null, replayed: boolean, swapCompleted?: boolean }> {
+): Promise<{ trip: Trip, container: Container | null, replayed: boolean, swapCompleted?: boolean, followOnTrip?: Trip | null }> {
   return db.transaction(async (tx) => {
     if (await eventExists(tx, auth.companyId, input.eventId)) {
       const replayed = await loadTripByEvent(tx, auth.companyId, input.eventId)
@@ -881,6 +935,8 @@ export async function completeDropoff(
     const destination = await loadLocation(tx, auth.companyId, input.destinationLocationId)
     const isFinalRelease = dropoffCompletesServiceLife(destination.type)
     const containerStatus = containerStatusAfterDropoff(destination.type)
+    let followOnTrip: Trip | null = null
+    let keepChassisId: string | null = null
 
     await recordEvent(
       tx,
@@ -900,6 +956,7 @@ export async function completeDropoff(
         payload: {
           isFinalRelease,
           retainChassis: input.retainChassis,
+          keepChassisWithDriver: detachChassis,
           locationType: destination.type,
           containerStatus,
         },
@@ -926,15 +983,6 @@ export async function completeDropoff(
         // Chassis already moved onto the swap load — leave it in use.
       }
       else {
-        await tx
-          .update(chassisTable)
-          .set({
-            currentContainerId: null,
-            currentLocationId: input.destinationLocationId,
-            status: 'AVAILABLE',
-            updatedAt: now,
-          })
-          .where(and(eq(chassisTable.id, trip.chassisId), eq(chassisTable.companyId, auth.companyId)))
         await recordChassisHang(tx, auth, {
           containerId: trip.containerId,
           chassisId: trip.chassisId,
@@ -943,6 +991,16 @@ export async function completeDropoff(
           kind: 'DETACH',
           now,
         })
+        await tx
+          .update(chassisTable)
+          .set({
+            currentContainerId: null,
+            currentLocationId: null,
+            status: 'IN_USE',
+            updatedAt: now,
+          })
+          .where(and(eq(chassisTable.id, trip.chassisId), eq(chassisTable.companyId, auth.companyId)))
+        keepChassisId = trip.chassisId
       }
     }
 
@@ -1020,18 +1078,34 @@ export async function completeDropoff(
       .where(eq(trips.id, trip.id))
       .returning()
 
-    const [otherLive] = await tx
-      .select({ id: trips.id })
-      .from(trips)
-      .where(and(
-        eq(trips.companyId, auth.companyId),
-        eq(trips.driverId, auth.driverId),
-        inArray(trips.status, [...LIVE_TRIP_STATUSES]),
-        ne(trips.id, trip.id),
-      ))
-      .limit(1)
+    if (keepChassisId) {
+      followOnTrip = await continueChassisOnlyTrip(tx, auth, {
+        chassisId: keepChassisId,
+        originLocationId: input.destinationLocationId,
+        now,
+      })
+    }
 
-    if (!otherLive) {
+    const [otherLive] = followOnTrip
+      ? [{ id: followOnTrip.id }]
+      : await tx
+          .select({ id: trips.id })
+          .from(trips)
+          .where(and(
+            eq(trips.companyId, auth.companyId),
+            eq(trips.driverId, auth.driverId),
+            inArray(trips.status, [...LIVE_TRIP_STATUSES]),
+            ne(trips.id, trip.id),
+          ))
+          .limit(1)
+
+    if (followOnTrip) {
+      await tx
+        .update(drivers)
+        .set({ status: 'ON_TRIP', updatedAt: now })
+        .where(eq(drivers.id, auth.driverId))
+    }
+    else if (!otherLive) {
       await tx
         .update(drivers)
         .set({ status: 'AVAILABLE', updatedAt: now })
@@ -1044,7 +1118,8 @@ export async function completeDropoff(
       trip: updatedTrip!,
       container: container!,
       replayed: false,
-      swapCompleted: Boolean(trip.swapPairTripId && otherLive),
+      swapCompleted: Boolean(trip.swapPairTripId && otherLive && otherLive.id !== followOnTrip?.id),
+      followOnTrip,
     }
   })
 }

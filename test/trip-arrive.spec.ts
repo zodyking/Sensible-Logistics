@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { describeArrival, isSwapEmptyArrival } from '../shared/utils/trip-arrive'
+import { describeArrival, isSwapEmptyArrival, keepsChassisAfterContainerDrop } from '../shared/utils/trip-arrive'
 
 describe('isSwapEmptyArrival', () => {
   it('is the empty side of an open customer swap', () => {
@@ -38,7 +38,7 @@ describe('describeArrival', () => {
       locationType: 'CUSTOMER',
       hasChassis: true,
       retainChassis: false,
-    })).toBe('This finishes the empty at the customer. The load stays on Home. Chassis is unhooked here.')
+    })).toBe('This finishes the empty at the customer. The load stays on Home. You keep the chassis. Home will open a chassis-only trip so you can set the next drop-off.')
   })
 
   it('explains a customer, yard, and terminal drop-off without extra steps', () => {
@@ -52,12 +52,21 @@ describe('describeArrival', () => {
       locationType: 'COMPANY_YARD',
       hasChassis: true,
       retainChassis: true,
-    })).toBe('Yard stop. The container stays here. This trip ends. Chassis stays on the box.')
+    })).toBe('Yard stop. The container stays here. This trip ends. Container and chassis stay here.')
 
     expect(describeArrival({
       kind: 'CONTAINER',
       locationType: 'MARINE_TERMINAL',
     })).toBe('The container is returned. This trip ends.')
+  })
+
+  it('explains keeping the chassis after dropping only the box', () => {
+    expect(describeArrival({
+      kind: 'CONTAINER',
+      locationType: 'CUSTOMER',
+      hasChassis: true,
+      retainChassis: false,
+    })).toBe('The container stays at the customer to load. This trip ends. You keep the chassis. Home will open a chassis-only trip so you can set the next drop-off.')
   })
 
   it('covers a bare chassis park', () => {
@@ -79,5 +88,23 @@ describe('describeArrival', () => {
       hasChassis: true,
       retainChassis: null,
     })).toBe('This trip ends here.')
+  })
+
+  it('treats drop-container-only as keeping the chassis with the driver', () => {
+    expect(keepsChassisAfterContainerDrop({
+      kind: 'CONTAINER',
+      hasChassis: true,
+      retainChassis: false,
+    })).toBe(true)
+    expect(keepsChassisAfterContainerDrop({
+      kind: 'CONTAINER',
+      hasChassis: true,
+      retainChassis: true,
+    })).toBe(false)
+    expect(keepsChassisAfterContainerDrop({
+      kind: 'BARE_CHASSIS',
+      hasChassis: true,
+      retainChassis: false,
+    })).toBe(false)
   })
 })

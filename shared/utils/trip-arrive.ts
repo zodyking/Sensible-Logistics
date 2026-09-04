@@ -19,18 +19,12 @@ export function isSwapEmptyArrival(input: ArriveContext): boolean {
 }
 
 /**
- * One plain sentence for the Arrive screen. Backend rules are unchanged:
- * swap empty finishes and the load stays live; customer/yard keep the box
- * on this service life; a marine or rail drop-off closes it.
+ * One plain sentence for the Arrive screen. A container with a chassis
+ * offers drop-both (chassis stays on the box) or drop-container-only
+ * (driver keeps the chassis and Home opens a chassis-only trip).
  */
 export function describeArrival(input: ArriveContext): string {
-  const chassis = input.hasChassis
-    ? (input.retainChassis === true
-        ? ' Chassis stays on the box.'
-        : input.retainChassis === false
-          ? ' Chassis is unhooked here.'
-          : '')
-    : ''
+  const chassis = describeArrivalChassis(input)
 
   if (isSwapEmptyArrival(input)) {
     return `This finishes the empty at the customer. The load stays on Home.${chassis}`
@@ -57,4 +51,22 @@ export function describeArrival(input: ArriveContext): string {
     default:
       return `This trip ends here.${chassis}`
   }
+}
+
+/** True when Arrive should leave the box and keep the chassis with the driver. */
+export function keepsChassisAfterContainerDrop(input: ArriveContext): boolean {
+  return Boolean(
+    input.hasChassis
+    && input.kind !== 'BARE_CHASSIS'
+    && input.retainChassis === false,
+  )
+}
+
+function describeArrivalChassis(input: ArriveContext): string {
+  if (!input.hasChassis || input.kind === 'BARE_CHASSIS') return ''
+  if (input.retainChassis === true) return ' Container and chassis stay here.'
+  if (input.retainChassis === false) {
+    return ' You keep the chassis. Home will open a chassis-only trip so you can set the next drop-off.'
+  }
+  return ''
 }
