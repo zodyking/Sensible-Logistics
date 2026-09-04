@@ -2,6 +2,7 @@ import { aliasedTable, and, desc, eq } from 'drizzle-orm'
 import { chassis, containerEvents, containers, locations, trips, users } from '../../../database/schema'
 import { companyTimezone, listTasksForTrip } from '../../../services/tasks'
 import { assertTenant, requireAuth } from '../../../utils/session'
+import { chassisFromEvents } from '../../../utils/trip-chassis'
 
 const originLocation = aliasedTable(locations, 'origin_location')
 const destinationLocation = aliasedTable(locations, 'destination_location')
@@ -51,6 +52,11 @@ export default defineEventHandler(async (event) => {
 
   assertTenant(auth, row?.trip, 'Movement')
 
+  let chassisRow = row!.chassis
+  if (!chassisRow && row!.trip.kind === 'BARE_CHASSIS') {
+    chassisRow = await chassisFromEvents(db, auth.companyId, id)
+  }
+
   const timezone = await companyTimezone(db, auth.companyId)
   const [timeline, tasks] = await Promise.all([
     db
@@ -75,5 +81,5 @@ export default defineEventHandler(async (event) => {
     listTasksForTrip(db, auth, row!.trip, timezone),
   ])
 
-  return { ...row!, timeline, tasks }
+  return { ...row!, chassis: chassisRow, timeline, tasks }
 })

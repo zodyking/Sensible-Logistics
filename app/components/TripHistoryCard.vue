@@ -6,7 +6,7 @@ import {
   TRIP_STATUS_LABELS,
 } from '#shared/utils/domain'
 import type { ContainerType, TripKind, TripStatus } from '#shared/utils/domain'
-import { formatChassisNumber, formatContainerNumber } from '#shared/utils/iso6346'
+import { isBareChassisTrip, tripEquipmentTitle } from '#shared/utils/trip-title'
 
 const props = defineProps<{
   to: string
@@ -24,19 +24,9 @@ const props = defineProps<{
   createdAt?: string | Date | null
 }>()
 
-const isBareChassis = computed(() =>
-  props.kind === 'BARE_CHASSIS' || (!props.containerNumber && Boolean(props.chassisNumber)),
-)
+const isBareChassis = computed(() => isBareChassisTrip(props))
 
-const title = computed(() => {
-  if (props.containerNumber) {
-    return formatContainerNumber(props.containerNumber) || props.containerNumber
-  }
-  if (props.chassisNumber) {
-    return formatChassisNumber(props.chassisNumber) || props.chassisNumber
-  }
-  return props.reference
-})
+const title = computed(() => tripEquipmentTitle(props))
 
 const origin = computed(() => props.originName?.trim() || 'No origin')
 const destination = computed(() => props.destinationName?.trim() || 'Not set')

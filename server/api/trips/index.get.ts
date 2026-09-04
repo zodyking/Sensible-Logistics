@@ -2,8 +2,10 @@ import { aliasedTable, and, desc, eq, inArray, ne } from 'drizzle-orm'
 import { z } from 'zod'
 import { chassis, containers, locations, tripGaps, trips } from '../../database/schema'
 import { requireAuth } from '../../utils/session'
+import { chassisNumbersFromEvents } from '../../utils/trip-chassis'
 import { TRIP_STATUSES } from '#shared/utils/domain'
 import type { GapResolution } from '#shared/utils/trip-gaps'
+import { applyBareChassisNumbers } from '#shared/utils/trip-title'
 
 const querySchema = z.object({
   status: z.enum(TRIP_STATUSES).optional(),
@@ -63,6 +65,14 @@ export default defineEventHandler(async (event) => {
     .limit(query.limit)
 
   const tripIds = items.map(item => item.id)
+  const missingChassisIds = items
+    .filter(item => item.kind === 'BARE_CHASSIS' && !item.chassisNumber)
+    .map(item => item.id)
+  const recoveredChassis = missingChassisIds.length
+    ? await chassisNumbersFromEvents(db, auth.companyId, missingChassisIds)
+    : new Map<string, string>()
+  const listed = applyBareChassisNumbers(items, recoveredChassis)
+
   const gapResolutions = tripIds.length
     ? await db
         .select({
@@ -78,7 +88,7 @@ export default defineEventHandler(async (event) => {
     : []
 
   return {
-    items,
+    items: listed,
     gapResolutions: gapResolutions.map(row => ({
       priorTripId: row.priorTripId,
       nextTripId: row.nextTripId,

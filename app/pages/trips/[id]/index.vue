@@ -10,6 +10,7 @@ import {
 } from '#shared/utils/domain'
 import { formatChassisNumber, formatContainerNumber } from '#shared/utils/iso6346'
 import { tripSmsAction } from '#shared/utils/trip-sms'
+import { isBareChassisTrip, tripEquipmentTitle } from '#shared/utils/trip-title'
 import { visibleTimelineEntries } from '#shared/utils/timeline'
 import { invalidateTripLists } from '~/utils/trip-lists'
 
@@ -52,19 +53,19 @@ const contactsOpen = ref(false)
 const canSendSms = computed(() => Boolean(tripSmsAction(data.value?.trip.status)))
 const timeline = computed(() => visibleTimelineEntries(data.value?.timeline ?? []))
 
-const isBareChassis = computed(() =>
-  data.value?.trip.kind === 'BARE_CHASSIS' || (!data.value?.container && Boolean(data.value?.chassis)),
-)
+const isBareChassis = computed(() => isBareChassisTrip({
+  kind: data.value?.trip.kind,
+  containerNumber: data.value?.container?.number,
+  chassisNumber: data.value?.chassis?.number,
+}))
 
-const titleNumber = computed(() => {
-  if (data.value?.container) {
-    return formatContainerNumber(data.value.container.number) || data.value.container.number
-  }
-  if (data.value?.chassis) {
-    return formatChassisNumber(data.value.chassis.number) || data.value.chassis.number
-  }
-  return data.value?.trip.reference ?? 'Trip'
-})
+const titleNumber = computed(() => tripEquipmentTitle({
+  kind: data.value?.trip.kind,
+  containerNumber: data.value?.container?.number,
+  chassisNumber: data.value?.chassis?.number
+    ?? timeline.value.find(entry => entry.chassisNumber)?.chassisNumber,
+  reference: data.value?.trip.reference,
+}))
 
 const typeLabel = computed(() => {
   if (isBareChassis.value) return TRIP_KIND_LABELS.BARE_CHASSIS

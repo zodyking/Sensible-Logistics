@@ -1145,7 +1145,7 @@ async function completeBareChassisDropoff(
     actorDriverId: auth.driverId,
     tripId: trip.id,
     locationId: input.destinationLocationId,
-    chassisId: input.retainChassis ? trip.chassisId : null,
+    chassisId: trip.chassisId,
     gps: input.gps,
     payload: {
       kind: 'BARE_CHASSIS',
@@ -1173,7 +1173,8 @@ async function completeBareChassisDropoff(
     .set({
       status: 'COMPLETED',
       destinationLocationId: input.destinationLocationId,
-      chassisId: input.retainChassis ? trip.chassisId : null,
+      // Keep the chassis on the completed row so history cards can show its number.
+      chassisId: trip.chassisId,
       isFinalRelease,
       droppedOffAt: now,
       completedAt: now,
