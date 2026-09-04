@@ -18,6 +18,7 @@ import { claimCsxReleaseForTrip, confirmCsxReleaseForTrip, reopenCsxReleaseForTr
 import type { AuthContext } from '../utils/session'
 import { formatContainerNumber, normalizeContainerNumber } from '#shared/utils/iso6346'
 import type { ContainerStatus, TripKind } from '#shared/utils/domain'
+import { LOADED_SEAL_REQUIRED, missingLoadedSeal, sealForLoad } from '#shared/utils/seal'
 import {
   containerStatusAfterDropoff,
   dropoffCompletesServiceLife,
@@ -372,11 +373,10 @@ export interface ConfirmPickupInput {
 }
 
 function sealForLoadedContainer(isLoaded: boolean, sealNumber?: string | null): string | null {
-  const seal = sealNumber?.trim() || null
-  if (isLoaded && !seal) {
-    throw createError({ statusCode: 422, statusMessage: 'Enter a seal number for a loaded container.' })
+  if (missingLoadedSeal(isLoaded, sealNumber)) {
+    throw createError({ statusCode: 422, statusMessage: LOADED_SEAL_REQUIRED })
   }
-  return isLoaded ? seal : null
+  return sealForLoad(isLoaded, sealNumber)
 }
 
 /**
@@ -825,7 +825,7 @@ export async function releaseContainerFromDriver(
     .set({
       currentDriverId: null,
       activeMovementId: null,
-      activePoolState: parked ? 'AT_LOCATION' : 'AVAILABLE',
+      activePoolState: parked ? 'AT_LOCATION' : 'EXCEPTION',
       lastActivityAt: now,
       updatedAt: now,
       version: sql`${containers.version} + 1`,

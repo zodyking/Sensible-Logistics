@@ -32,6 +32,7 @@ export interface ContainerStatePatch {
   currentChassisId?: string | null
   activatedAt?: Date | null
   releasedAt?: Date | null
+  deletedAt?: Date | null
   isLoaded?: boolean
   sealNumber?: string | null
   containerStatus?: (typeof containers.$inferInsert)['containerStatus']

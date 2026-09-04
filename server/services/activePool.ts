@@ -248,6 +248,7 @@ export async function claimContainerForPickup(tx: DbExecutor, input: ClaimInput)
         // clearing anything that describes where it was last seen.
         activatedAt: existing.activatedAt ?? now,
         releasedAt: null,
+        deletedAt: null,
         lastActivityAt: now,
         updatedAt: now,
         version: sql`${containers.version} + 1`,

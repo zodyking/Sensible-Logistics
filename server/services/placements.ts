@@ -18,6 +18,7 @@ import {
   validateContainerNumber,
 } from '#shared/utils/iso6346'
 import { CONTAINER_TYPES, type ContainerType, type EquipmentType } from '#shared/utils/domain'
+import { LOADED_SEAL_REQUIRED, missingLoadedSeal, sealForLoad } from '#shared/utils/seal'
 import {
   bboxAround,
   bboxFromPolygon,
@@ -189,6 +190,7 @@ export interface AddContainerAtLocationInput {
   containerType: ContainerType
   equipmentType: EquipmentType
   isLoaded: boolean
+  sealNumber?: string | null
   chassisNumber?: string | null
   placement?: GeoPlacementInput | null
 }
@@ -363,8 +365,7 @@ export async function addContainerAtLocation(
         .from(containers)
         .where(and(eq(containers.companyId, auth.companyId), eq(containers.numberNormalized, numberNormalized)))
         .limit(1)
-      if (!existing) throw createError({ statusCode: 404, statusMessage: 'Container not found.' })
-      return { container: existing, outcome: 'MOVE' as const, replayed: true }
+      if (existing) return { container: existing, outcome: 'MOVE' as const, replayed: true }
     }
 
     const location = await loadLocation(tx, auth, input.locationId)
@@ -408,6 +409,11 @@ export async function addContainerAtLocation(
     let container = existing
     let outcome: 'CREATE' | 'REACTIVATE' | 'MOVE' = 'MOVE'
 
+    const sealNumber = sealForLoad(input.isLoaded, input.sealNumber ?? container?.sealNumber)
+    if (missingLoadedSeal(input.isLoaded, sealNumber)) {
+      throw createError({ statusCode: 422, statusMessage: LOADED_SEAL_REQUIRED })
+    }
+
     if (!container) {
       const formatted = `${numberNormalized.slice(0, 4)} ${numberNormalized.slice(4, 10)}-${numberNormalized.slice(10)}`
       const [created] = await tx
@@ -420,6 +426,7 @@ export async function addContainerAtLocation(
           containerType: input.containerType,
           equipmentType: input.equipmentType,
           isLoaded: input.isLoaded,
+          sealNumber,
           activePoolState: 'AT_LOCATION',
           currentLocationId: location.id,
           activatedAt: now,
@@ -430,7 +437,7 @@ export async function addContainerAtLocation(
       container = created!
       outcome = 'CREATE'
     }
-    else if (container.activePoolState === 'INACTIVE') {
+    else if (container.activePoolState === 'INACTIVE' || container.deletedAt) {
       outcome = 'REACTIVATE'
     }
     else if (container.currentLocationId !== location.id) {
@@ -461,6 +468,7 @@ export async function addContainerAtLocation(
           chassisNumber: reservedChassis
             ? (formatChassisNumber(reservedChassis.number) || reservedChassis.number)
             : null,
+          sealNumber,
         },
       },
       {
@@ -469,6 +477,8 @@ export async function addContainerAtLocation(
         currentLocationId: location.id,
         activeMovementId: null,
         isLoaded: input.isLoaded,
+        sealNumber,
+        deletedAt: null,
         currentChassisId: reservedChassis?.id ?? container.currentChassisId ?? null,
         activatedAt: container.activatedAt ?? now,
         releasedAt: null,
@@ -608,6 +618,7 @@ export async function moveContainerToLocation(
     containerType: container.containerType,
     equipmentType: container.equipmentType,
     isLoaded: container.isLoaded,
+    sealNumber: container.sealNumber,
     chassisNumber,
   })
 }

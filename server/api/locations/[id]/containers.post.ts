@@ -8,7 +8,8 @@ const schema = z.object({
   containerNumber: z.string().trim().min(1),
   containerType: z.enum(CONTAINER_TYPES),
   equipmentType: z.enum(EQUIPMENT_TYPES).default('DRY_40'),
-  isLoaded: z.boolean().default(true),
+  isLoaded: z.boolean(),
+  sealNumber: z.string().trim().max(60).nullish(),
   chassisNumber: z.string().trim().max(40).nullish(),
   placement: z.object({
     latitude: z.number().min(-90).max(90),

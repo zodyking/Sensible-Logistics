@@ -13,6 +13,9 @@ import {
 import { assertTenant, requireAuth } from '../../utils/session'
 import { latestSnapshotsForContainers } from '../../services/csx-releases'
 import { sliceCurrentServiceLife, summarizeServiceLife } from '#shared/utils/service-life'
+import { normalizeContainerNumber } from '#shared/utils/iso6346'
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /** Container record: identity, current state, current service-life pickups/drop-offs. */
 export default defineEventHandler(async (event) => {
@@ -25,11 +28,21 @@ export default defineEventHandler(async (event) => {
 
   const db = useDb()
 
-  const [container] = await db.select().from(containers).where(eq(containers.id, id)).limit(1)
+  const [container] = UUID_RE.test(id)
+    ? await db.select().from(containers).where(eq(containers.id, id)).limit(1)
+    : await db
+        .select()
+        .from(containers)
+        .where(and(
+          eq(containers.companyId, auth.companyId),
+          eq(containers.numberNormalized, normalizeContainerNumber(id)),
+        ))
+        .limit(1)
   assertTenant(auth, container, 'Container')
   if (container!.deletedAt) {
     throw createError({ statusCode: 404, statusMessage: 'Container not found.' })
   }
+  const containerId = container!.id
 
   const [currentLocation] = container!.currentLocationId
     ? await db.select().from(locations).where(eq(locations.id, container!.currentLocationId)).limit(1)
@@ -71,7 +84,7 @@ export default defineEventHandler(async (event) => {
     .leftJoin(trips, eq(trips.id, containerEvents.tripId))
     .leftJoin(users, eq(users.id, containerEvents.actorUserId))
     .leftJoin(chassis, eq(chassis.id, containerEvents.chassisId))
-    .where(and(eq(containerEvents.companyId, auth.companyId), eq(containerEvents.containerId, id)))
+    .where(and(eq(containerEvents.companyId, auth.companyId), eq(containerEvents.containerId, containerId)))
     .orderBy(desc(containerEvents.occurredAt), desc(containerEvents.createdAt))
     .limit(400)
 
@@ -81,7 +94,7 @@ export default defineEventHandler(async (event) => {
   const [placement] = await db
     .select()
     .from(containerPlacements)
-    .where(and(eq(containerPlacements.containerId, id), isNull(containerPlacements.supersededAt)))
+    .where(and(eq(containerPlacements.containerId, containerId), isNull(containerPlacements.supersededAt)))
     .limit(1)
 
   const files = await db
@@ -92,10 +105,10 @@ export default defineEventHandler(async (event) => {
       createdAt: documents.createdAt,
     })
     .from(documents)
-    .where(and(eq(documents.companyId, auth.companyId), eq(documents.containerId, id), isNull(documents.deletedAt)))
+    .where(and(eq(documents.companyId, auth.companyId), eq(documents.containerId, containerId), isNull(documents.deletedAt)))
     .orderBy(desc(documents.createdAt))
 
-  const [shipcsx] = await latestSnapshotsForContainers(db, auth.companyId, [id])
+  const [shipcsx] = await latestSnapshotsForContainers(db, auth.companyId, [containerId])
 
   return {
     container,

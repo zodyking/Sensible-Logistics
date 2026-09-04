@@ -47,6 +47,7 @@ export async function listOnSiteContainers(
     .where(and(
       eq(containers.companyId, companyId),
       inArray(containers.currentLocationId, locationIds),
+      isNull(containers.deletedAt),
       sql`${containers.activePoolState} <> 'INACTIVE'`,
     ))
     .orderBy(containers.numberNormalized)

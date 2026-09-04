@@ -44,6 +44,7 @@ export default defineEventHandler(async (event) => {
     .where(and(
       eq(containers.companyId, auth.companyId),
       inArray(containers.currentLocationId, locationIds),
+      isNull(containers.deletedAt),
       sql`${containers.activePoolState} <> 'INACTIVE'`,
     ))
     .orderBy(containers.numberNormalized)

@@ -18,6 +18,9 @@ import {
   validateContainerNumber,
 } from '#shared/utils/iso6346'
 import { containerHasDriverClaim, containerIsHeldByDriver } from '#shared/utils/driver-hold'
+import { ADD_EQUIPMENT_STEPS, addEquipmentSteps } from '#shared/utils/add-equipment-steps'
+import type { AddEquipmentStep } from '#shared/utils/add-equipment-steps'
+import { LOADED_SEAL_REQUIRED } from '#shared/utils/seal'
 import { driverOcrMessage } from '#shared/utils/ocr-parse'
 
 const { user } = useUserSession()
@@ -30,12 +33,13 @@ const { data: locationData } = await useFetch(() => `/api/locations/${locationId
 
 useHead({ title: 'Add Equipment' })
 
-type Step = 'kind' | 'equipment' | 'containerType' | 'equipmentType' | 'confirm'
+type Step = AddEquipmentStep
 const STEP_TITLES: Record<Step, string> = {
   kind: 'Add Equipment',
   equipment: 'Container and chassis',
   containerType: 'Container type',
   equipmentType: 'Container size',
+  seal: 'Seal',
   confirm: 'Confirm',
 }
 
@@ -45,6 +49,7 @@ const chassisNumber = ref('')
 const containerType = ref<ContainerType | null>(null)
 const equipmentType = ref<EquipmentType | null>(null)
 const isLoaded = ref<boolean | null>(null)
+const sealNumber = ref('')
 const submitting = ref(false)
 const errorMessage = ref('')
 const capturedPhoto = ref('')
@@ -86,12 +91,11 @@ const needsClassification = computed(() =>
   kind.value === 'CONTAINER' && resolution.value?.outcome === 'CREATE',
 )
 
-const STEPS = computed<Step[]>(() => {
-  const steps: Step[] = ['kind', 'equipment']
-  if (needsClassification.value) steps.push('containerType', 'equipmentType')
-  steps.push('confirm')
-  return steps
-})
+const STEPS = computed<Step[]>(() => addEquipmentSteps({
+  kind: kind.value,
+  needsClassification: needsClassification.value,
+  isLoaded: isLoaded.value,
+}))
 
 const step = ref<Step>('kind')
 watch(step, scrollWizardToTop)
@@ -105,7 +109,10 @@ const navTitle = computed(() => {
 
 watch(STEPS, (steps) => {
   if (steps.includes(step.value)) return
-  step.value = steps[Math.min(stepIndex.value, steps.length - 1)] ?? 'kind'
+  const from = ADD_EQUIPMENT_STEPS.indexOf(step.value)
+  const following = ADD_EQUIPMENT_STEPS.slice(from + 1).find(name => steps.includes(name))
+  const previous = [...ADD_EQUIPMENT_STEPS.slice(0, Math.max(0, from))].reverse().find(name => steps.includes(name))
+  step.value = following ?? previous ?? 'kind'
 })
 
 watch(kind, () => {
@@ -150,6 +157,7 @@ watch(normalized, async (value) => {
     const found = resolution.value.container
     if (found?.containerType) containerType.value = found.containerType
     if (found?.equipmentType) equipmentType.value = found.equipmentType
+    if (found?.sealNumber && !sealNumber.value) sealNumber.value = found.sealNumber
   }
   catch (error) {
     errorMessage.value = apiErrorMessage(error, 'Could not check the active pool.')
@@ -161,7 +169,9 @@ watch(normalized, async (value) => {
 
 watch(step, (current) => {
   if (current === 'confirm' && isHeldByDriver(resolution.value)) {
-    void offerDriverRelease(resolution.value)
+    void offerDriverRelease(resolution.value).catch((error) => {
+      errorMessage.value = apiErrorMessage(error, 'Could not release the container.')
+    })
   }
 })
 
@@ -183,9 +193,14 @@ const canAdvance = computed(() => {
       return Boolean(containerType.value)
     case 'equipmentType':
       return Boolean(equipmentType.value)
+    case 'seal':
+      return Boolean(sealNumber.value.trim())
     case 'confirm':
       if (kind.value === 'BARE_CHASSIS') return true
-      return Boolean(containerType.value) && Boolean(equipmentType.value) && isLoaded.value !== null
+      return Boolean(containerType.value)
+        && Boolean(equipmentType.value)
+        && isLoaded.value !== null
+        && (isLoaded.value === false || Boolean(sealNumber.value.trim()))
   }
   return false
 })
@@ -195,6 +210,7 @@ function chooseKind(nextKind: TripKind) {
     containerType.value = null
     equipmentType.value = null
     isLoaded.value = null
+    sealNumber.value = ''
   }
   kind.value = nextKind
   void next()
@@ -229,9 +245,20 @@ const showNext = computed(() => {
 async function confirm() {
   if (submitting.value || driverReleasing.value) return
   errorMessage.value = ''
+  if (kind.value === 'CONTAINER' && isLoaded.value === true && !sealNumber.value.trim()) {
+    errorMessage.value = LOADED_SEAL_REQUIRED
+    step.value = 'seal'
+    return
+  }
   if (isHeldByDriver(resolution.value)) {
-    const next = await offerDriverRelease(resolution.value)
-    if (isHeldByDriver(next)) return
+    try {
+      const next = await offerDriverRelease(resolution.value)
+      if (isHeldByDriver(next)) return
+    }
+    catch (error) {
+      errorMessage.value = apiErrorMessage(error, 'Could not release the container.')
+      return
+    }
   }
   if (chassisNumber.value.trim()) {
     try {
@@ -273,6 +300,7 @@ async function confirm() {
             containerType: containerType.value,
             equipmentType: equipmentType.value,
             isLoaded: isLoaded.value,
+            sealNumber: isLoaded.value ? (sealNumber.value.trim() || null) : null,
             chassisNumber: chassisNumber.value || null,
           },
         })
@@ -590,6 +618,30 @@ async function onPhoto(dataUrl: string) {
       </div>
     </template>
 
+    <template v-else-if="step === 'seal'">
+      <span class="wiz-label">Seal</span>
+      <div class="wiz-group">
+        <div class="wiz-row">
+          <label
+            class="wiz-row-label"
+            for="add-seal-number"
+          >Number</label>
+          <input
+            id="add-seal-number"
+            v-model="sealNumber"
+            class="input mono"
+            placeholder="required"
+            autocapitalize="characters"
+            autocomplete="off"
+            required
+          >
+        </div>
+      </div>
+      <p class="wiz-hint">
+        A loaded container keeps its seal on the record.
+      </p>
+    </template>
+
     <template v-else>
       <span class="wiz-label">On site</span>
       <div class="wiz-group">
@@ -610,6 +662,13 @@ async function onPhoto(dataUrl: string) {
             · {{ equipmentType ? pickupEquipmentSizeLabel(equipmentType) : '—' }}
             · {{ isLoaded === true ? 'Loaded' : 'Empty' }}
           </span>
+        </div>
+        <div
+          v-if="kind === 'CONTAINER' && isLoaded === true && sealNumber"
+          class="wiz-row"
+        >
+          <span class="wiz-row-label">Seal</span>
+          <span class="mono flex-1">{{ sealNumber }}</span>
         </div>
         <div
           v-if="chassisNumber"
