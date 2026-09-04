@@ -4,7 +4,12 @@ import {
   SHIPCSX_REFERENCE,
   chunkShipcsxEquipment,
   matchLookupCard,
+  matchShipcsxTerminalOption,
   parseShipcsxLookupText,
+  shipcsxEquipmentParts,
+  shipcsxPageLooksHardBlocked,
+  shipcsxPageLooksLikeChallenge,
+  shipcsxPageLooksLikeLogin,
   type CsxLookupCard,
 } from '#shared/utils/csx-lookup'
 import { normalizeContainerNumber } from '#shared/utils/iso6346'
@@ -20,6 +25,8 @@ export interface ShipcsxLookupHit extends CsxLookupCard {
 }
 
 type PlaywrightModule = typeof import('playwright')
+type Page = import('playwright').Page
+type Locator = import('playwright').Locator
 
 let queue: Promise<unknown> = Promise.resolve()
 let playwrightModule: PlaywrightModule | null | undefined
@@ -30,6 +37,8 @@ const CHROMIUM_ARGS = [
   '--disable-dev-shm-usage',
   '--disable-gpu',
 ]
+
+const DESKTOP_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
 
 function config() {
   const runtime = useRuntimeConfig()
@@ -92,90 +101,253 @@ async function openPage() {
   const context = await launched.newContext({
     locale: 'en-US',
     timezoneId: 'America/New_York',
-    viewport: { width: 390, height: 844 },
-    isMobile: true,
-    hasTouch: true,
-    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
+    viewport: { width: 1280, height: 900 },
+    userAgent: DESKTOP_UA,
   })
   await context.addInitScript(STEALTH)
   const page = await context.newPage()
+  page.setDefaultTimeout(20_000)
   return { browser: launched, context, page }
 }
 
-async function selectTerminal(page: import('playwright').Page, terminal: string) {
-  const trigger = page.getByText('Select Terminal', { exact: false }).first()
-    .or(page.locator('select, [role="combobox"]').first())
-  await trigger.click({ timeout: 12_000 }).catch(() => undefined)
-  await pause(200, 500)
-  const option = page.getByRole('option', { name: terminal, exact: false }).first()
-    .or(page.getByText(terminal, { exact: false }).first())
-  if (await option.count()) {
-    await option.click()
-    await pause(250, 600)
-    return
+async function bodyText(page: Page): Promise<string> {
+  return page.locator('body').innerText().catch(() => '')
+}
+
+function assertLookupPage(text: string, url: string) {
+  if (shipcsxPageLooksHardBlocked(text)) {
+    throw new Error('ShipCSX challenged this session. Backing off automatic checks.')
   }
-  const typed = page.locator('input[placeholder*="Terminal"], input[aria-label*="Terminal"]').first()
-  if (await typed.count()) {
-    await typed.fill(terminal)
-    await pause()
-    await page.keyboard.press('Enter')
-    await pause(250, 600)
+  if (shipcsxPageLooksLikeLogin(text, url)) {
+    throw new Error('ShipCSX shipment lookup is not available without a login wall.')
   }
 }
 
-async function fillEquipmentRows(page: import('playwright').Page, equipment: string[]) {
-  const equipInputs = page.locator('input[placeholder*="CSXU"], input[placeholder*="123456"], input[aria-label*="Equipment"]')
-  const refInputs = page.locator('input[placeholder*="Pickup"], input[aria-label*="Reference"]')
-  const equipCount = await equipInputs.count()
-  const refCount = await refInputs.count()
-  const n = Math.min(equipment.length, Math.max(equipCount, 3))
+async function waitForLookupForm(page: Page) {
+  const deadline = Date.now() + 45_000
+  while (Date.now() < deadline) {
+    const text = await bodyText(page)
+    const url = page.url()
+    if (shipcsxPageLooksHardBlocked(text)) {
+      throw new Error('ShipCSX challenged this session. Backing off automatic checks.')
+    }
+    if (shipcsxPageLooksLikeLogin(text, url)) {
+      throw new Error('ShipCSX shipment lookup is not available without a login wall.')
+    }
+    const form = page.locator('ion-input, ion-select, input, select, [role="combobox"]').first()
+    const search = searchButton(page)
+    if (await form.count() || await search.count()) {
+      if (await form.first().isVisible().catch(() => false) || await search.isVisible().catch(() => false)) {
+        return
+      }
+    }
+    await pause(400, 800)
+  }
+  const leftover = await bodyText(page)
+  if (shipcsxPageLooksLikeChallenge(leftover) || shipcsxPageLooksHardBlocked(leftover)) {
+    throw new Error('ShipCSX challenged this session. Backing off automatic checks.')
+  }
+  throw new Error('ShipCSX lookup form did not load. The search button never became available.')
+}
 
-  if (equipCount === 0) {
-    const all = page.locator('input[type="text"], input:not([type])')
-    const total = await all.count()
-    for (let i = 0; i < n && i * 2 + 1 < total; i++) {
-      await all.nth(i * 2).fill(equipment[i] ?? '')
+function searchButton(page: Page): Locator {
+  return page.getByRole('button', { name: /search/i }).first()
+    .or(page.locator('ion-button').filter({ hasText: /search/i }).first())
+    .or(page.locator('button, [type="submit"]').filter({ hasText: /search/i }).first())
+}
+
+async function fillControl(locator: Locator, value: string) {
+  const handle = locator.first()
+  await handle.waitFor({ state: 'attached', timeout: 15_000 })
+  const inner = handle.locator('input').first()
+  const target = (await inner.count()) ? inner : handle
+  await target.click({ timeout: 8_000 })
+  await target.fill('')
+  await target.pressSequentially(value, { delay: 12 })
+  await target.evaluate((el, next) => {
+    const host = el as HTMLElement
+    const input = (host instanceof HTMLInputElement
+      ? host
+      : host.querySelector?.('input') || host.shadowRoot?.querySelector('input')) as HTMLInputElement | null
+    if (!input) return
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')
+    descriptor?.set?.call(input, next)
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    input.dispatchEvent(new Event('change', { bubbles: true }))
+  }, value)
+  await target.blur().catch(() => undefined)
+}
+
+async function nativeTerminalSelect(page: Page): Promise<Locator | null> {
+  const selects = page.locator('select')
+  const n = await selects.count()
+  if (!n) return null
+  let bestIndex = 0
+  let bestOptions = 0
+  for (let i = 0; i < n; i++) {
+    const options = await selects.nth(i).locator('option').count()
+    if (options > bestOptions) {
+      bestIndex = i
+      bestOptions = options
+    }
+  }
+  return bestOptions >= 2 ? selects.nth(bestIndex) : selects.first()
+}
+
+async function selectTerminal(page: Page, terminal: string) {
+  const native = await nativeTerminalSelect(page)
+  if (native) {
+    const labels = await native.locator('option').allTextContents()
+    const match = matchShipcsxTerminalOption(labels, terminal)
+    if (!match) {
+      throw new Error(`ShipCSX terminal "${terminal}" was not in the dropdown.`)
+    }
+    await native.selectOption({ label: match })
+    await pause(250, 500)
+    return
+  }
+
+  const trigger = page.locator('ion-select').first()
+    .or(page.getByRole('combobox').first())
+    .or(page.getByText(/select terminal/i).first())
+  if (!(await trigger.count())) {
+    throw new Error(`Could not select ShipCSX terminal "${terminal}".`)
+  }
+  await trigger.click({ timeout: 15_000 })
+  await pause(200, 450)
+
+  const option = page.getByRole('radio', { name: new RegExp(terminal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') }).first()
+    .or(page.getByRole('option', { name: terminal, exact: false }).first())
+    .or(page.getByText(terminal, { exact: false }).first())
+  if (!(await option.count())) {
+    throw new Error(`ShipCSX terminal "${terminal}" was not in the dropdown.`)
+  }
+  await option.click({ timeout: 10_000 })
+  await pause(150, 350)
+  const done = page.getByRole('button', { name: /^(ok|done)$/i }).first()
+  if (await done.count()) await done.click().catch(() => undefined)
+  await pause(250, 500)
+
+  const shown = (await bodyText(page)).toLowerCase()
+  const token = terminal.trim().toLowerCase().slice(0, 8)
+  if (token && !shown.includes(token)) {
+    throw new Error(`Could not select ShipCSX terminal "${terminal}".`)
+  }
+}
+
+async function fillEquipmentRows(page: Page, equipment: string[]) {
+  const rows = equipment
+    .map(shipcsxEquipmentParts)
+    .filter((parts): parts is NonNullable<typeof parts> => Boolean(parts))
+  if (!rows.length) return
+
+  const initials = page.locator(
+    'input[placeholder*="CSXU" i], input[aria-label*="Initial" i], ion-input[placeholder*="CSXU" i], ion-input[label*="Initial" i]',
+  )
+  const numbers = page.locator(
+    'input[placeholder*="123456"], input[aria-label*="Equipment Number" i], ion-input[placeholder*="123456"], ion-input[label*="Number" i]',
+  )
+  const refs = page.locator(
+    'input[placeholder*="Pickup" i], input[aria-label*="Reference" i], ion-input[placeholder*="Pickup" i], ion-input[label*="Reference" i]',
+  )
+
+  const labeledInitial = page.getByLabel(/equipment initial|initial/i)
+  const labeledNumber = page.getByLabel(/equipment number/i)
+
+  if (await initials.count()) {
+    const initialCount = await initials.count()
+    const numberCount = await numbers.count()
+    const refCount = await refs.count()
+    for (const [i, row] of rows.entries()) {
+      const initialField = initials.nth(Math.min(i, initialCount - 1))
+      if (numberCount) {
+        await fillControl(initialField, row.initial)
+        await pause()
+        await fillControl(numbers.nth(Math.min(i, numberCount - 1)), row.number)
+        await pause()
+      }
+      else {
+        await fillControl(initialField, `${row.initial}${row.number}`)
+        await pause()
+      }
+      if (refCount) {
+        await fillControl(refs.nth(Math.min(i, refCount - 1)), SHIPCSX_REFERENCE)
+        await pause()
+      }
+    }
+    return
+  }
+
+  if (await labeledInitial.count() && await labeledNumber.count()) {
+    const initialCount = await labeledInitial.count()
+    const numberCount = await labeledNumber.count()
+    for (const [i, row] of rows.entries()) {
+      await fillControl(labeledInitial.nth(Math.min(i, initialCount - 1)), row.initial)
       await pause()
-      await all.nth(i * 2 + 1).fill(SHIPCSX_REFERENCE)
+      await fillControl(labeledNumber.nth(Math.min(i, numberCount - 1)), row.number)
       await pause()
     }
     return
   }
 
-  for (let i = 0; i < n; i++) {
-    await equipInputs.nth(Math.min(i, equipCount - 1)).fill(equipment[i] ?? '')
+  const all = page.locator('input[type="text"], input:not([type]), ion-input')
+  const total = await all.count()
+  for (const [i, row] of rows.entries()) {
+    const base = i * 3
+    if (base >= total) break
+    await fillControl(all.nth(base), row.initial)
     await pause()
-    if (refCount) {
-      await refInputs.nth(Math.min(i, refCount - 1)).fill(SHIPCSX_REFERENCE)
+    if (base + 1 < total) {
+      await fillControl(all.nth(base + 1), row.number)
+      await pause()
+    }
+    if (base + 2 < total) {
+      await fillControl(all.nth(base + 2), SHIPCSX_REFERENCE)
       await pause()
     }
   }
+}
+
+async function submitSearch(page: Page) {
+  const search = searchButton(page)
+  if (await search.count()) {
+    const enabled = await search.isEnabled({ timeout: 0 }).catch(() => false)
+    if (enabled) {
+      await search.click({ timeout: 15_000 })
+      return
+    }
+    await search.click({ force: true, timeout: 8_000 }).catch(() => undefined)
+  }
+  await page.keyboard.press('Enter')
 }
 
 async function runLookup(terminal: string, equipment: string[]): Promise<CsxLookupCard[]> {
   const { browser, context, page } = await openPage()
   try {
+    console.info('[shipcsx] lookup', { terminal, count: equipment.length })
     await page.goto(SHIPCSX_LOOKUP_URL, { waitUntil: 'domcontentloaded', timeout: 45_000 })
-    await pause(400, 900)
-    const body = (await page.locator('body').innerText().catch(() => '')).toLowerCase()
-    if (/unusual traffic|captcha|access denied|blocked/i.test(body)) {
-      throw new Error('ShipCSX challenged this session. Backing off automatic checks.')
-    }
-    if (!page.url().includes('shipment/lookup') && /sign in|log in/.test(body) && /password/.test(body)) {
-      throw new Error('ShipCSX shipment lookup is not available without a login wall.')
-    }
+    await waitForLookupForm(page)
+    assertLookupPage(await bodyText(page), page.url())
     await selectTerminal(page, terminal)
     await fillEquipmentRows(page, equipment)
-    const search = page.getByRole('button', { name: /search/i }).first()
-      .or(page.locator('button:has-text("Search")').first())
-    await search.click({ timeout: 12_000 })
-    await page.waitForTimeout(1600)
-    await page.getByText(/Shipment Lookup Results|In-Gate|NOTIFIED/i).first().waitFor({ timeout: 20_000 }).catch(() => undefined)
-    const results = await page.locator('body').innerText()
-    if (/unusual traffic|captcha|access denied|blocked/i.test(results)) {
-      throw new Error('ShipCSX challenged this session. Backing off automatic checks.')
+    await submitSearch(page)
+    await page.waitForTimeout(1200)
+    const resultsHeading = page.getByText(/Shipment Lookup Results|In-Gate|NOTIFIED/i).first()
+    const appeared = await resultsHeading.waitFor({ timeout: 25_000 }).then(() => true).catch(() => false)
+    const results = await bodyText(page)
+    assertLookupPage(results, page.url())
+    if (!appeared && /select terminal|equipment initial|equipment lookup/i.test(results)) {
+      console.warn('[shipcsx] search did not return results', { url: page.url(), snippet: results.slice(0, 280) })
+      throw new Error('ShipCSX did not return lookup results. Search may still be disabled.')
     }
     return parseShipcsxLookupText(results).cards
+  }
+  catch (error) {
+    if (error instanceof Error && /locator\.|timeout \d+ms exceeded|getByRole/i.test(error.message)) {
+      console.warn('[shipcsx] playwright', error.message.split('\n')[0])
+      throw new Error('ShipCSX did not return lookup results. Search may still be disabled.', { cause: error })
+    }
+    throw error
   }
   finally {
     await context.close().catch(() => undefined)

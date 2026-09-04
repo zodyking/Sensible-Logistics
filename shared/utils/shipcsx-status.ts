@@ -38,11 +38,17 @@ export function shipcsxPublicError(raw: string | null | undefined): string {
   if (/login wall|signed-in profile|sign in once|password/i.test(text)) {
     return 'ShipCSX asked for a login. Shipment lookup should work without an account.'
   }
+  if (/not in the dropdown|could not select/i.test(text)) {
+    return 'That ShipCSX terminal name does not match the CSX list. Edit the rail location and use the name from the dropdown.'
+  }
   if (/terminal name|default_terminal|NUXT_SHIPCSX_DEFAULT_TERMINAL/i.test(text)) {
     return 'Set a ShipCSX terminal name on the rail location.'
   }
   if (/challenged|captcha|blocked/i.test(text)) {
     return 'ShipCSX blocked this check. Try again later.'
+  }
+  if (/locator\.|timeout \d+ms exceeded|getByRole|waiting for|did not load|never became|did not return lookup results/i.test(text)) {
+    return 'ShipCSX search never became ready. Check the rail terminal name and try again.'
   }
   if (/browser|chromium|executable/i.test(text)) {
     return 'ShipCSX lookup is not set up on this server yet.'

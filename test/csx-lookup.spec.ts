@@ -3,7 +3,12 @@ import {
   chunkShipcsxEquipment,
   isShipcsxPollWindow,
   matchLookupCard,
+  matchShipcsxTerminalOption,
   parseShipcsxLookupText,
+  shipcsxEquipmentParts,
+  shipcsxPageLooksHardBlocked,
+  shipcsxPageLooksLikeChallenge,
+  shipcsxPageLooksLikeLogin,
 } from '../shared/utils/csx-lookup'
 
 const RESULTS = `
@@ -36,6 +41,35 @@ describe('ShipCSX lookup parse', () => {
 
   it('batches equipment three at a time', () => {
     expect(chunkShipcsxEquipment(['a', 'b', 'c', 'd']).map(batch => batch.length)).toEqual([3, 1])
+  })
+})
+
+describe('ShipCSX equipment parts', () => {
+  it('splits ISO numbers into the 4-letter initial and 6-digit serial', () => {
+    expect(shipcsxEquipmentParts('KOSU496803-5')).toEqual({ initial: 'KOSU', number: '496803' })
+    expect(shipcsxEquipmentParts('KOSU4968035')).toEqual({ initial: 'KOSU', number: '496803' })
+    expect(shipcsxEquipmentParts('kosu 496803')).toEqual({ initial: 'KOSU', number: '496803' })
+    expect(shipcsxEquipmentParts('ABC')).toBeNull()
+  })
+})
+
+describe('ShipCSX terminal option match', () => {
+  const options = ['Select Terminal', 'North Bergen', 'Fairburn', 'Northwest Ohio']
+
+  it('matches the stored rail name to a dropdown label', () => {
+    expect(matchShipcsxTerminalOption(options, 'North Bergen')).toBe('North Bergen')
+    expect(matchShipcsxTerminalOption(options, 'north bergen, nj')).toBe('North Bergen')
+    expect(matchShipcsxTerminalOption(options, 'Missing Yard')).toBeNull()
+  })
+})
+
+describe('ShipCSX page sniffers', () => {
+  it('detects a hard Cloudflare block without treating the lookup form as blocked', () => {
+    expect(shipcsxPageLooksHardBlocked('Sorry, you have been blocked')).toBe(true)
+    expect(shipcsxPageLooksHardBlocked('Select Terminal\nEquipment Initial')).toBe(false)
+    expect(shipcsxPageLooksLikeChallenge('Just a moment...')).toBe(true)
+    expect(shipcsxPageLooksLikeLogin('Sign in\nPassword', 'https://next.shipcsx.com/#/login')).toBe(true)
+    expect(shipcsxPageLooksLikeLogin('Equipment Lookup', 'https://next.shipcsx.com/#/shipment/lookup')).toBe(false)
   })
 })
 

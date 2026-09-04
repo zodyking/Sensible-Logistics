@@ -29,6 +29,10 @@ describe('shipcsxPublicError', () => {
       .toBe('Set a ShipCSX terminal name on the rail location.')
     expect(shipcsxPublicError('EACCES: permission denied, mkdir \'/app/.data\''))
       .toBe('Couldn\'t open the ShipCSX browser on this server.')
+    expect(shipcsxPublicError('locator.click: Timeout 12000ms exceeded. Call log: - waiting for getByRole(\'button\', { name: /search/i })'))
+      .toBe('ShipCSX search never became ready. Check the rail terminal name and try again.')
+    expect(shipcsxPublicError('ShipCSX did not return lookup results. Search may still be disabled.'))
+      .toBe('ShipCSX search never became ready. Check the rail terminal name and try again.')
   })
 })
 

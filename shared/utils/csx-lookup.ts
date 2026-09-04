@@ -118,3 +118,54 @@ export function chunkShipcsxEquipment<T>(items: T[], size = SHIPCSX_BATCH_SIZE):
   for (let i = 0; i < items.length; i += size) batches.push(items.slice(i, i + size))
   return batches
 }
+
+/** ShipCSX Equipment Lookup uses a 4-letter initial and 6-digit serial (no check digit). */
+export interface ShipcsxEquipmentParts {
+  initial: string
+  number: string
+}
+
+export function shipcsxEquipmentParts(equipmentNumber: string): ShipcsxEquipmentParts | null {
+  const compact = compactEquip(equipmentNumber)
+  const match = compact.match(/^([A-Z]{4})(\d{6})/)
+  if (!match?.[1] || !match[2]) return null
+  return { initial: match[1], number: match[2] }
+}
+
+/** Pick the ShipCSX dropdown label that matches the rail location's stored name. */
+export function matchShipcsxTerminalOption(options: string[], wanted: string): string | null {
+  const needle = wanted.trim().toLowerCase()
+  if (!needle) return null
+  const cleaned = options
+    .map(option => option.replace(/\s+/g, ' ').trim())
+    .filter(option => option && !/^select(\s+terminal)?$/i.test(option))
+  const exact = cleaned.find(option => option.toLowerCase() === needle)
+  if (exact) return exact
+  const starts = cleaned.find((option) => {
+    const label = option.toLowerCase()
+    return label.startsWith(needle) || needle.startsWith(label)
+  })
+  if (starts) return starts
+  const includes = cleaned.filter((option) => {
+    const label = option.toLowerCase()
+    return label.includes(needle) || needle.includes(label)
+  })
+  return includes.length === 1 ? (includes[0] ?? null) : null
+}
+
+export function shipcsxPageLooksHardBlocked(text: string): boolean {
+  const body = text ?? ''
+  if (/shipment lookup|equipment initial|select terminal/i.test(body)) return false
+  return /you have been blocked|access denied|unusual traffic|captcha|cf-error|attention required|enable cookies/i.test(body)
+}
+
+export function shipcsxPageLooksLikeChallenge(text: string): boolean {
+  return /just a moment|checking your browser|verify you are human/i.test(text ?? '')
+}
+
+export function shipcsxPageLooksLikeLogin(text: string, url = ''): boolean {
+  const body = (text ?? '').toLowerCase()
+  if (/shipment lookup|equipment initial/.test(body)) return false
+  if (url.includes('shipment/lookup')) return false
+  return /sign in|log in/.test(body) && /password/.test(body)
+}
