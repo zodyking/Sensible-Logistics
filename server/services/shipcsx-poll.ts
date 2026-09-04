@@ -8,7 +8,7 @@ import {
   trips,
 } from '../database/schema'
 import type { Database } from '../utils/db'
-import { defaultShipcsxTerminal, lookupShipcsxShipments } from './shipcsx-browser'
+import { defaultShipcsxTerminal, lookupShipcsxShipments, type ShipcsxLookupStepHandler } from './shipcsx-browser'
 import {
   SHIPCSX_POLL_INTERVAL_MS,
   SHIPCSX_REFERENCE,
@@ -102,6 +102,7 @@ export async function recordShipcsxHits(
     containerId: string | null
     equipmentNumber: string
     terminal: string
+    referenceUsed?: string
     resultTab: CsxLookupTab
     loadEmpty: string | null
     waybillDate: string | null
@@ -121,7 +122,7 @@ export async function recordShipcsxHits(
         containerNumberNormalized: normalizeContainerNumber(hit.equipmentNumber),
         terminalName: hit.terminal,
         equipmentNumber: hit.equipmentNumber,
-        referenceUsed: SHIPCSX_REFERENCE,
+        referenceUsed: hit.referenceUsed || SHIPCSX_REFERENCE,
         resultTab: hit.resultTab,
         loadEmpty: hit.loadEmpty,
         waybillDate: hit.waybillDate,
@@ -141,6 +142,10 @@ export async function checkShipcsxForItems(
   db: Database,
   companyId: string,
   items: ShipcsxEligibleBox[],
+  options?: {
+    reference?: string
+    onStep?: ShipcsxLookupStepHandler
+  },
 ) {
   const byTerminal = new Map<string, ShipcsxEligibleBox[]>()
   for (const item of items) {
@@ -158,6 +163,8 @@ export async function checkShipcsxForItems(
           equipmentNumber: item.equipmentNumber,
           containerId: item.containerId,
         })),
+        reference: options?.reference,
+        onStep: options?.onStep,
       })
       saved.push(...await recordShipcsxHits(db, companyId, hits.map(hit => ({
         ...hit,

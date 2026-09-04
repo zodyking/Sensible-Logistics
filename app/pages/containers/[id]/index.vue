@@ -7,34 +7,58 @@ import {
 } from '#shared/utils/domain'
 import { formatChassisNumber, formatContainerNumber } from '#shared/utils/iso6346'
 import { visibleTimelineEntries } from '#shared/utils/timeline'
-import { SHIPCSX_CHECK_TIMEOUT_MS } from '#shared/utils/csx-lookup'
+import { shipcsxCheckProgressLine } from '#shared/utils/shipcsx-check'
 import { shipcsxMetaLine, shipcsxPublicError, shipcsxStatusLabel } from '#shared/utils/shipcsx-status'
 
 const route = useRoute()
 const { user } = useUserSession()
 setPageLayout(user.value?.role === 'ADMIN' ? 'admin' : 'default')
 const { data, status, error, refresh } = await useFetch(() => `/api/containers/${route.params.id}`)
-const checkingCsx = ref(false)
+const liveCheck = ref(data.value?.shipcsxCheck ?? null)
 const csxError = ref('')
+let checkTimer: ReturnType<typeof setInterval> | null = null
 
-async function checkCsx() {
-  if (checkingCsx.value) return
-  checkingCsx.value = true
-  csxError.value = ''
+const checkingCsx = computed(() => liveCheck.value?.status === 'running')
+
+async function pollCsxProgress() {
   try {
-    await $fetch(`/api/containers/${route.params.id}/shipcsx`, {
-      method: 'POST',
-      timeout: SHIPCSX_CHECK_TIMEOUT_MS,
-    })
-    await refresh()
+    const result = await $fetch<{
+      check: typeof liveCheck.value
+      snapshot: unknown
+    }>(`/api/containers/${route.params.id}/shipcsx`)
+    liveCheck.value = result.check
+    if (result.check?.status !== 'running') {
+      stopCsxPoll()
+      await refresh()
+    }
   }
   catch (err) {
     csxError.value = shipcsxPublicError(apiErrorMessage(err, 'Could not check ShipCSX.'))
-  }
-  finally {
-    checkingCsx.value = false
+    stopCsxPoll()
   }
 }
+
+function startCsxPoll() {
+  if (checkTimer) return
+  checkTimer = setInterval(pollCsxProgress, 1200)
+  void pollCsxProgress()
+}
+
+function stopCsxPoll() {
+  if (!checkTimer) return
+  clearInterval(checkTimer)
+  checkTimer = null
+}
+
+watch(() => data.value?.shipcsxCheck, (check) => {
+  if (check) liveCheck.value = check
+  if (check?.status === 'running') startCsxPoll()
+}, { immediate: true })
+
+onMounted(() => {
+  if (liveCheck.value?.status === 'running') startCsxPoll()
+})
+onUnmounted(stopCsxPoll)
 
 useHead({ title: () => data.value?.container.number ?? 'Container' })
 
@@ -109,9 +133,22 @@ const serviceCaption = computed(() => {
   return 'Pickups, drop-offs, and chassis changes for the current service life.'
 })
 const timeline = computed(() => visibleTimelineEntries(data.value?.timeline ?? []))
-const csxStatus = computed(() => shipcsxStatusLabel(data.value?.shipcsx))
-const csxMeta = computed(() => shipcsxMetaLine(data.value?.shipcsx))
+const csxStatus = computed(() => {
+  if (liveCheck.value?.status === 'running') return liveCheck.value.stepLabel
+  return shipcsxStatusLabel(data.value?.shipcsx)
+})
+const csxMeta = computed(() => {
+  if (liveCheck.value?.status === 'running') return shipcsxCheckProgressLine(liveCheck.value)
+  return shipcsxMetaLine(data.value?.shipcsx)
+})
+const csxProgress = computed(() => {
+  const check = liveCheck.value
+  if (check?.status !== 'running' || !check.stepCount) return 0
+  return Math.round((check.stepIndex / check.stepCount) * 100)
+})
 const csxNote = computed(() => {
+  if (liveCheck.value?.status === 'running') return ''
+  if (liveCheck.value?.status === 'error' && liveCheck.value.error) return liveCheck.value.error
   if (csxError.value) return csxError.value
   const raw = data.value?.shipcsx?.error
   return raw ? shipcsxPublicError(raw) : ''
@@ -216,10 +253,24 @@ const csxNote = computed(() => {
           </NuxtLink>
         </div>
 
-        <div class="csx-block">
+        <div
+          class="csx-block"
+          :class="{ running: checkingCsx }"
+        >
           <div class="csx-block-head">
             <span class="eyebrow">ShipCSX</span>
             <strong>{{ csxStatus }}</strong>
+          </div>
+          <div
+            v-if="checkingCsx"
+            class="csx-progress"
+            role="progressbar"
+            :aria-valuenow="csxProgress"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            :aria-label="csxMeta"
+          >
+            <i :style="{ width: `${csxProgress}%` }" />
           </div>
           <p
             v-if="csxMeta"
@@ -234,14 +285,19 @@ const csxNote = computed(() => {
           >
             {{ csxNote }}
           </p>
-          <button
-            type="button"
+          <NuxtLink
+            v-if="!checkingCsx"
+            :to="`/containers/${route.params.id}/shipcsx`"
             class="btn-ghost w-full"
-            :disabled="checkingCsx"
-            @click="checkCsx"
           >
-            {{ checkingCsx ? 'Checking…' : (data.shipcsx ? 'Check again' : 'Check CSX') }}
-          </button>
+            {{ data.shipcsx ? 'Check again' : 'Check CSX' }}
+          </NuxtLink>
+          <p
+            v-else
+            class="csx-block-note"
+          >
+            Checking on ShipCSX…
+          </p>
         </div>
 
         <div

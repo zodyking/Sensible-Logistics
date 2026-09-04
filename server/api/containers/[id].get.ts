@@ -12,6 +12,8 @@ import {
 } from '../../database/schema'
 import { assertTenant, requireAuth } from '../../utils/session'
 import { latestSnapshotsForContainers } from '../../services/csx-releases'
+import { getShipcsxCheckJob } from '../../services/shipcsx-jobs'
+import { resolveShipcsxTerminal } from '../../services/shipcsx-poll'
 import { sliceCurrentServiceLife, summarizeServiceLife } from '#shared/utils/service-life'
 import { normalizeContainerNumber } from '#shared/utils/iso6346'
 
@@ -109,6 +111,7 @@ export default defineEventHandler(async (event) => {
     .orderBy(desc(documents.createdAt))
 
   const [shipcsx] = await latestSnapshotsForContainers(db, auth.companyId, [containerId])
+  const suggestedTerminal = await resolveShipcsxTerminal(db, auth.companyId, containerId)
 
   return {
     container,
@@ -120,5 +123,7 @@ export default defineEventHandler(async (event) => {
     timeline,
     documents: files,
     shipcsx: shipcsx ?? null,
+    shipcsxCheck: getShipcsxCheckJob(containerId),
+    suggestedTerminal,
   }
 })

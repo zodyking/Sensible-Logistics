@@ -1,5 +1,5 @@
 export const SHIPCSX_LOOKUP_URL = 'https://next.shipcsx.com/#/shipment/lookup'
-export const SHIPCSX_REFERENCE = '00'
+export const SHIPCSX_REFERENCE = '0000'
 export const SHIPCSX_BATCH_SIZE = 3
 export const SHIPCSX_POLL_INTERVAL_MS = 30 * 60 * 1000
 /** Client + server wait for a live Playwright lookup (public search, no login). */
@@ -151,6 +151,22 @@ export function matchShipcsxTerminalOption(options: string[], wanted: string): s
     return label.includes(needle) || needle.includes(label)
   })
   return includes.length === 1 ? (includes[0] ?? null) : null
+}
+
+export function cleanShipcsxTerminalNames(labels: string[]): string[] {
+  const seen = new Set<string>()
+  const names: string[] = []
+  for (const raw of labels) {
+    const name = raw.replace(/\s+/g, ' ').trim()
+    if (!name) continue
+    if (/^select(\s+terminal)?$/i.test(name)) continue
+    if (/^(ok|done|cancel|search|continue)$/i.test(name)) continue
+    const key = name.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    names.push(name)
+  }
+  return names.sort((a, b) => a.localeCompare(b))
 }
 
 export function shipcsxPageLooksHardBlocked(text: string): boolean {

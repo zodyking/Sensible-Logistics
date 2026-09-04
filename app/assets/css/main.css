@@ -5140,6 +5140,29 @@
     color: var(--color-ink-600);
   }
 
+  .csx-progress {
+    height: 6px;
+    border-radius: 999px;
+    background: var(--color-line-200);
+    overflow: hidden;
+    margin: 0 0 var(--s3);
+  }
+
+  .csx-progress > i {
+    display: block;
+    height: 100%;
+    width: 0;
+    background: var(--color-action-500);
+    transition: width 0.24s ease;
+  }
+
+  .wiz-row select.input {
+    appearance: auto;
+    text-align: right;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
   .trip-spec {
     margin: 0;
     border-top: 1px solid var(--color-line-200);

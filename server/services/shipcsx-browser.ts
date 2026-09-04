@@ -1,8 +1,10 @@
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import {
   SHIPCSX_BATCH_SIZE,
   SHIPCSX_LOOKUP_URL,
   SHIPCSX_REFERENCE,
   chunkShipcsxEquipment,
+  cleanShipcsxTerminalNames,
   matchLookupCard,
   matchShipcsxTerminalOption,
   parseShipcsxLookupText,
@@ -12,6 +14,7 @@ import {
   shipcsxPageLooksLikeLogin,
   type CsxLookupCard,
 } from '#shared/utils/csx-lookup'
+import type { ShipcsxCheckStepId } from '#shared/utils/shipcsx-check'
 import { normalizeContainerNumber } from '#shared/utils/iso6346'
 
 export interface ShipcsxLookupItem {
@@ -21,8 +24,11 @@ export interface ShipcsxLookupItem {
 
 export interface ShipcsxLookupHit extends CsxLookupCard {
   containerId: string | null
+  referenceUsed: string
   error: string | null
 }
+
+export type ShipcsxLookupStepHandler = (step: ShipcsxCheckStepId) => void
 
 type PlaywrightModule = typeof import('playwright')
 type Page = import('playwright').Page
@@ -39,6 +45,11 @@ const CHROMIUM_ARGS = [
 ]
 
 const DESKTOP_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
+const TERMINAL_CACHE_PATH = '/tmp/shipcsx-terminals.json'
+const TERMINAL_CACHE_MS = 24 * 60 * 60 * 1000
+const TYPE_DELAY_MS = 45
+
+type TerminalCache = { fetchedAt: number, names: string[] }
 
 function config() {
   const runtime = useRuntimeConfig()
@@ -151,31 +162,16 @@ async function waitForLookupForm(page: Page) {
 }
 
 function searchButton(page: Page): Locator {
-  return page.getByRole('button', { name: /search/i }).first()
-    .or(page.locator('ion-button').filter({ hasText: /search/i }).first())
-    .or(page.locator('button, [type="submit"]').filter({ hasText: /search/i }).first())
+  return page.getByRole('button', { name: /search|continue/i }).first()
+    .or(page.locator('ion-button').filter({ hasText: /search|continue/i }).first())
+    .or(page.locator('button, [type="submit"]').filter({ hasText: /search|continue/i }).first())
 }
 
-async function fillControl(locator: Locator, value: string) {
-  const handle = locator.first()
-  await handle.waitFor({ state: 'attached', timeout: 15_000 })
-  const inner = handle.locator('input').first()
-  const target = (await inner.count()) ? inner : handle
-  await target.click({ timeout: 8_000 })
-  await target.fill('')
-  await target.pressSequentially(value, { delay: 12 })
-  await target.evaluate((el, next) => {
-    const host = el as HTMLElement
-    const input = (host instanceof HTMLInputElement
-      ? host
-      : host.querySelector?.('input') || host.shadowRoot?.querySelector('input')) as HTMLInputElement | null
-    if (!input) return
-    const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')
-    descriptor?.set?.call(input, next)
-    input.dispatchEvent(new Event('input', { bubbles: true }))
-    input.dispatchEvent(new Event('change', { bubbles: true }))
-  }, value)
-  await target.blur().catch(() => undefined)
+function terminalTrigger(page: Page): Locator {
+  return page.locator('ion-select').first()
+    .or(page.getByRole('combobox').first())
+    .or(page.getByLabel(/terminal/i).first())
+    .or(page.getByText(/select terminal/i).first())
 }
 
 async function nativeTerminalSelect(page: Page): Promise<Locator | null> {
@@ -194,47 +190,165 @@ async function nativeTerminalSelect(page: Page): Promise<Locator | null> {
   return bestOptions >= 2 ? selects.nth(bestIndex) : selects.first()
 }
 
-async function selectTerminal(page: Page, terminal: string) {
-  const native = await nativeTerminalSelect(page)
-  if (native) {
-    const labels = await native.locator('option').allTextContents()
-    const match = matchShipcsxTerminalOption(labels, terminal)
-    if (!match) {
-      throw new Error(`ShipCSX terminal "${terminal}" was not in the dropdown.`)
-    }
-    await native.selectOption({ label: match })
-    await pause(250, 500)
-    return
-  }
+async function fillControl(locator: Locator, value: string) {
+  const handle = locator.first()
+  await handle.waitFor({ state: 'attached', timeout: 15_000 })
+  const inner = handle.locator('input').first()
+  const target = (await inner.count()) ? inner : handle
+  await target.click({ timeout: 8_000 })
+  await pause(80, 160)
+  await target.fill('')
+  await target.pressSequentially(value, { delay: TYPE_DELAY_MS })
+  await target.evaluate((el, next) => {
+    const host = el as HTMLElement
+    const input = (host instanceof HTMLInputElement
+      ? host
+      : host.querySelector?.('input') || host.shadowRoot?.querySelector('input')) as HTMLInputElement | null
+    if (!input) return
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')
+    descriptor?.set?.call(input, next)
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    input.dispatchEvent(new Event('change', { bubbles: true }))
+  }, value)
+  await target.blur().catch(() => undefined)
+}
 
-  const trigger = page.locator('ion-select').first()
-    .or(page.getByRole('combobox').first())
-    .or(page.getByText(/select terminal/i).first())
-  if (!(await trigger.count())) {
-    throw new Error(`Could not select ShipCSX terminal "${terminal}".`)
-  }
-  await trigger.click({ timeout: 15_000 })
-  await pause(200, 450)
+async function menuOptionLocators(page: Page): Promise<Locator> {
+  return page.getByRole('option')
+    .or(page.getByRole('radio'))
+    .or(page.locator('ion-alert button, .alert-radio-label, ion-select-option'))
+}
 
-  const option = page.getByRole('radio', { name: new RegExp(terminal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') }).first()
-    .or(page.getByRole('option', { name: terminal, exact: false }).first())
-    .or(page.getByText(terminal, { exact: false }).first())
-  if (!(await option.count())) {
-    throw new Error(`ShipCSX terminal "${terminal}" was not in the dropdown.`)
+async function collectOpenMenuNames(page: Page): Promise<string[]> {
+  const options = await menuOptionLocators(page)
+  const count = await options.count()
+  if (!count) return []
+  const labels: string[] = []
+  for (let i = 0; i < count; i++) {
+    const text = (await options.nth(i).innerText().catch(() => '')).trim()
+    if (text) labels.push(text)
   }
+  return cleanShipcsxTerminalNames(labels)
+}
+
+async function scrollMenuToOption(page: Page, wanted: string): Promise<boolean> {
+  const options = await menuOptionLocators(page)
+  const count = await options.count()
+  if (!count) return false
+  const labels: string[] = []
+  for (let i = 0; i < count; i++) {
+    labels.push((await options.nth(i).innerText().catch(() => '')).trim())
+  }
+  const match = matchShipcsxTerminalOption(labels, wanted)
+  if (!match) return false
+  const index = labels.findIndex(label => label === match)
+  const option = options.nth(Math.max(0, index))
+  const list = page.locator('[role="listbox"], ion-alert, ion-action-sheet, ion-select-popover, .alert-wrapper').first()
+  if (await list.count()) {
+    await list.evaluate((el) => {
+      el.scrollTop = 0
+    })
+    await pause(120, 240)
+    const targetTop = await option.evaluate(el => (el as HTMLElement).offsetTop).catch(() => 0)
+    await list.evaluate((el, top) => {
+      el.scrollTop = Math.max(0, top - 80)
+    }, targetTop)
+    await pause(160, 280)
+  }
+  await option.scrollIntoViewIfNeeded().catch(() => undefined)
+  await pause(120, 220)
   await option.click({ timeout: 10_000 })
-  await pause(150, 350)
   const done = page.getByRole('button', { name: /^(ok|done)$/i }).first()
   if (await done.count()) await done.click().catch(() => undefined)
-  await pause(250, 500)
+  return true
+}
 
-  const shown = (await bodyText(page)).toLowerCase()
-  const token = terminal.trim().toLowerCase().slice(0, 8)
-  if (token && !shown.includes(token)) {
-    throw new Error(`Could not select ShipCSX terminal "${terminal}".`)
+async function scrollNativeSelect(page: Page, native: Locator, wanted: string) {
+  const labels = cleanShipcsxTerminalNames(await native.locator('option').allTextContents())
+  const match = matchShipcsxTerminalOption(labels, wanted)
+  if (!match) {
+    throw new Error(`ShipCSX terminal "${wanted}" was not in the dropdown.`)
+  }
+  const all = await native.locator('option').allTextContents()
+  const index = all.findIndex(label => label.replace(/\s+/g, ' ').trim() === match)
+  await native.scrollIntoViewIfNeeded().catch(() => undefined)
+  await native.click({ timeout: 8_000 }).catch(() => undefined)
+  await native.focus()
+  await pause(120, 220)
+  await page.keyboard.press('Home')
+  const steps = Math.max(0, index)
+  for (let i = 0; i < steps; i++) {
+    await page.keyboard.press('ArrowDown')
+    if (i % 3 === 2) await pause(40, 80)
+  }
+  await pause(80, 160)
+  await page.keyboard.press('Enter')
+  await pause(200, 360)
+  const selected = await native.inputValue().catch(() => '')
+  if (matchShipcsxTerminalOption([selected, match], wanted) !== match) {
+    await native.selectOption({ label: match })
   }
 }
 
+async function selectTerminal(page: Page, terminal: string) {
+  const native = await nativeTerminalSelect(page)
+  const trigger = terminalTrigger(page)
+  if (await trigger.count()) {
+    await trigger.scrollIntoViewIfNeeded().catch(() => undefined)
+    await pause(120, 240)
+    await trigger.click({ timeout: 15_000 })
+    await pause(350, 700)
+    if (await scrollMenuToOption(page, terminal)) {
+      await pause(250, 500)
+      return
+    }
+    await page.keyboard.press('Escape').catch(() => undefined)
+  }
+  if (native) {
+    await scrollNativeSelect(page, native, terminal)
+    return
+  }
+  throw new Error(`Could not select ShipCSX terminal "${terminal}".`)
+}
+
+async function readTerminalNames(page: Page): Promise<string[]> {
+  const native = await nativeTerminalSelect(page)
+  if (native) {
+    const names = cleanShipcsxTerminalNames(await native.locator('option').allTextContents())
+    if (names.length) return names
+  }
+  const trigger = terminalTrigger(page)
+  if (!(await trigger.count())) return []
+  await trigger.scrollIntoViewIfNeeded().catch(() => undefined)
+  await trigger.click({ timeout: 15_000 })
+  await pause(400, 800)
+  const names = await collectOpenMenuNames(page)
+  await page.keyboard.press('Escape').catch(() => undefined)
+  const cancel = page.getByRole('button', { name: /cancel/i }).first()
+  if (await cancel.count()) await cancel.click().catch(() => undefined)
+  return names
+}
+
+async function fillReferenceRows(page: Page, count: number, reference: string) {
+  const refs = page.locator(
+    'input[placeholder*="Pickup" i], input[aria-label*="Reference" i], ion-input[placeholder*="Pickup" i], ion-input[label*="Reference" i]',
+  )
+  const labeledRef = page.getByLabel(/reference|pickup number/i)
+  const all = page.locator('input[type="text"], input:not([type]), ion-input')
+  const total = await all.count()
+  for (let i = 0; i < count; i++) {
+    if (await refs.count()) {
+      await fillControl(refs.nth(Math.min(i, await refs.count() - 1)), reference)
+    }
+    else if (await labeledRef.count()) {
+      await fillControl(labeledRef.nth(Math.min(i, await labeledRef.count() - 1)), reference)
+    }
+    else if (i * 3 + 2 < total) {
+      await fillControl(all.nth(i * 3 + 2), reference)
+    }
+    await pause()
+  }
+}
 async function fillEquipmentRows(page: Page, equipment: string[]) {
   const rows = equipment
     .map(shipcsxEquipmentParts)
@@ -247,17 +361,12 @@ async function fillEquipmentRows(page: Page, equipment: string[]) {
   const numbers = page.locator(
     'input[placeholder*="123456"], input[aria-label*="Equipment Number" i], ion-input[placeholder*="123456"], ion-input[label*="Number" i]',
   )
-  const refs = page.locator(
-    'input[placeholder*="Pickup" i], input[aria-label*="Reference" i], ion-input[placeholder*="Pickup" i], ion-input[label*="Reference" i]',
-  )
-
   const labeledInitial = page.getByLabel(/equipment initial|initial/i)
   const labeledNumber = page.getByLabel(/equipment number/i)
 
   if (await initials.count()) {
     const initialCount = await initials.count()
     const numberCount = await numbers.count()
-    const refCount = await refs.count()
     for (const [i, row] of rows.entries()) {
       const initialField = initials.nth(Math.min(i, initialCount - 1))
       if (numberCount) {
@@ -268,10 +377,6 @@ async function fillEquipmentRows(page: Page, equipment: string[]) {
       }
       else {
         await fillControl(initialField, `${row.initial}${row.number}`)
-        await pause()
-      }
-      if (refCount) {
-        await fillControl(refs.nth(Math.min(i, refCount - 1)), SHIPCSX_REFERENCE)
         await pause()
       }
     }
@@ -301,10 +406,6 @@ async function fillEquipmentRows(page: Page, equipment: string[]) {
       await fillControl(all.nth(base + 1), row.number)
       await pause()
     }
-    if (base + 2 < total) {
-      await fillControl(all.nth(base + 2), SHIPCSX_REFERENCE)
-      await pause()
-    }
   }
 }
 
@@ -321,33 +422,10 @@ async function submitSearch(page: Page) {
   await page.keyboard.press('Enter')
 }
 
-async function runLookup(terminal: string, equipment: string[]): Promise<CsxLookupCard[]> {
+async function withLookupPage<T>(work: (page: Page) => Promise<T>): Promise<T> {
   const { browser, context, page } = await openPage()
   try {
-    console.info('[shipcsx] lookup', { terminal, count: equipment.length })
-    await page.goto(SHIPCSX_LOOKUP_URL, { waitUntil: 'domcontentloaded', timeout: 45_000 })
-    await waitForLookupForm(page)
-    assertLookupPage(await bodyText(page), page.url())
-    await selectTerminal(page, terminal)
-    await fillEquipmentRows(page, equipment)
-    await submitSearch(page)
-    await page.waitForTimeout(1200)
-    const resultsHeading = page.getByText(/Shipment Lookup Results|In-Gate|NOTIFIED/i).first()
-    const appeared = await resultsHeading.waitFor({ timeout: 25_000 }).then(() => true).catch(() => false)
-    const results = await bodyText(page)
-    assertLookupPage(results, page.url())
-    if (!appeared && /select terminal|equipment initial|equipment lookup/i.test(results)) {
-      console.warn('[shipcsx] search did not return results', { url: page.url(), snippet: results.slice(0, 280) })
-      throw new Error('ShipCSX did not return lookup results. Search may still be disabled.')
-    }
-    return parseShipcsxLookupText(results).cards
-  }
-  catch (error) {
-    if (error instanceof Error && /locator\.|timeout \d+ms exceeded|getByRole/i.test(error.message)) {
-      console.warn('[shipcsx] playwright', error.message.split('\n')[0])
-      throw new Error('ShipCSX did not return lookup results. Search may still be disabled.', { cause: error })
-    }
-    throw error
+    return await work(page)
   }
   finally {
     await context.close().catch(() => undefined)
@@ -355,24 +433,125 @@ async function runLookup(terminal: string, equipment: string[]): Promise<CsxLook
   }
 }
 
+async function scrapeShipcsxTerminals(): Promise<string[]> {
+  return withLookupPage(async (page) => {
+    await page.goto(SHIPCSX_LOOKUP_URL, { waitUntil: 'domcontentloaded', timeout: 45_000 })
+    await waitForLookupForm(page)
+    assertLookupPage(await bodyText(page), page.url())
+    const names = await readTerminalNames(page)
+    if (!names.length) throw new Error('Could not load CSX terminal names from ShipCSX.')
+    return names
+  })
+}
+
+async function loadTerminalCache(): Promise<TerminalCache | null> {
+  try {
+    const raw = JSON.parse(await readFile(TERMINAL_CACHE_PATH, 'utf8')) as TerminalCache
+    if (!Array.isArray(raw.names) || !raw.names.length) return null
+    return raw
+  }
+  catch {
+    return null
+  }
+}
+
+async function saveTerminalCache(names: string[]) {
+  await mkdir('/tmp', { recursive: true }).catch(() => undefined)
+  await writeFile(TERMINAL_CACHE_PATH, JSON.stringify({ fetchedAt: Date.now(), names } satisfies TerminalCache)).catch(() => undefined)
+}
+
+export async function listShipcsxTerminals(input?: { refresh?: boolean }): Promise<{
+  terminals: string[]
+  cachedAt: number | null
+  source: 'live' | 'cache'
+}> {
+  const cached = await loadTerminalCache()
+  if (!input?.refresh && cached && Date.now() - cached.fetchedAt < TERMINAL_CACHE_MS) {
+    return { terminals: cached.names, cachedAt: cached.fetchedAt, source: 'cache' }
+  }
+  try {
+    const names = await withShipcsxLock(() => scrapeShipcsxTerminals())
+    await saveTerminalCache(names)
+    return { terminals: names, cachedAt: Date.now(), source: 'live' }
+  }
+  catch (error) {
+    if (cached?.names.length) {
+      return { terminals: cached.names, cachedAt: cached.fetchedAt, source: 'cache' }
+    }
+    throw error
+  }
+}
+
+async function runLookup(
+  terminal: string,
+  equipment: string[],
+  reference: string,
+  onStep?: ShipcsxLookupStepHandler,
+): Promise<CsxLookupCard[]> {
+  return withLookupPage(async (page) => {
+    try {
+      console.info('[shipcsx] lookup', { terminal, count: equipment.length })
+      onStep?.('open')
+      await page.goto(SHIPCSX_LOOKUP_URL, { waitUntil: 'domcontentloaded', timeout: 45_000 })
+      await waitForLookupForm(page)
+      assertLookupPage(await bodyText(page), page.url())
+      onStep?.('terminal')
+      await selectTerminal(page, terminal)
+      onStep?.('equipment')
+      await fillEquipmentRows(page, equipment)
+      onStep?.('reference')
+      await fillReferenceRows(page, equipment.length, reference)
+      onStep?.('search')
+      await submitSearch(page)
+      await page.waitForTimeout(1200)
+      onStep?.('results')
+      const resultsHeading = page.getByText(/Shipment Lookup Results|In-Gate|NOTIFIED/i).first()
+      const appeared = await resultsHeading.waitFor({ timeout: 25_000 }).then(() => true).catch(() => false)
+      const results = await bodyText(page)
+      assertLookupPage(results, page.url())
+      if (!appeared && /select terminal|equipment initial|equipment lookup/i.test(results)) {
+        console.warn('[shipcsx] search did not return results', { url: page.url(), snippet: results.slice(0, 280) })
+        throw new Error('ShipCSX did not return lookup results. Search may still be disabled.')
+      }
+      return parseShipcsxLookupText(results).cards
+    }
+    catch (error) {
+      if (error instanceof Error && /locator\.|timeout \d+ms exceeded|getByRole/i.test(error.message)) {
+        console.warn('[shipcsx] playwright', error.message.split('\n')[0])
+        throw new Error('ShipCSX did not return lookup results. Search may still be disabled.', { cause: error })
+      }
+      throw error
+    }
+  })
+}
+
 export async function lookupShipcsxShipments(input: {
   terminal: string
   items: ShipcsxLookupItem[]
+  reference?: string
+  onStep?: ShipcsxLookupStepHandler
 }): Promise<ShipcsxLookupHit[]> {
   const terminal = input.terminal.trim()
   if (!terminal) throw new Error('Set a ShipCSX terminal name on the rail location or NUXT_SHIPCSX_DEFAULT_TERMINAL.')
   const items = input.items.filter(item => normalizeContainerNumber(item.equipmentNumber))
   if (!items.length) return []
+  const reference = (input.reference ?? SHIPCSX_REFERENCE).trim() || SHIPCSX_REFERENCE
 
   return withShipcsxLock(async () => {
     const hits: ShipcsxLookupHit[] = []
     for (const batch of chunkShipcsxEquipment(items, SHIPCSX_BATCH_SIZE)) {
-      const cards = await runLookup(terminal, batch.map(item => item.equipmentNumber))
+      const cards = await runLookup(
+        terminal,
+        batch.map(item => item.equipmentNumber),
+        reference,
+        input.onStep,
+      )
       for (const item of batch) {
         const card = matchLookupCard(cards, item.equipmentNumber)
         hits.push({
           equipmentNumber: normalizeContainerNumber(item.equipmentNumber),
           containerId: item.containerId ?? null,
+          referenceUsed: reference,
           loadEmpty: card?.loadEmpty ?? null,
           waybillDate: card?.waybillDate ?? null,
           inGateReadiness: card?.inGateReadiness ?? null,

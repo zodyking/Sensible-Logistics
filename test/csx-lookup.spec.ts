@@ -9,6 +9,7 @@ import {
   shipcsxPageLooksHardBlocked,
   shipcsxPageLooksLikeChallenge,
   shipcsxPageLooksLikeLogin,
+  cleanShipcsxTerminalNames,
 } from '../shared/utils/csx-lookup'
 
 const RESULTS = `
@@ -53,6 +54,17 @@ describe('ShipCSX equipment parts', () => {
   })
 })
 
+describe('ShipCSX terminal names', () => {
+  it('drops placeholders and sorts unique labels', () => {
+    expect(cleanShipcsxTerminalNames([
+      'Select Terminal',
+      ' North Bergen ',
+      'Fairburn',
+      'North Bergen',
+      'OK',
+    ])).toEqual(['Fairburn', 'North Bergen'])
+  })
+})
 describe('ShipCSX terminal option match', () => {
   const options = ['Select Terminal', 'North Bergen', 'Fairburn', 'Northwest Ohio']
 
