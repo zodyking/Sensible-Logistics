@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, sql } from 'drizzle-orm'
-import { containers, csxPickupReleases, locations } from '../database/schema'
+import { containers, csxPickupReleases, csxShipmentSnapshots, locations } from '../database/schema'
 import type { DbExecutor } from '../utils/db'
 import { locationIdsAtSameAddress } from './location-sites'
 import { formatContainerNumber, normalizeContainerNumber } from '#shared/utils/iso6346'
