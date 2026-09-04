@@ -41,6 +41,8 @@ ENV YARD_WORKER=/app/yard/generate_worker.py
 ENV OPENOCR_DET_MODEL=/opt/openocr/openocr_det_model.onnx
 ENV OPENOCR_REC_MODEL=/opt/openocr/openocr_rec_model.onnx
 ENV OPENOCR_WORKDIR=/tmp/openocr
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
+ENV NUXT_SHIPCSX_PROFILE_DIR=/tmp/shipcsx-profile
 
 # uid 1001: the base image already has `node` at uid 1000.
 RUN groupadd --system --gid 1001 nodejs \
@@ -78,6 +80,16 @@ RUN chmod +x ./entrypoint.sh \
   && chown -R nuxt:nodejs /opt/openocr /app/ocr /app/yard \
   && pip3 install --break-system-packages --no-cache-dir \
     -r /app/yard/requirements.txt || true
+
+# ShipCSX lookups need Chromium and a writable profile. `/app` is root-owned,
+# so the profile lives under HOME=/tmp. Playwright is installed here (Debian)
+# because the Alpine builder never downloads browsers, and Nitro may omit the
+# dynamic `import('playwright')`.
+RUN mkdir -p /opt/playwright /tmp/shipcsx-profile \
+  && cd /app/.output/server \
+  && npm install --omit=dev --no-audit --no-fund --no-package-lock playwright@1.55.0 \
+  && npx playwright install --with-deps chromium \
+  && chown -R nuxt:nodejs /opt/playwright /tmp/shipcsx-profile /app/.output/server
 
 USER nuxt
 

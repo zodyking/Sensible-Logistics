@@ -47,6 +47,9 @@ export function shipcsxPublicError(raw: string | null | undefined): string {
   if (/browser|chromium|executable/i.test(text)) {
     return 'ShipCSX lookup is not set up on this server yet.'
   }
+  if (/eacces|permission denied|mkdir/i.test(text)) {
+    return 'ShipCSX could not store its browser profile on this server.'
+  }
   return text
 }
 
