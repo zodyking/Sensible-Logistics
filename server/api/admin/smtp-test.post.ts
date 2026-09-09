@@ -8,7 +8,7 @@ const schema = z.object({
 })
 
 /**
- * Diagnose outbound mail without creating a driver account.
+ * Diagnose outbound mail without creating an account.
  *
  * Signup deliberately keeps its failure message vague for anonymous visitors, so
  * this is the endpoint that returns the provider's actual refusal — the SMTP
@@ -37,12 +37,12 @@ export default defineEventHandler(async (event) => {
       to,
       subject: `${appName} SMTP test`,
       text: [
-        'This is a test message from your driver portal.',
+        'This is a test message from Yard Manager.',
         '',
-        'If you are reading it, outbound email is working and driver verification links will be delivered.',
+        'If you are reading it, outbound email is working and verification links will be delivered.',
       ].join('\n'),
-      html: '<p>This is a test message from your driver portal.</p>'
-        + '<p>If you are reading it, outbound email is working and driver verification links will be delivered.</p>',
+      html: '<p>This is a test message from Yard Manager.</p>'
+        + '<p>If you are reading it, outbound email is working and verification links will be delivered.</p>',
     })
   }
   catch (error) {

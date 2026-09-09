@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { isValidPhone, toE164 } from '#shared/utils/phone'
+import { membershipRoleForSignup, SIGNUP_ROLES } from '#shared/utils/domain'
 import { companyMemberships, drivers, users } from '../../database/schema'
 import { sendEmailVerification } from '../../services/email-verification'
 import { useMail } from '../../services/mail'
@@ -15,13 +16,14 @@ const schema = z.object({
     .refine(isValidPhone, 'Enter a 10-digit mobile number.'),
   password: z.string().min(10, 'Use at least 10 characters.').max(200),
   inviteCode: z.string().trim().min(1, 'A company invite code is required.').max(60),
+  role: z.enum(SIGNUP_ROLES).default('DRIVER'),
 })
 
 /**
- * Public driver self-registration (spec 4).
+ * Public self-registration (spec 4).
  *
- * This route can only ever create a DRIVER membership. Admin accounts are
- * provisioned by an existing admin or during company setup — never here.
+ * Drivers get a DRIVER membership plus a drivers row. Dispatchers get an ADMIN
+ * membership and no drivers row — they use the map board, not the trip home.
  */
 export default defineEventHandler(async (event) => {
   const body = await readValidatedJson(event, schema)
@@ -32,7 +34,7 @@ export default defineEventHandler(async (event) => {
   if (!expectedCode) {
     throw createError({
       statusCode: 503,
-      statusMessage: 'Driver signup is unavailable: NUXT_COMPANY_INVITE_CODE is not configured.',
+      statusMessage: 'Signup is unavailable: NUXT_COMPANY_INVITE_CODE is not configured.',
     })
   }
 
@@ -40,7 +42,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 403, statusMessage: 'That invite code is not valid.' })
   }
 
-  // Provisions the company from env on a fresh database, so the first driver to
+  // Provisions the company from env on a fresh database, so the first person to
   // sign up does not hit an empty tenant.
   const company = await ensurePrimaryCompany(db)
 
@@ -55,10 +57,11 @@ export default defineEventHandler(async (event) => {
   }
 
   // Fail before creating anything if mail is unavailable, so a misconfigured
-  // deployment cannot strand a driver with an account they can never verify.
+  // deployment cannot strand someone with an account they can never verify.
   useMail()
 
   const passwordHash = await hashPassword(body.password)
+  const membershipRole = membershipRoleForSignup(body.role)
 
   const result = await db.transaction(async (tx) => {
     const [user] = await tx
@@ -79,15 +82,16 @@ export default defineEventHandler(async (event) => {
 
     const [membership] = await tx
       .insert(companyMemberships)
-      .values({ companyId: company.id, userId: user.id, role: 'DRIVER', status: 'ACTIVE' })
+      .values({ companyId: company.id, userId: user.id, role: membershipRole, status: 'ACTIVE' })
       .returning()
 
-    const [driver] = await tx
-      .insert(drivers)
-      .values({ companyId: company.id, userId: user.id, status: 'AVAILABLE' })
-      .returning()
+    if (membershipRole === 'DRIVER') {
+      await tx
+        .insert(drivers)
+        .values({ companyId: company.id, userId: user.id, status: 'AVAILABLE' })
+    }
 
-    return { user, membership: membership!, driver: driver! }
+    return { user, membership: membership! }
   })
 
   // No session yet: the account is inert until the address is confirmed.
@@ -99,7 +103,7 @@ export default defineEventHandler(async (event) => {
   }
   catch (error) {
     // The account exists, so report the delivery failure rather than a 500 —
-    // the driver can retry from the "check your email" screen.
+    // they can retry from the "check your email" screen.
     emailSent = false
     console.error('[signup] verification email failed', error)
   }

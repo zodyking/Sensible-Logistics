@@ -36,6 +36,11 @@ import {
   locationTypeGroup,
   REQUIRED_OFF_DUTY_MINUTES,
   ROLES,
+  roleHomePath,
+  roleLabel,
+  SIGNUP_ROLE_HINTS,
+  SIGNUP_ROLE_LABELS,
+  SIGNUP_ROLES,
   SHORT_HAUL_LABELS,
   SHORT_HAUL_RADIUS_MILES,
   SHORT_HAUL_STATUSES,
@@ -161,6 +166,12 @@ describe('domain vocabulary integrity', () => {
 
   it('defines ROLES as DRIVER and ADMIN', () => {
     expect(ROLES).toEqual(['DRIVER', 'ADMIN'])
+    expect(roleHomePath('ADMIN')).toBe('/admin')
+    expect(roleLabel('ADMIN')).toBe('Dispatcher')
+  })
+
+  it('keeps SIGNUP_ROLES in lockstep with labels and hints', () => {
+    expectUnionKeysMatch(SIGNUP_ROLES, SIGNUP_ROLE_LABELS, SIGNUP_ROLE_HINTS)
   })
 
   it('exposes the documented FMCSA constants', () => {

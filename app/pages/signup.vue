@@ -1,10 +1,17 @@
 <script setup lang="ts">
 import { formatPhoneInput } from '#shared/utils/phone'
+import {
+  SIGNUP_ROLE_HINTS,
+  SIGNUP_ROLE_LABELS,
+  SIGNUP_ROLES,
+  type SignupRole,
+} from '#shared/utils/domain'
 
 definePageMeta({ layout: 'auth' })
-useHead({ title: 'Create a driver account' })
+useHead({ title: 'Create an account' })
 
 const form = reactive({
+  role: 'DRIVER' as SignupRole,
   firstName: '',
   lastName: '',
   email: '',
@@ -13,7 +20,7 @@ const form = reactive({
   inviteCode: '',
 })
 
-/** Masks to (000) 000-0000 as the driver types on the phone keypad. */
+/** Masks to (000) 000-0000 as they type on the phone keypad. */
 function onMobileInput(event: Event) {
   const input = event.target as HTMLInputElement
   const formatted = formatPhoneInput(input.value)
@@ -175,7 +182,7 @@ async function resend() {
     </div>
     <AuthHeader
       title="Create your account"
-      subtitle="Driver self-registration"
+      subtitle="Driver or dispatcher"
     />
 
     <form
@@ -191,6 +198,26 @@ async function resend() {
         <span aria-hidden="true">✕</span>
         <span>{{ errorMessage }}</span>
       </p>
+
+      <div
+        class="signup-roles"
+        role="radiogroup"
+        aria-label="Account type"
+      >
+        <button
+          v-for="option in SIGNUP_ROLES"
+          :key="option"
+          type="button"
+          class="signup-role"
+          role="radio"
+          :aria-checked="form.role === option"
+          :aria-pressed="form.role === option"
+          @click="form.role = option"
+        >
+          <b>{{ SIGNUP_ROLE_LABELS[option] }}</b>
+          <small>{{ SIGNUP_ROLE_HINTS[option] }}</small>
+        </button>
+      </div>
 
       <div class="grid grid-cols-2 gap-3">
         <label class="field">
@@ -299,7 +326,7 @@ async function resend() {
         type="submit"
         :disabled="submitting"
       >
-        {{ submitting ? 'Creating account…' : 'Create driver account' }}
+        {{ submitting ? 'Creating account…' : 'Create account' }}
       </button>
     </form>
 

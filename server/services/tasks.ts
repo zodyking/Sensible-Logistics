@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { and, asc, desc, eq, gte, inArray, isNull, or } from 'drizzle-orm'
 import type { H3Event } from 'h3'
-import { companies, dispatchTasks, smsInboundEndpoints, trips } from '../database/schema'
+import { companies, dispatchTasks, drivers, smsInboundEndpoints, trips, users } from '../database/schema'
 import type { DispatchTask } from '../database/schema'
 import type { Database, DbExecutor } from '../utils/db'
 import type { AuthContext } from '../utils/session'
@@ -50,6 +50,8 @@ export interface DispatchTaskView {
   tripId: string | null
   steps: TaskStep[]
   parsed: Record<string, unknown>
+  driverId: string
+  driverName?: string | null
 }
 
 function fingerprint(text: string, workDate: string): string {
@@ -60,7 +62,7 @@ function newToken(): string {
   return randomBytes(24).toString('base64url')
 }
 
-function toView(row: DispatchTask, timezone: string): DispatchTaskView {
+function toView(row: DispatchTask, timezone: string, driverName?: string | null): DispatchTaskView {
   const parsed = row.parsed ?? {}
   const addedDate = row.receivedAt
     ? calendarDateInZone(row.receivedAt, timezone)
@@ -80,6 +82,8 @@ function toView(row: DispatchTask, timezone: string): DispatchTaskView {
     tripId: row.tripId,
     steps: stepsOrBlob(parsed, row.rawText),
     parsed,
+    driverId: row.driverId,
+    driverName: driverName ?? null,
   }
 }
 
@@ -332,6 +336,107 @@ export async function createManualTask(
     throw createError({ statusCode: 500, statusMessage: 'Could not save the task.' })
   }
   return toView(inserted, timezone)
+}
+
+export async function createAssignedTask(
+  db: Database,
+  auth: AuthContext,
+  input: {
+    driverId: string
+    text: string
+    kind?: DispatchTaskKind
+    containerNumber?: string | null
+    locationId?: string | null
+    locationName?: string | null
+  },
+): Promise<DispatchTaskView> {
+  const blob = input.text.trim()
+  if (!blob) {
+    throw createError({ statusCode: 422, statusMessage: 'Write the work first.' })
+  }
+
+  const [driver] = await db
+    .select({
+      id: drivers.id,
+      firstName: users.firstName,
+      lastName: users.lastName,
+    })
+    .from(drivers)
+    .innerJoin(users, eq(users.id, drivers.userId))
+    .where(and(eq(drivers.id, input.driverId), eq(drivers.companyId, auth.companyId)))
+    .limit(1)
+
+  if (!driver) {
+    throw createError({ statusCode: 404, statusMessage: 'Driver not found.' })
+  }
+
+  const timezone = await companyTimezone(db, auth.companyId)
+  const todayIso = calendarDateInZone(new Date(), timezone)
+  const parsedSms = parseDispatchSms(blob, todayIso)
+  const kind = input.kind ?? parsedSms?.kind ?? 'NOTE'
+  const title = parsedSms?.title ?? firstLineTitle(blob)
+  const steps = stepsFromBlob(blob)
+  if (!steps.length) {
+    throw createError({ statusCode: 422, statusMessage: 'Write the work first.' })
+  }
+
+  const now = new Date()
+  const [inserted] = await db
+    .insert(dispatchTasks)
+    .values({
+      companyId: auth.companyId,
+      driverId: driver.id,
+      source: 'MANUAL',
+      rawText: blob,
+      sender: auth.fullName,
+      receivedAt: now,
+      workDate: todayIso,
+      kind,
+      title,
+      parsed: {
+        origin: 'dispatch',
+        containerNumbers: parsedSms?.containerNumbers?.length
+          ? parsedSms.containerNumbers
+          : (input.containerNumber ? [input.containerNumber] : []),
+        locationId: input.locationId ?? null,
+        locationName: input.locationName ?? null,
+        assignedByUserId: auth.userId,
+        steps,
+      },
+      status: 'OPEN',
+      fingerprint: `dispatch:${randomBytes(16).toString('hex')}`,
+    })
+    .returning()
+
+  if (!inserted) {
+    throw createError({ statusCode: 500, statusMessage: 'Could not save the task.' })
+  }
+  return toView(inserted, timezone, `${driver.firstName} ${driver.lastName}`)
+}
+
+export async function listCompanyOpenTasks(
+  db: DbExecutor,
+  auth: AuthContext,
+  options: { limit?: number } = {},
+): Promise<DispatchTaskView[]> {
+  const timezone = await companyTimezone(db, auth.companyId)
+  const rows = await db
+    .select({
+      task: dispatchTasks,
+      firstName: users.firstName,
+      lastName: users.lastName,
+    })
+    .from(dispatchTasks)
+    .innerJoin(drivers, eq(drivers.id, dispatchTasks.driverId))
+    .innerJoin(users, eq(users.id, drivers.userId))
+    .where(and(
+      eq(dispatchTasks.companyId, auth.companyId),
+      inArray(dispatchTasks.status, ['OPEN', 'IN_PROGRESS']),
+    ))
+    .orderBy(desc(dispatchTasks.receivedAt))
+    .limit(options.limit ?? 40)
+
+  return rows.map(row => toView(row.task, timezone, `${row.firstName} ${row.lastName}`))
 }
 
 export async function updateDriverTask(

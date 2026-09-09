@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { roleLabel } from '#shared/utils/domain'
+
 useHead({ title: 'More' })
 
 const { user, clear, fetch: refreshSession } = useUserSession()
@@ -76,7 +78,7 @@ const buildLabel = computed(() => {
         </div>
         <div class="row-main">
           <b>{{ user?.fullName }}</b>
-          <small>{{ user?.role === 'ADMIN' ? 'Admin' : 'Driver' }} · {{ user?.companyName }}</small>
+          <small>{{ roleLabel(user?.role) }} · {{ user?.companyName }}</small>
         </div>
       </div>
       <NuxtLink

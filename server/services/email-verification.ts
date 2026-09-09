@@ -131,7 +131,7 @@ function buildMessage(firstName: string, link: string, expiresAt: Date) {
   const text = [
     `Hi ${firstName},`,
     '',
-    `Confirm your email address to activate your ${appName} driver account:`,
+    `Confirm your email address to activate your ${appName} account:`,
     '',
     link,
     '',
@@ -151,7 +151,7 @@ function buildMessage(firstName: string, link: string, expiresAt: Date) {
         <td style="padding:28px 24px;">
           <p style="margin:0 0 16px;font-size:16px;">Hi ${firstName},</p>
           <p style="margin:0 0 24px;font-size:16px;line-height:1.5;">
-            Confirm your email address to activate your driver account.
+            Confirm your email address to activate your account.
           </p>
           <a href="${link}" style="display:block;background:#F0A422;color:#0C1E30;text-decoration:none;font-weight:700;font-size:16px;text-align:center;padding:16px 24px;border-radius:12px;">
             Confirm email address

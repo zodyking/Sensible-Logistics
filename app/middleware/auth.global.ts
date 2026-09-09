@@ -4,9 +4,11 @@
  * This is a usability layer only — every API route independently enforces role
  * and tenant rules server-side (spec 21).
  *
- * Admins have no dashboard: signing in takes them straight to a management
- * page, and `/` is redirected away from the driver operational home (spec 3).
+ * Dispatchers (ADMIN) land on the map board. `/` stays the driver operational
+ * home, so signed-in admins are redirected away from it.
  */
+import { roleHomePath } from '#shared/utils/domain'
+
 const PUBLIC_ROUTES = new Set(['/login', '/signup', '/verify-email'])
 
 export default defineNuxtRouteMiddleware((to) => {
@@ -14,7 +16,7 @@ export default defineNuxtRouteMiddleware((to) => {
 
   if (PUBLIC_ROUTES.has(to.path)) {
     if (loggedIn.value) {
-      return navigateTo(user.value?.role === 'ADMIN' ? '/admin/containers' : '/')
+      return navigateTo(roleHomePath(user.value?.role))
     }
     return
   }
@@ -38,6 +40,6 @@ export default defineNuxtRouteMiddleware((to) => {
   // reachable from Drivers & timecards. The More cheat-code box and hidden
   // operator pages (API connections, clear records) stay reachable for admins.
   if (!isAdminRoute && user.value?.role === 'ADMIN' && !locationPool && !containerRecord && !moreArea && !roadsideRecord) {
-    return navigateTo('/admin/containers')
+    return navigateTo(roleHomePath('ADMIN'))
   }
 })

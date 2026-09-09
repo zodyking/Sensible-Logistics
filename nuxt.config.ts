@@ -134,7 +134,7 @@ export default defineNuxtConfig({
       // env var afterwards requires a rebuild.
       name: process.env.NUXT_PUBLIC_APP_NAME || 'Yard Manager',
       short_name: process.env.NUXT_PUBLIC_PWA_SHORT_NAME || 'Yard Manager',
-      description: process.env.NUXT_PUBLIC_PWA_DESCRIPTION || 'Yard Manager — driver and yard operations',
+      description: process.env.NUXT_PUBLIC_PWA_DESCRIPTION || 'Yard Manager — dispatch and yard operations',
       theme_color: '#0C1E30',
       background_color: '#EDF0F2',
       display: 'standalone',
@@ -148,7 +148,7 @@ export default defineNuxtConfig({
     },
     workbox: {
       // Operational API writes are never cached — the Phase 2 Dexie outbox owns replay.
-      cacheId: 'yard-manager-v1.0.120',
+      cacheId: 'yard-manager-v1.0.125',
       navigateFallback: undefined,
       globPatterns: ['**/*.{js,css,html,svg,png,jpg,ico,woff2}'],
       navigateFallbackDenylist: [/^\/api\//],

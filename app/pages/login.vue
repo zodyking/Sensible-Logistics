@@ -50,7 +50,7 @@ async function submit() {
 
     await refreshSession()
 
-    // Admins have no dashboard — the server tells us which management area to open.
+    // Dispatchers go to the map board; drivers may resume a deep link.
     const redirect = typeof route.query.redirect === 'string' && result.role !== 'ADMIN'
       ? route.query.redirect
       : result.redirectTo
@@ -78,7 +78,7 @@ async function submit() {
 
     <AuthHeader
       title="Sign in"
-      subtitle="Driver &amp; management access"
+      subtitle="Drivers and dispatchers"
     />
 
     <form
@@ -147,12 +147,12 @@ async function submit() {
     </form>
 
     <p class="mt-6 text-center text-sm text-[var(--color-ink-500)]">
-      New driver?
+      New here?
       <NuxtLink
         to="/signup"
         class="font-semibold text-[var(--color-blue-500)]"
       >
-        Create a driver account
+        Create an account
       </NuxtLink>
     </p>
   </div>

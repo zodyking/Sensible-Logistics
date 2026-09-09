@@ -1,6 +1,7 @@
 import { and, eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { parseUnlockedFeatures } from '#shared/utils/feature-codes'
+import { roleHomePath } from '#shared/utils/domain'
 import { companies, companyMemberships, drivers, users } from '../../database/schema'
 
 const schema = z.object({
@@ -14,8 +15,7 @@ const INVALID = 'Email or password is incorrect.'
 /**
  * Session sign-in.
  *
- * Admins are routed straight to a management page; there is deliberately no
- * admin dashboard (spec 3).
+ * Dispatchers (ADMIN) land on the map board; drivers land on the trip home.
  */
 export default defineEventHandler(async (event) => {
   const body = await readValidatedJson(event, schema)
@@ -95,6 +95,6 @@ export default defineEventHandler(async (event) => {
   return {
     ok: true,
     role: membership.role,
-    redirectTo: membership.role === 'ADMIN' ? '/admin/containers' : '/',
+    redirectTo: roleHomePath(membership.role),
   }
 })
