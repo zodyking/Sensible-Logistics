@@ -51,7 +51,6 @@ export default defineNuxtConfig({
       legalName: '',
       usdotNumber: '',
       timezone: 'America/New_York',
-      cycleType: 'SEVENTY_EIGHT',
     },
     /** Absolute origin used to build email links. Never the Host header. */
     appUrl: '',
@@ -148,7 +147,7 @@ export default defineNuxtConfig({
     },
     workbox: {
       // Operational API writes are never cached — the Phase 2 Dexie outbox owns replay.
-      cacheId: 'yard-manager-v1.0.125',
+      cacheId: 'yard-manager-v1.0.128',
       navigateFallback: undefined,
       globPatterns: ['**/*.{js,css,html,svg,png,jpg,ico,woff2}'],
       navigateFallbackDenylist: [/^\/api\//],

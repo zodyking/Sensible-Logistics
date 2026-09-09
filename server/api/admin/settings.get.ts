@@ -65,7 +65,6 @@ export default defineEventHandler(async (event) => {
       legalName: company.legalName,
       usdotNumber: company.usdotNumber,
       timezone: company.timezone,
-      cycleType: company.cycleType,
       inviteCode: company.inviteCode,
     },
     counts: { ...counts, admins: adminCount?.value ?? 0 },
@@ -88,9 +87,5 @@ export default defineEventHandler(async (event) => {
         phase: 'Phase 1',
       },
     ],
-    retention: {
-      timecardMonths: 6,
-      note: 'Short-haul time records are retained for at least 6 months and cannot be deleted inside that window.',
-    },
   }
 })

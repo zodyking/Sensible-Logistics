@@ -29,11 +29,9 @@ const {
   containerPlacements,
   containers,
   dispatchTasks,
-  driverTimecards,
   drivers,
   locations,
   smsInboundEndpoints,
-  timecardComplianceChecks,
   trips,
   trucks,
   users,
@@ -119,7 +117,6 @@ async function main() {
       usdotNumber: '3412887',
       inviteCode: INVITE_CODE,
       timezone: 'America/New_York',
-      cycleType: 'SEVENTY_EIGHT',
     })
     .onConflictDoUpdate({ target: companies.inviteCode, set: { name: DEMO_COMPANY } })
     .returning()
@@ -738,62 +735,6 @@ async function main() {
     isFinalRelease: true,
     customer: 'Coastal Tile Imports',
   })
-
-  /* ---- Timecards: three completed days + today's open tour ------- */
-  const timecardSeed = [
-    { offset: 3, start: 6, end: 16, minutes: 600 },
-    { offset: 2, start: 6, end: 17, minutes: 660 },
-    { offset: 1, start: 7, end: 16, minutes: 540 },
-  ]
-
-  let precedingMinutes = 0
-
-  for (const seed of timecardSeed) {
-    const start = daysAgo(seed.offset, seed.start, 30)
-    const end = daysAgo(seed.offset, seed.end, 30)
-    const workDate = isoDate(start)
-
-    const [card] = await db
-      .insert(driverTimecards)
-      .values({
-        companyId: company.id,
-        driverId: driver.id,
-        workDate,
-        reportingLocationId: yardId,
-        reportedForDutyAt: start,
-        releasedFromDutyAt: end,
-        totalOnDutyMinutes: seed.minutes,
-        status: 'COMPLETED',
-        shortHaulStatus: 'QUALIFIED',
-        cycleType: 'SEVENTY_EIGHT',
-        preceding7DayMinutes: precedingMinutes,
-        completedAt: end,
-        retainUntil: isoDate(new Date(start.getTime() + 190 * 24 * 60 * 60 * 1000)),
-      })
-      .onConflictDoUpdate({
-        target: [driverTimecards.driverId, driverTimecards.workDate],
-        set: { totalOnDutyMinutes: seed.minutes },
-      })
-      .returning({ id: driverTimecards.id })
-
-    precedingMinutes += seed.minutes
-
-    if (card) {
-      await db
-        .insert(timecardComplianceChecks)
-        .values({
-          companyId: company.id,
-          timecardId: card.id,
-          priorOffDutyMinutes: 14 * 60,
-          maxRecordedAirMiles: 22.4,
-          returnedToReportingLocation: true,
-          releasedWithin14Hours: true,
-          rollingCycleMinutes: precedingMinutes,
-          radiusEvidenceLevel: 'RECORDED_LOCATIONS_ONLY',
-        })
-        .onConflictDoNothing()
-    }
-  }
 
   /* ---- Dispatch SMS inbox -------------------------------------- */
   await db
