@@ -24,10 +24,10 @@ const nav: Array<{
     ],
   },
   {
-    section: 'Records',
+    section: 'Account',
     items: [
-      { to: '/admin/documents', label: 'Documents', icon: '▤' },
-      { to: '/admin/settings', label: 'Settings', icon: '⚙' },
+      { to: '/admin/account', label: 'Account', icon: '⚙' },
+      { to: '/admin/settings', label: 'Company', icon: '▤' },
       { to: '/more', label: 'More', icon: '⋯' },
     ],
   },
@@ -38,6 +38,9 @@ function navActive(to: string, exact?: boolean) {
 }
 
 const heading = computed(() => {
+  if (route.path.startsWith('/containers')) return 'Containers'
+  if (route.path.startsWith('/chassis')) return 'Chassis'
+  if (route.path.startsWith('/locations')) return 'Locations'
   for (const group of nav) {
     const hit = group.items.find(item => navActive(item.to, item.exact))
     if (hit) return hit.label

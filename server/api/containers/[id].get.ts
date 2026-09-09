@@ -104,6 +104,7 @@ export default defineEventHandler(async (event) => {
       id: documents.id,
       category: documents.category,
       fileName: documents.fileName,
+      mimeType: documents.mimeType,
       createdAt: documents.createdAt,
     })
     .from(documents)

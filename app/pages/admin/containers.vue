@@ -1,15 +1,12 @@
 <script setup lang="ts">
-import type { ActivePoolState, ContainerStatus, ContainerType } from '#shared/utils/domain'
+import type { ContainerSituationFilter, ContainerType } from '#shared/utils/domain'
 import {
-  ACTIVE_POOL_CHIP,
-  ACTIVE_POOL_LABELS,
-  ACTIVE_POOL_STATES,
-  CONTAINER_STATUS_CHIP,
-  CONTAINER_STATUS_LABELS,
-  CONTAINER_STATUSES,
+  CONTAINER_SITUATION_FILTERS,
+  CONTAINER_SITUATION_LABELS,
   CONTAINER_TYPE_LABELS,
   CONTAINER_TYPES,
   EQUIPMENT_TYPE_LABELS,
+  containerSituation,
 } from '#shared/utils/domain'
 import { formatContainerNumber } from '#shared/utils/iso6346'
 
@@ -19,10 +16,9 @@ useHead({ title: 'Containers · Management' })
 /* --- Filters ------------------------------------------------------ */
 const searchInput = ref('')
 const q = ref('')
-const state = ref<ActivePoolState | ''>('')
+const situation = ref<ContainerSituationFilter | ''>('')
 const type = ref<ContainerType | ''>('')
 const loaded = ref<'' | 'true' | 'false'>('')
-const containerStatus = ref<ContainerStatus | ''>('')
 const scope = ref<'active' | 'all'>('active')
 const limit = ref(50)
 const offset = ref(0)
@@ -39,33 +35,30 @@ onBeforeUnmount(() => {
   if (searchTimer) clearTimeout(searchTimer)
 })
 
-watch([q, state, type, loaded, containerStatus, scope], () => {
+watch([q, situation, type, loaded, scope], () => {
   offset.value = 0
 })
 
-function setState(next: ActivePoolState | '') {
-  state.value = next
-  // Released containers only exist in history, so widen the scope for them.
-  if (next === 'INACTIVE') scope.value = 'all'
+function setSituation(next: ContainerSituationFilter | '') {
+  situation.value = next
+  if (next === 'INACTIVE' || next === 'RETURNED') scope.value = 'all'
 }
 
 function clearFilters() {
   searchInput.value = ''
   q.value = ''
-  state.value = ''
+  situation.value = ''
   type.value = ''
   loaded.value = ''
-  containerStatus.value = ''
   scope.value = 'active'
 }
 
 const { data, status, error, refresh } = await useFetch('/api/containers', {
   query: computed(() => ({
     q: q.value || undefined,
-    state: state.value || undefined,
+    situation: situation.value || undefined,
     type: type.value || undefined,
     loaded: loaded.value || undefined,
-    status: containerStatus.value || undefined,
     scope: scope.value,
     limit: limit.value,
     offset: offset.value,
@@ -77,8 +70,8 @@ const total = computed(() => data.value?.total ?? 0)
 
 /* --- Derived counts (scoped to the returned page) ----------------- */
 const loadedOnPage = computed(() => rows.value.filter(row => row.isLoaded).length)
-const loadingOnPage = computed(() => rows.value.filter(row => row.containerStatus === 'LOADING').length)
-const custodyOnPage = computed(() => rows.value.filter(row => row.activePoolState === 'DRIVER_CUSTODY').length)
+const loadingOnPage = computed(() => rows.value.filter(row => containerSituation(row).key === 'LOADING').length)
+const custodyOnPage = computed(() => rows.value.filter(row => containerSituation(row).key === 'IN_TRANSIT').length)
 const attentionOnPage = computed(
   () => rows.value.filter(row => row.checkDigitValid === false || row.isDamaged || row.customsHold).length,
 )
@@ -106,7 +99,7 @@ function nextPage() {
         <h1>Containers</h1>
       </div>
       <p class="text-sm text-[var(--color-ink-500)]">
-        Search the pool, inspect container status, and jump into a container for the current service life.
+        Search the pool and open a container for photos, documents, and movement history.
       </p>
     </div>
 
@@ -161,51 +154,30 @@ function nextPage() {
           Empty
         </option>
       </select>
-
-      <label
-        class="sr-only"
-        for="container-status-filter"
-      >Container status</label>
-      <select
-        id="container-status-filter"
-        v-model="containerStatus"
-        class="select w-auto"
-      >
-        <option value="">
-          All container statuses
-        </option>
-        <option
-          v-for="value in CONTAINER_STATUSES"
-          :key="value"
-          :value="value"
-        >
-          {{ CONTAINER_STATUS_LABELS[value] }}
-        </option>
-      </select>
     </div>
 
     <div
       class="a-toolbar"
       role="group"
-      aria-label="Pool state filter"
+      aria-label="Container situation"
     >
       <button
         class="fchip min-h-11"
-        :class="{ on: state === '' }"
-        :aria-pressed="state === ''"
-        @click="setState('')"
+        :class="{ on: situation === '' }"
+        :aria-pressed="situation === ''"
+        @click="setSituation('')"
       >
-        All states
+        All
       </button>
       <button
-        v-for="value in ACTIVE_POOL_STATES"
+        v-for="value in CONTAINER_SITUATION_FILTERS"
         :key="value"
         class="fchip min-h-11"
-        :class="{ on: state === value }"
-        :aria-pressed="state === value"
-        @click="setState(value)"
+        :class="{ on: situation === value }"
+        :aria-pressed="situation === value"
+        @click="setSituation(value)"
       >
-        {{ ACTIVE_POOL_LABELS[value] }}
+        {{ CONTAINER_SITUATION_LABELS[value] }}
       </button>
     </div>
 
@@ -246,7 +218,7 @@ function nextPage() {
         <b>{{ loadingOnPage }}</b>
       </div>
       <div class="a-stat">
-        <small>Driver custody · this page</small>
+        <small>In transit · this page</small>
         <b>{{ custodyOnPage }}</b>
       </div>
       <div class="a-stat">
@@ -311,10 +283,7 @@ function nextPage() {
                 Cargo
               </th>
               <th scope="col">
-                Container status
-              </th>
-              <th scope="col">
-                Pool state
+                Status
               </th>
               <th scope="col">
                 Location
@@ -365,14 +334,8 @@ function nextPage() {
               <td>{{ row.isLoaded ? 'Loaded' : 'Empty' }}</td>
               <td>
                 <StatusChip
-                  :variant="CONTAINER_STATUS_CHIP[row.containerStatus]"
-                  :label="CONTAINER_STATUS_LABELS[row.containerStatus]"
-                />
-              </td>
-              <td>
-                <StatusChip
-                  :variant="ACTIVE_POOL_CHIP[row.activePoolState]"
-                  :label="ACTIVE_POOL_LABELS[row.activePoolState]"
+                  :variant="containerSituation(row).variant"
+                  :label="containerSituation(row).label"
                 />
               </td>
               <td>{{ row.locationName ?? '—' }}</td>

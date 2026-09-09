@@ -1,6 +1,6 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'admin' })
-useHead({ title: 'Settings · Management' })
+useHead({ title: 'Company · Management' })
 
 const { data, status, error, refresh } = await useFetch('/api/admin/settings')
 
@@ -75,7 +75,7 @@ const countCards = computed(() => {
     <div class="a-head">
       <div>
         <span class="eyebrow">Records</span>
-        <h1>Settings</h1>
+        <h1>Company</h1>
       </div>
       <p class="text-sm text-[var(--color-ink-500)]">
         Company profile, record counts, and self-hosted services.
