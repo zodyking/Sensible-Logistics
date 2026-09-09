@@ -164,7 +164,7 @@ const availableDrivers = computed(() => drivers.value.filter(driver => driver.st
       <div class="dispatch-map-hud">
         <div>
           <p class="eyebrow">
-            Dispatch
+            Board
           </p>
           <h1>Container pool</h1>
         </div>
@@ -182,6 +182,12 @@ const availableDrivers = computed(() => drivers.value.filter(driver => driver.st
             <dd>{{ tasks.length }}</dd>
           </div>
         </dl>
+        <NuxtLink
+          to="/admin/dispatch"
+          class="btn-ghost dispatch-desk-link"
+        >
+          Open Dispatch
+        </NuxtLink>
       </div>
 
       <p

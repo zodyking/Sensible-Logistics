@@ -17,7 +17,8 @@ const nav: Array<{
   {
     section: 'Operations',
     items: [
-      { to: '/admin', label: 'Dispatch', icon: '◎', exact: true },
+      { to: '/admin', label: 'Board', icon: '◎', exact: true },
+      { to: '/admin/dispatch', label: 'Dispatch', icon: '☑' },
       { to: '/admin/containers', label: 'Containers', icon: '▦' },
       { to: '/admin/drivers', label: 'Drivers & timecards', icon: '☰' },
       { to: '/admin/locations', label: 'Locations & yards', icon: '◫' },

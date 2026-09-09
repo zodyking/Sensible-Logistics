@@ -388,8 +388,11 @@ async function confirmCancelTrip() {
           :work-date="task.workDate"
           :kind="task.kind"
           :status="task.status"
+          :source="task.source"
+          :assigned="task.assigned"
           :trip-id="task.tripId"
           :steps="task.steps"
+          :card="task.card"
           compact
         />
       </div>

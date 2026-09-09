@@ -7,7 +7,7 @@
  *   npm run db:seed
  */
 
-import { createHash, randomBytes, randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import process from 'node:process'
 import { Hash } from '@adonisjs/hash'
 import { Scrypt } from '@adonisjs/hash/drivers/scrypt'
@@ -17,8 +17,14 @@ import type { NodePgDatabase } from 'drizzle-orm/node-postgres'
 import { Pool } from 'pg'
 import { computeCheckDigit, normalizeContainerNumber, validateContainerNumber } from '../../shared/utils/iso6346'
 import { bboxAround, localMetersFromLatLng, offsetLatLng, polygonFromBbox } from '../../shared/utils/geo'
-import { addIsoDays, calendarDateInZone, parseDispatchSms, taskFingerprintSource } from '../../shared/utils/sms-task'
+import { addIsoDays, calendarDateInZone, taskFingerprintSource } from '../../shared/utils/sms-task'
 import { stepsFromBlob } from '../../shared/utils/task-steps'
+import {
+  emptyDispatchCard,
+  parsedFromDispatchCard,
+  composeDispatchCardText,
+  dispatchCardTitle,
+} from '../../shared/utils/dispatch-cards'
 import * as schema from './schema'
 
 const {
@@ -32,7 +38,6 @@ const {
   driverTimecards,
   drivers,
   locations,
-  smsInboundEndpoints,
   timecardComplianceChecks,
   trips,
   trucks,
@@ -795,16 +800,7 @@ async function main() {
     }
   }
 
-  /* ---- Dispatch SMS inbox -------------------------------------- */
-  await db
-    .insert(smsInboundEndpoints)
-    .values({
-      companyId: company.id,
-      driverId: driver.id,
-      token: randomBytes(24).toString('base64url'),
-    })
-    .onConflictDoNothing()
-
+  /* ---- Dispatch desk sample work ------------------------------- */
   const todayIso = calendarDateInZone(new Date(), company.timezone || 'America/New_York')
   const [pastTrip] = await db
     .select({ id: trips.id, pickedUpAt: trips.pickedUpAt, createdAt: trips.createdAt })
@@ -815,53 +811,84 @@ async function main() {
     ? calendarDateInZone(pastTrip.pickedUpAt ?? pastTrip.createdAt, company.timezone || 'America/New_York')
     : addIsoDays(todayIso, -2)
 
+  const yardName = 'Sensible Yard — Davie'
+  const evergladesName = 'Port Everglades Terminal 3'
+  const coastalName = 'Coastal Tile Imports'
+  const fecName = 'FEC Rail Ramp — Hialeah'
+
   const taskSeed = [
     {
-      text: 'Work for tommorow pickup TCLU 1234567 at NJ Yard then drop off Coastal Tile',
+      kind: 'PICKUP' as const,
+      containerNumber: 'TCLU1234567',
+      locationId: locationIds[yardName] ?? null,
+      locationName: yardName,
+      destinationLocationId: locationIds[coastalName] ?? null,
+      destinationLocationName: coastalName,
+      notes: 'Then drop off after pickup.',
       sender: 'Dispatch',
-      anchorIso: todayIso,
+      workDate: todayIso,
       status: 'OPEN' as const,
       tripId: null as string | null,
+      sortOrder: 0,
     },
     {
-      text: 'Pickup at Port Everglades this morning — live load after 07:00',
+      kind: 'LOAD' as const,
+      containerNumber: '',
+      locationId: locationIds[evergladesName] ?? null,
+      locationName: evergladesName,
+      destinationLocationId: null,
+      destinationLocationName: '',
+      notes: 'Live load after 07:00.',
       sender: 'Dispatch',
-      anchorIso: todayIso,
+      workDate: todayIso,
       status: 'OPEN' as const,
       tripId: null as string | null,
+      sortOrder: 1,
     },
     {
-      text: 'Drop off at FEC Rail Ramp after lunch',
-      sender: 'Boss',
-      anchorIso: pastIso,
+      kind: 'DROPOFF' as const,
+      containerNumber: '',
+      locationId: locationIds[fecName] ?? null,
+      locationName: fecName,
+      destinationLocationId: null,
+      destinationLocationName: '',
+      notes: 'After lunch.',
+      sender: 'Dispatch',
+      workDate: pastIso,
       status: 'DONE' as const,
       tripId: pastTrip?.id ?? null,
+      sortOrder: 0,
     },
   ]
 
   for (const sample of taskSeed) {
-    const parsed = parseDispatchSms(sample.text, sample.anchorIso)
-    if (!parsed) continue
+    const card = emptyDispatchCard(sample.kind)
+    card.containerNumber = sample.containerNumber
+    card.locationId = sample.locationId
+    card.locationName = sample.locationName
+    card.destinationLocationId = sample.destinationLocationId
+    card.destinationLocationName = sample.destinationLocationName
+    card.notes = sample.notes
+    const rawText = composeDispatchCardText(card)
     const fingerprint = createHash('sha256')
-      .update(taskFingerprintSource(sample.text, parsed.workDate))
+      .update(taskFingerprintSource(rawText, sample.workDate))
       .digest('hex')
+    const steps = stepsFromBlob(rawText).map(step => ({ ...step, done: sample.status === 'DONE' }))
     await db
       .insert(dispatchTasks)
       .values({
         companyId: company.id,
         driverId: driver.id,
-        source: 'SMS',
-        rawText: sample.text,
+        source: 'DISPATCH',
+        rawText,
         sender: sample.sender,
-        workDate: parsed.workDate,
-        kind: parsed.kind,
-        title: parsed.title,
-        parsed: {
-          containerNumbers: parsed.containerNumbers,
-          steps: stepsFromBlob(sample.text),
-        },
+        workDate: sample.workDate,
+        kind: sample.kind,
+        title: dispatchCardTitle(card),
+        parsed: parsedFromDispatchCard(card, { steps }),
         status: sample.status,
         tripId: sample.tripId,
+        sortOrder: sample.sortOrder,
         fingerprint,
       })
       .onConflictDoNothing()

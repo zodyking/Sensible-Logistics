@@ -1,6 +1,6 @@
 /**
- * Tasks belong to the calendar day they were added. Stored `workDate` may
- * still be a leftover “tomorrow” parse; `receivedAt` is the source of truth.
+ * Tasks file under the intended work date. Dispatch assignments can sit on
+ * today or a future day; driver-pasted notes use the day they were added.
  */
 
 import type { TaskStep } from './task-steps'
@@ -10,7 +10,7 @@ export function taskAddedDate(task: {
   receivedAt?: string | number | Date | null
   workDate: string
 }): string {
-  return toLocalIsoDate(task.receivedAt) ?? task.workDate
+  return task.workDate || toLocalIsoDate(task.receivedAt) || ''
 }
 
 /**
@@ -29,7 +29,7 @@ export function groupTasksByWorkDate<T extends {
 
   for (const task of tasks) {
     if (task.status === 'DISMISSED') continue
-    const iso = taskAddedDate(task)
+    const iso = task.workDate || taskAddedDate(task)
     const list = map.get(iso) ?? []
     list.push(task)
     map.set(iso, list)

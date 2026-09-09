@@ -13,7 +13,7 @@ const schema = z.object({
   })).max(80).optional(),
 })
 
-/** Dismiss, complete, attach, or rewrite checklist steps. */
+/** Mark assigned work done, or rewrite a note the driver added themselves. */
 export default defineEventHandler(async (event) => {
   const auth = await requireDriver(event)
   const id = getRouterParam(event, 'id')

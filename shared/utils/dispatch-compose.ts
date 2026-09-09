@@ -1,5 +1,5 @@
-import { DISPATCH_TASK_KIND_LABELS, type DispatchTaskKind } from './domain'
-import { formatContainerNumber } from './iso6346'
+import type { DispatchTaskKind } from './domain'
+import { composeDispatchCardText, emptyDispatchCard } from './dispatch-cards'
 
 export interface DispatchTaskComposeInput {
   kind: DispatchTaskKind
@@ -8,12 +8,11 @@ export interface DispatchTaskComposeInput {
   notes?: string | null
 }
 
-/** One-line dispatcher blob a driver can open from Tasks. */
+/** Dispatcher blob a driver can open from Tasks. */
 export function composeDispatchTaskText(input: DispatchTaskComposeInput): string {
-  const box = formatContainerNumber(input.containerNumber) || input.containerNumber.trim()
-  const place = input.locationName.trim() || 'the yard'
-  const lines = [`${DISPATCH_TASK_KIND_LABELS[input.kind]} ${box} at ${place}`]
-  const notes = input.notes?.trim()
-  if (notes) lines.push(notes)
-  return lines.join('\n')
+  const card = emptyDispatchCard(input.kind)
+  card.containerNumber = input.containerNumber.trim()
+  card.locationName = input.locationName.trim() || 'the yard'
+  card.notes = input.notes?.trim() ?? ''
+  return composeDispatchCardText(card)
 }
