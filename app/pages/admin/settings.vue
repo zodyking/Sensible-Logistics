@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { CYCLE_LIMITS } from '#shared/utils/domain'
-
 definePageMeta({ layout: 'admin' })
 useHead({ title: 'Settings · Management' })
 
@@ -80,7 +78,7 @@ const countCards = computed(() => {
         <h1>Settings</h1>
       </div>
       <p class="text-sm text-[var(--color-ink-500)]">
-        Company profile, record counts, self-hosted services, and retention rules.
+        Company profile, record counts, and self-hosted services.
       </p>
     </div>
 
@@ -155,14 +153,6 @@ const countCards = computed(() => {
             </dt>
             <dd class="mt-1">
               {{ data.company.timezone }}
-            </dd>
-          </div>
-          <div>
-            <dt class="eyebrow">
-              HOS cycle
-            </dt>
-            <dd class="mt-1">
-              {{ CYCLE_LIMITS[data.company.cycleType].label }}
             </dd>
           </div>
         </dl>
@@ -323,29 +313,6 @@ const countCards = computed(() => {
           </tbody>
         </table>
       </div>
-
-      <!-- ── Retention & compliance ───────────────────────────────── -->
-      <div class="section-label">
-        <span>Retention & compliance</span>
-      </div>
-      <section class="card p-5">
-        <p class="text-sm">
-          {{ data.retention.note }}
-        </p>
-        <p class="mt-2 text-sm">
-          Deleting a time record is blocked inside the {{ data.retention.timecardMonths }}-month
-          retention window, and admin corrections are stored as separate audited events with the
-          original value preserved.
-        </p>
-        <p class="banner info mt-4 mb-0">
-          <span aria-hidden="true">ℹ</span>
-          <span>
-            <b>What this application is</b>
-            It produces §395.1(e)(1) short-haul time records. It is not an ELD, and it does not
-            produce a RODS graph-grid log.
-          </span>
-        </p>
-      </section>
     </template>
   </div>
 </template>

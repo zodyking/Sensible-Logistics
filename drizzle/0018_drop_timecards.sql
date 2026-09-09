@@ -1,0 +1,10 @@
+DROP TABLE IF EXISTS "timecard_exports";
+DROP TABLE IF EXISTS "timecard_corrections";
+DROP TABLE IF EXISTS "timecard_compliance_checks";
+DROP TABLE IF EXISTS "timecard_breaks";
+DROP TABLE IF EXISTS "driver_timecards";
+ALTER TABLE "companies" DROP COLUMN IF EXISTS "cycle_type";
+DROP TYPE IF EXISTS "public"."timecard_status";
+DROP TYPE IF EXISTS "public"."short_haul_status";
+DROP TYPE IF EXISTS "public"."cycle_type";
+DROP TYPE IF EXISTS "public"."radius_evidence_level";

@@ -1,7 +1,5 @@
 import { createHash, timingSafeEqual } from 'node:crypto'
 import { asc, eq } from 'drizzle-orm'
-import { CYCLE_TYPES } from '#shared/utils/domain'
-import type { CycleType } from '#shared/utils/domain'
 import { companies } from '../database/schema'
 import type { DbExecutor } from './db'
 
@@ -24,7 +22,6 @@ export interface CompanyEnvConfig {
   legalName: string | null
   usdotNumber: string | null
   timezone: string
-  cycleType: CycleType
 }
 
 /**
@@ -54,7 +51,6 @@ export function inviteCodeMatches(submitted: unknown, expected: unknown): boolea
 
 export function readCompanyEnvConfig(): CompanyEnvConfig {
   const config = useRuntimeConfig().company
-  const rawCycle = envString(config.cycleType).toUpperCase()
 
   return {
     inviteCode: normalizeInviteCode(config.inviteCode),
@@ -62,9 +58,6 @@ export function readCompanyEnvConfig(): CompanyEnvConfig {
     legalName: envString(config.legalName) || null,
     usdotNumber: envString(config.usdotNumber) || null,
     timezone: envString(config.timezone) || 'America/New_York',
-    cycleType: (CYCLE_TYPES as readonly string[]).includes(rawCycle)
-      ? rawCycle as CycleType
-      : 'SEVENTY_EIGHT',
   }
 }
 
@@ -100,7 +93,6 @@ export async function ensurePrimaryCompany(db: DbExecutor) {
         usdotNumber: env.usdotNumber,
         inviteCode: env.inviteCode,
         timezone: env.timezone,
-        cycleType: env.cycleType,
       })
       .returning()
 

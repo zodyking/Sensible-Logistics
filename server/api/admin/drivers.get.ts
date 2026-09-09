@@ -1,6 +1,6 @@
 import { and, desc, eq, or, sql } from 'drizzle-orm'
 import { z } from 'zod'
-import { companyMemberships, driverTimecards, drivers, trips, users } from '../../database/schema'
+import { companyMemberships, drivers, trips, users } from '../../database/schema'
 import { requireAdmin } from '../../utils/session'
 
 const querySchema = z.object({
@@ -9,7 +9,7 @@ const querySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(100),
 })
 
-/** Driver roster with duty state and today's recorded on-duty total. */
+/** Driver roster with operational status and active trip counts. */
 export default defineEventHandler(async (event) => {
   const auth = await requireAdmin(event)
   const query = readValidatedQuery(event, querySchema)
@@ -46,11 +46,6 @@ export default defineEventHandler(async (event) => {
         select count(*)::int from ${trips} t
         where t.driver_id = ${drivers.id}
           and t.status in ('PICKUP_IN_PROGRESS','IN_TRANSIT','DROPOFF_IN_PROGRESS')
-      )`,
-      openTimecardId: sql<string | null>`(
-        select t.id from ${driverTimecards} t
-        where t.driver_id = ${drivers.id} and t.status = 'OPEN'
-        order by t.work_date desc limit 1
       )`,
     })
     .from(drivers)

@@ -19,7 +19,7 @@ const nav: Array<{
     items: [
       { to: '/admin', label: 'Dispatch', icon: '◎', exact: true },
       { to: '/admin/containers', label: 'Containers', icon: '▦' },
-      { to: '/admin/drivers', label: 'Drivers & timecards', icon: '☰' },
+      { to: '/admin/drivers', label: 'Drivers', icon: '☰' },
       { to: '/admin/locations', label: 'Locations & yards', icon: '◫' },
     ],
   },
