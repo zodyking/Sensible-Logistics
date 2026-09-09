@@ -36,8 +36,7 @@ export default defineNuxtRouteMiddleware((to) => {
   }
 
   // Location records are a shared company asset — admins create them, drivers
-  // pick them. Pickup/scan remain driver-only. Roadside time records stay
-  // reachable from Drivers & timecards. The More cheat-code box and hidden
+  // pick them. Pickup/scan remain driver-only. The More cheat-code box and hidden
   // operator pages (API connections, clear records) stay reachable for admins.
   if (!isAdminRoute && user.value?.role === 'ADMIN' && !locationPool && !containerRecord && !moreArea && !roadsideRecord) {
     return navigateTo(roleHomePath('ADMIN'))

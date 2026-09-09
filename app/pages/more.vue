@@ -82,8 +82,7 @@ const buildLabel = computed(() => {
         </div>
       </div>
       <NuxtLink
-        v-if="isDriver"
-        to="/settings"
+        :to="isDriver ? '/settings' : '/admin/account'"
         class="row"
       >
         <div

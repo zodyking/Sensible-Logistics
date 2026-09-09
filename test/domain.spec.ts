@@ -7,6 +7,11 @@ import {
   CONTAINER_STATUS_CHIP,
   CONTAINER_STATUS_LABELS,
   CONTAINER_STATUSES,
+  CONTAINER_SITUATION_CHIP,
+  CONTAINER_SITUATION_FILTERS,
+  CONTAINER_SITUATION_LABELS,
+  CONTAINER_SITUATIONS,
+  containerSituation,
   CONTAINER_TYPE_LABELS,
   CONTAINER_TYPES,
   CYCLE_LIMITS,
@@ -73,6 +78,43 @@ describe('domain vocabulary integrity', () => {
 
   it('keeps CONTAINER_STATUSES in lockstep with labels and chips', () => {
     expectUnionKeysMatch(CONTAINER_STATUSES, CONTAINER_STATUS_LABELS, CONTAINER_STATUS_CHIP)
+  })
+
+  it('keeps CONTAINER_SITUATIONS in lockstep with labels and chips', () => {
+    expectUnionKeysMatch(CONTAINER_SITUATIONS, CONTAINER_SITUATION_LABELS, CONTAINER_SITUATION_CHIP)
+  })
+
+  it('merges redundant at-yard / at-location states into On site', () => {
+    expect(containerSituation({ containerStatus: 'AT_YARD', activePoolState: 'AT_LOCATION' })).toMatchObject({
+      key: 'ON_SITE',
+      label: 'On site',
+      variant: 'ok',
+    })
+    expect(containerSituation({ containerStatus: 'AVAILABLE', activePoolState: 'AT_LOCATION' })).toMatchObject({
+      key: 'ON_SITE',
+      label: 'On site',
+    })
+    expect(containerSituation({ containerStatus: 'LOADING', activePoolState: 'AT_LOCATION' })).toMatchObject({
+      key: 'LOADING',
+      label: 'Loading',
+    })
+    expect(containerSituation({ containerStatus: 'IN_TRANSIT', activePoolState: 'DRIVER_CUSTODY' })).toMatchObject({
+      key: 'IN_TRANSIT',
+      label: 'In transit',
+    })
+    expect(containerSituation({ containerStatus: 'AVAILABLE', activePoolState: 'PICKUP_IN_PROGRESS' })).toMatchObject({
+      key: 'PICKUP_UNDERWAY',
+      label: 'Pickup underway',
+    })
+    expect(containerSituation({ containerStatus: 'RETURNED', activePoolState: 'INACTIVE' })).toMatchObject({
+      key: 'RETURNED',
+      label: 'Returned',
+    })
+    expect(containerSituation({ containerStatus: 'AVAILABLE', activePoolState: 'EXCEPTION' })).toMatchObject({
+      key: 'NEEDS_ATTENTION',
+      label: 'Needs attention',
+    })
+    expect(CONTAINER_SITUATION_FILTERS).not.toContain('AVAILABLE')
   })
 
   it('keeps CONTAINER_TYPES in lockstep with labels', () => {

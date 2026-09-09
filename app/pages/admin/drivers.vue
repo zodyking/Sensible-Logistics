@@ -2,7 +2,7 @@
 import { formatPhoneDisplay } from '#shared/utils/phone'
 
 definePageMeta({ layout: 'admin' })
-useHead({ title: 'Drivers & timecards · Management' })
+useHead({ title: 'Drivers · Management' })
 
 /* Duty/membership vocabularies are page-local: domain.ts does not export them yet. */
 const DRIVER_STATUSES = ['AVAILABLE', 'ON_TRIP', 'OFF_DUTY', 'INACTIVE'] as const
@@ -66,14 +66,6 @@ const { data, status, error, refresh } = await useFetch('/api/admin/drivers', {
 })
 
 const rows = computed(() => data.value?.items ?? [])
-
-/** Local calendar date for the "today" DOT time record links. */
-const today = computed(() => {
-  const now = new Date()
-  const month = String(now.getMonth() + 1).padStart(2, '0')
-  const day = String(now.getDate()).padStart(2, '0')
-  return `${now.getFullYear()}-${month}-${day}`
-})
 </script>
 
 <template>
@@ -81,10 +73,10 @@ const today = computed(() => {
     <div class="a-head">
       <div>
         <span class="eyebrow">Operations</span>
-        <h1>Drivers & timecards</h1>
+        <h1>Drivers</h1>
       </div>
       <p class="text-sm text-[var(--color-ink-500)]">
-        Roster, duty state, and each driver's §395.1(e)(1) time record.
+        Roster, availability, and contact details for the company.
       </p>
     </div>
 
@@ -124,16 +116,6 @@ const today = computed(() => {
         {{ DRIVER_STATUS_LABELS[value] }}
       </button>
     </div>
-
-    <p class="banner info">
-      <span aria-hidden="true">ℹ</span>
-      <span>
-        <b>Timecard corrections are audited</b>
-        A correction never overwrites a driver's punch: it is stored as an immutable, admin-originated
-        correction event with the original value preserved, and time records are retained for at least
-        6 months. Submitting corrections from this page arrives in Phase 2.
-      </span>
-    </p>
 
     <div
       v-if="status === 'pending'"
@@ -200,9 +182,6 @@ const today = computed(() => {
             <th scope="col">
               Last login
             </th>
-            <th scope="col">
-              DOT record
-            </th>
           </tr>
         </thead>
         <tbody>
@@ -234,28 +213,13 @@ const today = computed(() => {
               <span v-else>—</span>
             </td>
             <td>
-              <div class="flex flex-wrap gap-1">
-                <StatusChip
-                  :variant="DRIVER_STATUS_CHIP[row.status]"
-                  :label="DRIVER_STATUS_LABELS[row.status]"
-                />
-                <StatusChip
-                  v-if="row.openTimecardId"
-                  variant="transit"
-                  label="Open duty tour"
-                />
-              </div>
+              <StatusChip
+                :variant="DRIVER_STATUS_CHIP[row.status]"
+                :label="DRIVER_STATUS_LABELS[row.status]"
+              />
             </td>
             <td>{{ row.activeTrips }}</td>
             <td>{{ formatRelative(row.lastLoginAt) }}</td>
-            <td>
-              <NuxtLink
-                :to="`/timecard/${today}/record?driverId=${row.id}`"
-                class="inline-flex min-h-11 items-center"
-              >
-                Time record
-              </NuxtLink>
-            </td>
           </tr>
         </tbody>
       </table>

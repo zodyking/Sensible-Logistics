@@ -1,8 +1,8 @@
-import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNull, ne, or, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { containers, drivers, locations, users } from '../../database/schema'
 import { requireAuth } from '../../utils/session'
-import { ACTIVE_POOL_STATES, CONTAINER_STATUSES, CONTAINER_TYPES } from '#shared/utils/domain'
+import { ACTIVE_POOL_STATES, CONTAINER_SITUATION_FILTERS, CONTAINER_STATUSES, CONTAINER_TYPES } from '#shared/utils/domain'
 import { normalizeContainerNumber } from '#shared/utils/iso6346'
 
 const querySchema = z.object({
@@ -11,6 +11,7 @@ const querySchema = z.object({
   type: z.enum(CONTAINER_TYPES).optional(),
   loaded: z.enum(['true', 'false']).optional(),
   status: z.enum(CONTAINER_STATUSES).optional(),
+  situation: z.enum(CONTAINER_SITUATION_FILTERS).optional(),
   locationId: z.string().uuid().optional(),
   /** `active` hides released containers; `all` includes full history. */
   scope: z.enum(['active', 'all']).default('active'),
@@ -33,6 +34,31 @@ export default defineEventHandler(async (event) => {
   if (query.type) filters.push(eq(containers.containerType, query.type))
   if (query.loaded) filters.push(eq(containers.isLoaded, query.loaded === 'true'))
   if (query.status) filters.push(eq(containers.containerStatus, query.status))
+  if (query.situation === 'ON_SITE') {
+    filters.push(eq(containers.activePoolState, 'AT_LOCATION'))
+    filters.push(ne(containers.containerStatus, 'LOADING'))
+  }
+  else if (query.situation === 'LOADING') {
+    filters.push(eq(containers.containerStatus, 'LOADING'))
+  }
+  else if (query.situation === 'PICKUP_UNDERWAY') {
+    filters.push(eq(containers.activePoolState, 'PICKUP_IN_PROGRESS'))
+  }
+  else if (query.situation === 'IN_TRANSIT') {
+    filters.push(or(
+      eq(containers.activePoolState, 'DRIVER_CUSTODY'),
+      eq(containers.containerStatus, 'IN_TRANSIT'),
+    )!)
+  }
+  else if (query.situation === 'NEEDS_ATTENTION') {
+    filters.push(eq(containers.activePoolState, 'EXCEPTION'))
+  }
+  else if (query.situation === 'RETURNED') {
+    filters.push(eq(containers.containerStatus, 'RETURNED'))
+  }
+  else if (query.situation === 'INACTIVE') {
+    filters.push(eq(containers.activePoolState, 'INACTIVE'))
+  }
   if (query.locationId) filters.push(eq(containers.currentLocationId, query.locationId))
 
   if (query.q) {

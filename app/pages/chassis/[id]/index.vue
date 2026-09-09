@@ -150,7 +150,7 @@ const timeline = computed(() => visibleTimelineEntries(data.value?.timeline ?? [
           class="section-label"
           style="margin: 0; padding: var(--s2) var(--s4)"
         >
-          Service history
+          Movement history
         </div>
         <p class="px-4 pb-2 text-xs text-[var(--color-ink-500)]">
           {{ serviceCaption }}
