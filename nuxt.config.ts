@@ -147,7 +147,7 @@ export default defineNuxtConfig({
     },
     workbox: {
       // Operational API writes are never cached — the Phase 2 Dexie outbox owns replay.
-      cacheId: 'yard-manager-v1.0.128',
+      cacheId: 'yard-manager-v1.0.129',
       navigateFallback: undefined,
       globPatterns: ['**/*.{js,css,html,svg,png,jpg,ico,woff2}'],
       navigateFallbackDenylist: [/^\/api\//],
