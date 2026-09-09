@@ -5344,6 +5344,13 @@
     letter-spacing: -0.02em;
   }
 
+  .a-head-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--s3);
+    flex-wrap: wrap;
+  }
+
   .a-toolbar {
     display: flex;
     gap: var(--s2);

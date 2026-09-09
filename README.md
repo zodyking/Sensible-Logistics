@@ -42,9 +42,8 @@ Signup as **Dispatcher** uses the same invite code. Dispatchers land on the map 
 | | |
 | :--- | :--- |
 | **Dispatch** | Map of locations, container pool, and assign pickup / delivery / hook tasks. |
-| **Containers** | Company inventory. |
+| **Inventory** | Locations and the container pool, with a toggle between the two lists. |
 | **Drivers** | Roster. |
-| **Locations & yards** | Directory and yard plans. |
 | **Documents** | Uploaded files. |
 | **Settings** | Company identity, invite code, and SMTP delivery test. |
 
