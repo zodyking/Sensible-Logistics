@@ -14,8 +14,6 @@ import {
   containerSituation,
   CONTAINER_TYPE_LABELS,
   CONTAINER_TYPES,
-  CYCLE_LIMITS,
-  CYCLE_TYPES,
   DOCUMENT_CATEGORIES,
   DOCUMENT_CATEGORY_LABELS,
   DISPATCH_TASK_KIND_LABELS,
@@ -39,16 +37,11 @@ import {
   LOCATION_TYPES,
   groupLocationsByType,
   locationTypeGroup,
-  REQUIRED_OFF_DUTY_MINUTES,
   ROLES,
   roleHomePath,
   roleLabel,
   SIGNUP_ROLE_LABELS,
   SIGNUP_ROLES,
-  SHORT_HAUL_LABELS,
-  SHORT_HAUL_RADIUS_MILES,
-  SHORT_HAUL_STATUSES,
-  SHORT_HAUL_WINDOW_MINUTES,
   TRIP_KIND_LABELS,
   TRIP_KINDS,
   TRIP_STATUS_CHIP,
@@ -185,10 +178,6 @@ describe('domain vocabulary integrity', () => {
     expect(locationTypeGroup('RAIL_TERMINAL').key).toBe('terminal')
   })
 
-  it('keeps SHORT_HAUL_STATUSES in lockstep with labels', () => {
-    expectUnionKeysMatch(SHORT_HAUL_STATUSES, SHORT_HAUL_LABELS)
-  })
-
   it('keeps DOCUMENT_CATEGORIES in lockstep with labels', () => {
     expectUnionKeysMatch(DOCUMENT_CATEGORIES, DOCUMENT_CATEGORY_LABELS)
   })
@@ -201,10 +190,6 @@ describe('domain vocabulary integrity', () => {
     expectUnionKeysMatch(DISPATCH_TASK_STATUSES, DISPATCH_TASK_STATUS_LABELS, DISPATCH_TASK_STATUS_CHIP)
   })
 
-  it('keeps CYCLE_TYPES in lockstep with CYCLE_LIMITS', () => {
-    expectUnionKeysMatch(CYCLE_TYPES, CYCLE_LIMITS)
-  })
-
   it('defines ROLES as DRIVER and ADMIN', () => {
     expect(ROLES).toEqual(['DRIVER', 'ADMIN'])
     expect(roleHomePath('ADMIN')).toBe('/admin')
@@ -213,13 +198,5 @@ describe('domain vocabulary integrity', () => {
 
   it('keeps SIGNUP_ROLES in lockstep with labels', () => {
     expectUnionKeysMatch(SIGNUP_ROLES, SIGNUP_ROLE_LABELS)
-  })
-
-  it('exposes the documented FMCSA constants', () => {
-    expect(SHORT_HAUL_RADIUS_MILES).toBe(172.6)
-    expect(SHORT_HAUL_WINDOW_MINUTES).toBe(840)
-    expect(REQUIRED_OFF_DUTY_MINUTES).toBe(600)
-    expect(CYCLE_LIMITS.SIXTY_SEVEN.minutes).toBe(3600)
-    expect(CYCLE_LIMITS.SEVENTY_EIGHT.minutes).toBe(4200)
   })
 })

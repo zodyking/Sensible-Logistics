@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { formatPhoneDisplay } from '#shared/utils/phone'
+import { roleLabel } from '#shared/utils/domain'
 
 definePageMeta({ layout: 'admin' })
-useHead({ title: 'Drivers · Management' })
+useHead({ title: 'Drivers · Dispatch' })
 
-/* Duty/membership vocabularies are page-local: domain.ts does not export them yet. */
 const DRIVER_STATUSES = ['AVAILABLE', 'ON_TRIP', 'OFF_DUTY', 'INACTIVE'] as const
 type DriverStatus = (typeof DRIVER_STATUSES)[number]
 
@@ -36,15 +36,9 @@ const MEMBERSHIP_CHIP: Record<MembershipStatus, 'ok' | 'warn' | 'err' | 'transit
   SUSPENDED: 'err',
 }
 
-const ROLE_LABELS: Record<'DRIVER' | 'ADMIN', string> = {
-  DRIVER: 'Driver',
-  ADMIN: 'Admin',
-}
-
-/* --- Filters ------------------------------------------------------ */
 const searchInput = ref('')
 const q = ref('')
-const dutyStatus = ref<DriverStatus | ''>('')
+const rosterStatus = ref<DriverStatus | ''>('')
 
 let searchTimer: ReturnType<typeof setTimeout> | undefined
 watch(searchInput, (value) => {
@@ -61,7 +55,7 @@ onBeforeUnmount(() => {
 const { data, status, error, refresh } = await useFetch('/api/admin/drivers', {
   query: computed(() => ({
     q: q.value || undefined,
-    status: dutyStatus.value || undefined,
+    status: rosterStatus.value || undefined,
   })),
 })
 
@@ -76,7 +70,7 @@ const rows = computed(() => data.value?.items ?? [])
         <h1>Drivers</h1>
       </div>
       <p class="text-sm text-[var(--color-ink-500)]">
-        Roster, availability, and contact details for the company.
+        Roster, status, and who is on a live trip.
       </p>
     </div>
 
@@ -95,13 +89,13 @@ const rows = computed(() => data.value?.items ?? [])
     <div
       class="a-toolbar"
       role="group"
-      aria-label="Duty status filter"
+      aria-label="Driver status filter"
     >
       <button
         class="fchip min-h-11"
-        :class="{ on: dutyStatus === '' }"
-        :aria-pressed="dutyStatus === ''"
-        @click="dutyStatus = ''"
+        :class="{ on: rosterStatus === '' }"
+        :aria-pressed="rosterStatus === ''"
+        @click="rosterStatus = ''"
       >
         All
       </button>
@@ -109,9 +103,9 @@ const rows = computed(() => data.value?.items ?? [])
         v-for="value in DRIVER_STATUSES"
         :key="value"
         class="fchip min-h-11"
-        :class="{ on: dutyStatus === value }"
-        :aria-pressed="dutyStatus === value"
-        @click="dutyStatus = value"
+        :class="{ on: rosterStatus === value }"
+        :aria-pressed="rosterStatus === value"
+        @click="rosterStatus = value"
       >
         {{ DRIVER_STATUS_LABELS[value] }}
       </button>
@@ -174,7 +168,7 @@ const rows = computed(() => data.value?.items ?? [])
               Membership
             </th>
             <th scope="col">
-              Duty status
+              Status
             </th>
             <th scope="col">
               Active movements
@@ -203,7 +197,7 @@ const rows = computed(() => data.value?.items ?? [])
               <span class="mono block">{{ row.driverCode ?? '—' }}</span>
               <small class="mono text-[var(--color-ink-500)]">{{ row.cdlNumber ?? 'No CDL on file' }}</small>
             </td>
-            <td>{{ row.role ? ROLE_LABELS[row.role] : '—' }}</td>
+            <td>{{ row.role ? roleLabel(row.role) : '—' }}</td>
             <td>
               <StatusChip
                 v-if="row.membershipStatus"

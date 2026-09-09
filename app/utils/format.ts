@@ -60,12 +60,6 @@ export function formatRelative(value: DateInput): string {
   return formatDate(date)
 }
 
-/** `7.8 h` — matches the ledger column in the design template. */
-export function formatHours(minutes: number | null | undefined): string {
-  if (minutes == null) return '—'
-  return `${(minutes / 60).toFixed(1)} h`
-}
-
 /** Elapsed time between two stamps, e.g. `2h 2m`. */
 export function formatDurationBetween(start: DateInput, end: DateInput): string | null {
   const from = toDate(start)

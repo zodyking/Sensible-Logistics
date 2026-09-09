@@ -127,6 +127,13 @@
       "when": 1787915000000,
       "tag": "0017_drop_phone_challenges",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1787916000000,
+      "tag": "0018_drop_timecards",
+      "breakpoints": true
     }
   ]
 }

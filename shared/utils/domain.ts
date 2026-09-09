@@ -442,9 +442,9 @@ export const LOCATION_GLYPH: Record<LocationType, string> = {
 }
 
 /**
- * Location lists and the new-location type picker share these headers.
- * Marine terminals and rail yards sit together because drivers treat them
- * as the same kind of gate: inbound/outbound infrastructure.
+ * Headers for existing-location lists. The add-location type picker is a
+ * flat list — marine terminals and rail yards still sit together here
+ * because drivers treat them as the same kind of gate.
  */
 export const LOCATION_TYPE_GROUPS = [
   { key: 'company', label: 'Company yards', types: ['COMPANY_YARD'] },
@@ -477,31 +477,6 @@ export function groupLocationsByType<T extends { type: LocationType, isUncategor
   const grouped = [...buckets.values()].filter(group => group.items.length)
   if (leftover.length) grouped.push({ key: 'other', label: 'Uncategorized', items: leftover })
   return grouped
-}
-
-export const TIMECARD_STATUSES = ['OPEN', 'COMPLETED', 'LOCKED'] as const
-export type TimecardStatus = (typeof TIMECARD_STATUSES)[number]
-
-/**
- * Short-haul qualification state for a work date (spec 14.3). QUALIFIED is only
- * ever asserted from recorded data; UNKNOWN is used while a tour is still open.
- */
-export const SHORT_HAUL_STATUSES = ['QUALIFIED', 'AT_RISK', 'NOT_AVAILABLE', 'UNKNOWN'] as const
-export type ShortHaulStatus = (typeof SHORT_HAUL_STATUSES)[number]
-
-export const SHORT_HAUL_LABELS: Record<ShortHaulStatus, string> = {
-  QUALIFIED: 'Short-haul conditions met',
-  AT_RISK: 'Approaching the 14-hour limit',
-  NOT_AVAILABLE: 'SHORT-HAUL EXCEPTION NOT AVAILABLE FOR THIS DAY',
-  UNKNOWN: 'Duty tour in progress',
-}
-
-export const CYCLE_TYPES = ['SIXTY_SEVEN', 'SEVENTY_EIGHT'] as const
-export type CycleType = (typeof CYCLE_TYPES)[number]
-
-export const CYCLE_LIMITS: Record<CycleType, { days: number, minutes: number, label: string }> = {
-  SIXTY_SEVEN: { days: 7, minutes: 60 * 60, label: '60 hours / 7 days' },
-  SEVENTY_EIGHT: { days: 8, minutes: 70 * 60, label: '70 hours / 8 days' },
 }
 
 export const DOCUMENT_CATEGORIES = [
@@ -575,10 +550,3 @@ export const DISPATCH_TASK_STATUS_CHIP: Record<DispatchTaskStatus, 'ok' | 'warn'
   DONE: 'ok',
   DISMISSED: 'idle',
 }
-
-/** 150 air miles expressed in statute miles (spec 14.3). */
-export const SHORT_HAUL_RADIUS_MILES = 172.6
-/** Duty must end within 14 consecutive hours of reporting for duty. */
-export const SHORT_HAUL_WINDOW_MINUTES = 14 * 60
-/** Property-carrying CMV drivers need 10 consecutive hours off between tours. */
-export const REQUIRED_OFF_DUTY_MINUTES = 10 * 60
