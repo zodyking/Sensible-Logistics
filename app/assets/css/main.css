@@ -6244,10 +6244,13 @@ html.keyboard-open .a-shell {
 
 /* Invisible scrolling app-wide. Keep overflow; never paint a track, thumb,
    or arrow buttons.
-   Chromium ignores ::-webkit-scrollbar when scrollbar-width is also set, and
-   Linux Chrome may treat scrollbar-width: none as invalid — so Firefox gets
-   scrollbar-width only, Chromium/Safari get the WebKit pseudos. */
+   Modern Chromium overlay bars only honor scrollbar-width. Classic WebKit
+   bars still need ::-webkit-scrollbar. Overflow shells also clip a gutter so
+   Linux GTK bars cannot show even when CSS hide is ignored. */
+html,
+body,
 * {
+  scrollbar-width: none !important;
   -ms-overflow-style: none !important;
 }
 
@@ -6265,14 +6268,6 @@ html.keyboard-open .a-shell {
   width: 0 !important;
   height: 0 !important;
   background: transparent !important;
-}
-
-@-moz-document url-prefix() {
-  html,
-  body,
-  * {
-    scrollbar-width: none !important;
-  }
 }
 
 @media print {
