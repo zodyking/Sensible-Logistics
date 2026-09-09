@@ -19,9 +19,8 @@ const nav: Array<{
     items: [
       { to: '/admin', label: 'Board', icon: '◎', exact: true },
       { to: '/admin/dispatch', label: 'Dispatch', icon: '☑' },
-      { to: '/admin/containers', label: 'Containers', icon: '▦' },
+      { to: '/admin/inventory', label: 'Inventory', icon: '▦' },
       { to: '/admin/drivers', label: 'Drivers', icon: '☰' },
-      { to: '/admin/locations', label: 'Locations & yards', icon: '◫' },
     ],
   },
   {
@@ -39,6 +38,7 @@ function navActive(to: string, exact?: boolean) {
 }
 
 const heading = computed(() => {
+  if (route.path.startsWith('/admin/inventory')) return 'Inventory'
   if (route.path.startsWith('/containers')) return 'Containers'
   if (route.path.startsWith('/chassis')) return 'Chassis'
   if (route.path.startsWith('/locations')) return 'Locations'
