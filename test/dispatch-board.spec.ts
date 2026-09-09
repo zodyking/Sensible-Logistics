@@ -23,7 +23,7 @@ describe('composeDispatchTaskText', () => {
       kind: 'PICKUP',
       containerNumber: 'BSIU3405210',
       locationName: 'NJ Yard',
-    })).toBe('Pickup BSIU340521-0 at NJ Yard')
+    })).toBe('Pickup BSIU340521-0\nNJ Yard')
   })
 
   it('appends optional notes', () => {
@@ -32,6 +32,6 @@ describe('composeDispatchTaskText', () => {
       containerNumber: 'KOSU4953380',
       locationName: 'North Bergen',
       notes: 'Need chassis',
-    })).toBe('Empty KOSU495338-0 at North Bergen\nNeed chassis')
+    })).toBe('Empty KOSU495338-0\nNorth Bergen\nNeed chassis')
   })
 })

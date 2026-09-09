@@ -535,9 +535,12 @@ export const DISPATCH_TASK_KIND_LABELS: Record<DispatchTaskKind, string> = {
 }
 
 export const DISPATCH_TASK_STATUSES = ['OPEN', 'IN_PROGRESS', 'DONE', 'DISMISSED'] as const
-export type DispatchTaskStatus = (typeof DISPATCH_TASK_STATUSES)[number]
+export const DISPATCH_TASK_ALL_STATUSES = ['DRAFT', ...DISPATCH_TASK_STATUSES] as const
+export type DispatchTaskStatus = (typeof DISPATCH_TASK_ALL_STATUSES)[number]
+export type DispatchTaskDriverStatus = (typeof DISPATCH_TASK_STATUSES)[number]
 
 export const DISPATCH_TASK_STATUS_LABELS: Record<DispatchTaskStatus, string> = {
+  DRAFT: 'Draft',
   OPEN: 'Open',
   IN_PROGRESS: 'In progress',
   DONE: 'Done',
@@ -545,8 +548,18 @@ export const DISPATCH_TASK_STATUS_LABELS: Record<DispatchTaskStatus, string> = {
 }
 
 export const DISPATCH_TASK_STATUS_CHIP: Record<DispatchTaskStatus, 'ok' | 'warn' | 'err' | 'transit' | 'idle'> = {
+  DRAFT: 'idle',
   OPEN: 'warn',
   IN_PROGRESS: 'transit',
   DONE: 'ok',
   DISMISSED: 'idle',
+}
+
+export const DISPATCH_TASK_SOURCES = ['SMS', 'MANUAL', 'DISPATCH'] as const
+export type DispatchTaskSource = (typeof DISPATCH_TASK_SOURCES)[number]
+
+export const DISPATCH_TASK_SOURCE_LABELS: Record<DispatchTaskSource, string> = {
+  SMS: 'Dispatch',
+  MANUAL: 'Your note',
+  DISPATCH: 'Dispatch',
 }

@@ -11,7 +11,7 @@ import { visibleTimelineEntries } from '#shared/utils/timeline'
 import type { ViewerDocument } from '~/utils/documents'
 
 definePageMeta({ layout: 'admin' })
-useHead({ title: 'Dispatch' })
+useHead({ title: 'Board' })
 
 interface DispatchBox {
   id: string

@@ -3,15 +3,15 @@ import { describe, expect, it } from 'vitest'
 import { concatenateDayWork, groupTasksByWorkDate, taskAddedDate } from '../shared/utils/task-days'
 
 describe('taskAddedDate', () => {
-  it('uses receivedAt, not a leftover tomorrow workDate', () => {
+  it('files work on the intended work date', () => {
     expect(taskAddedDate({
       workDate: '2026-09-02',
       receivedAt: '2026-09-01T12:00:00.000Z',
-    })).toBe('2026-09-01')
+    })).toBe('2026-09-02')
   })
 
-  it('falls back to workDate when receivedAt is missing', () => {
-    expect(taskAddedDate({ workDate: '2026-09-01' })).toBe('2026-09-01')
+  it('falls back to receivedAt when workDate is missing', () => {
+    expect(taskAddedDate({ workDate: '', receivedAt: '2026-09-01T12:00:00.000Z' })).toBe('2026-09-01')
   })
 })
 
@@ -22,9 +22,9 @@ describe('groupTasksByWorkDate', () => {
     ])
   })
 
-  it('files visible tasks under the day they were added, today then earlier', () => {
-    const monday = { workDate: '2026-09-01', receivedAt: '2026-08-31T12:00:00.000Z', status: 'OPEN' as const, id: 'a' }
-    const tuesday = { workDate: '2026-09-02', receivedAt: '2026-09-01T12:00:00.000Z', status: 'DONE' as const, id: 'b' }
+  it('files visible tasks under the work date, today then upcoming then earlier', () => {
+    const monday = { workDate: '2026-08-31', receivedAt: '2026-08-31T12:00:00.000Z', status: 'OPEN' as const, id: 'a' }
+    const tuesday = { workDate: '2026-09-01', receivedAt: '2026-09-01T12:00:00.000Z', status: 'DONE' as const, id: 'b' }
     const dismissed = { workDate: '2026-09-01', receivedAt: '2026-09-01T12:00:00.000Z', status: 'DISMISSED' as const, id: 'c' }
 
     const groups = groupTasksByWorkDate([monday, tuesday, dismissed], '2026-09-01')

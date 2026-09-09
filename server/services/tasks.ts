@@ -1,20 +1,11 @@
-import { createHash, randomBytes } from 'node:crypto'
-import { and, asc, desc, eq, gte, inArray, isNull, or } from 'drizzle-orm'
-import type { H3Event } from 'h3'
-import { companies, dispatchTasks, drivers, smsInboundEndpoints, trips, users } from '../database/schema'
+import { randomBytes } from 'node:crypto'
+import { and, asc, desc, eq, gte, inArray, isNull, ne, or } from 'drizzle-orm'
+import { companies, dispatchTasks, drivers, trips, users } from '../database/schema'
 import type { DispatchTask } from '../database/schema'
 import type { Database, DbExecutor } from '../utils/db'
 import type { AuthContext } from '../utils/session'
-import {
-  calendarDateInZone,
-  dispatchTaskTitle,
-  isDispatchMessage,
-  isSetupTestMessage,
-  parseDispatchSms,
-  SETUP_TEST_PHRASE,
-  taskFingerprintSource,
-} from '#shared/utils/sms-task'
-import type { DispatchTaskKind, DispatchTaskStatus } from '#shared/utils/domain'
+import { calendarDateInZone, classifyDispatchKind } from '#shared/utils/sms-task'
+import type { DispatchTaskKind, DispatchTaskSource, DispatchTaskStatus } from '#shared/utils/domain'
 import {
   allStepsDone,
   firstLineTitle,
@@ -24,18 +15,19 @@ import {
   stepsOrBlob,
 } from '#shared/utils/task-steps'
 import type { TaskStep } from '#shared/utils/task-steps'
+import {
+  applyAssignedStepPatch,
+  cardFromTask,
+  composeDispatchCardText,
+  dispatchCardTitle,
+  isAssignedTaskSource,
+  parsedFromDispatchCard,
+  stepsForDispatchCard,
+  type DispatchCard,
+} from '#shared/utils/dispatch-cards'
+import { notifyDriverTaskChange } from './task-email'
 
 export const DEFAULT_TASK_TIMEZONE = 'America/New_York'
-
-export interface TaskSetupView {
-  webhookUrl: string
-  tokenTail: string
-  testPhrase: string
-  lastReceivedAt: Date | null
-  lastTestAt: Date | null
-  connected: boolean
-  tested: boolean
-}
 
 export interface DispatchTaskView {
   id: string
@@ -46,63 +38,53 @@ export interface DispatchTaskView {
   workDate: string
   kind: DispatchTaskKind
   status: DispatchTaskStatus
-  source: 'SMS' | 'MANUAL'
+  source: DispatchTaskSource
+  assigned: boolean
+  editable: boolean
   tripId: string | null
+  sortOrder: number
   steps: TaskStep[]
+  card: DispatchCard
   parsed: Record<string, unknown>
   driverId: string
   driverName?: string | null
 }
 
-function fingerprint(text: string, workDate: string): string {
-  return createHash('sha256').update(taskFingerprintSource(text, workDate)).digest('hex')
-}
-
-function newToken(): string {
-  return randomBytes(24).toString('base64url')
-}
-
 function toView(row: DispatchTask, timezone: string, driverName?: string | null): DispatchTaskView {
   const parsed = row.parsed ?? {}
-  const addedDate = row.receivedAt
-    ? calendarDateInZone(row.receivedAt, timezone)
-    : row.workDate
+  const addedDate = row.workDate
+    || (row.receivedAt ? calendarDateInZone(row.receivedAt, timezone) : '')
+  const source = (row.source ?? 'MANUAL') as DispatchTaskSource
+  const assigned = isAssignedTaskSource(source)
+  const card = cardFromTask({
+    id: row.id,
+    kind: row.kind,
+    rawText: row.rawText,
+    parsed,
+  })
   return {
     id: row.id,
-    title: isDispatchMessage(row.rawText)
-      ? dispatchTaskTitle(row.rawText, row.kind, addedDate)
-      : row.title,
+    title: assigned ? dispatchCardTitle(card) : row.title,
     rawText: row.rawText,
     sender: row.sender,
     receivedAt: row.receivedAt,
     workDate: addedDate,
     kind: row.kind,
     status: row.status,
-    source: row.source,
+    source,
+    assigned,
+    editable: source === 'MANUAL',
     tripId: row.tripId,
+    sortOrder: row.sortOrder ?? 0,
     steps: stepsOrBlob(parsed, row.rawText),
+    card,
     parsed,
     driverId: row.driverId,
     driverName: driverName ?? null,
   }
 }
 
-function tokenTail(token: string): string {
-  return token.slice(-6)
-}
-
-/** Public origin for webhook URLs. Configured app URL wins; otherwise the request origin. */
-export function publicAppOrigin(event: H3Event): string {
-  const configured = String(useRuntimeConfig().appUrl ?? '').trim().replace(/\/+$/, '')
-  if (configured) return configured
-  try {
-    return getRequestURL(event).origin
-  }
-  catch {
-    if (import.meta.dev) return 'http://localhost:3000'
-    return ''
-  }
-}
+export { toView }
 
 export async function companyTimezone(db: DbExecutor, companyId: string): Promise<string> {
   const [row] = await db
@@ -113,76 +95,7 @@ export async function companyTimezone(db: DbExecutor, companyId: string): Promis
   return row?.timezone || DEFAULT_TASK_TIMEZONE
 }
 
-export async function getOrCreateEndpoint(
-  db: Database,
-  auth: AuthContext & { driverId: string },
-) {
-  const [existing] = await db
-    .select()
-    .from(smsInboundEndpoints)
-    .where(eq(smsInboundEndpoints.driverId, auth.driverId))
-    .limit(1)
-
-  if (existing) return existing
-
-  const [created] = await db
-    .insert(smsInboundEndpoints)
-    .values({
-      companyId: auth.companyId,
-      driverId: auth.driverId,
-      token: newToken(),
-    })
-    .onConflictDoNothing()
-    .returning()
-
-  if (created) return created
-
-  const [raced] = await db
-    .select()
-    .from(smsInboundEndpoints)
-    .where(eq(smsInboundEndpoints.driverId, auth.driverId))
-    .limit(1)
-
-  if (!raced) {
-    throw createError({ statusCode: 500, statusMessage: 'Could not create the SMS webhook.' })
-  }
-  return raced
-}
-
-export function setupView(
-  endpoint: typeof smsInboundEndpoints.$inferSelect,
-  origin: string,
-): TaskSetupView {
-  const webhookUrl = origin
-    ? `${origin}/api/tasks/inbound/${endpoint.token}`
-    : `/api/tasks/inbound/${endpoint.token}`
-  return {
-    webhookUrl,
-    tokenTail: tokenTail(endpoint.token),
-    testPhrase: SETUP_TEST_PHRASE,
-    lastReceivedAt: endpoint.lastReceivedAt,
-    lastTestAt: endpoint.lastTestAt,
-    connected: Boolean(endpoint.lastReceivedAt || endpoint.lastTestAt),
-    tested: Boolean(endpoint.lastTestAt),
-  }
-}
-
-export async function rotateEndpointToken(
-  db: Database,
-  auth: AuthContext & { driverId: string },
-) {
-  const existing = await getOrCreateEndpoint(db, auth)
-  const [updated] = await db
-    .update(smsInboundEndpoints)
-    .set({
-      token: newToken(),
-      updatedAt: new Date(),
-    })
-    .where(eq(smsInboundEndpoints.id, existing.id))
-    .returning()
-
-  return updated ?? existing
-}
+const VISIBLE_STATUSES = ['OPEN', 'IN_PROGRESS', 'DONE'] as const
 
 export async function listDriverTasks(
   db: DbExecutor,
@@ -193,6 +106,8 @@ export async function listDriverTasks(
   const filters = [
     eq(dispatchTasks.companyId, auth.companyId),
     eq(dispatchTasks.driverId, auth.driverId),
+    ne(dispatchTasks.status, 'DRAFT'),
+    ne(dispatchTasks.status, 'DISMISSED'),
   ]
   if (options.sinceIso) {
     filters.push(gte(dispatchTasks.workDate, options.sinceIso))
@@ -203,7 +118,7 @@ export async function listDriverTasks(
     .select()
     .from(dispatchTasks)
     .where(and(...filters))
-    .orderBy(desc(dispatchTasks.workDate), desc(dispatchTasks.receivedAt))
+    .orderBy(desc(dispatchTasks.workDate), asc(dispatchTasks.sortOrder), desc(dispatchTasks.receivedAt))
     .limit(limit)
 
   return rows.map(row => toView(row, timezone))
@@ -224,8 +139,8 @@ export async function listOpenTasksForHome(
       gte(dispatchTasks.workDate, todayIso),
       inArray(dispatchTasks.status, ['OPEN', 'IN_PROGRESS']),
     ))
-    .orderBy(asc(dispatchTasks.workDate), desc(dispatchTasks.receivedAt))
-    .limit(5)
+    .orderBy(asc(dispatchTasks.workDate), asc(dispatchTasks.sortOrder), desc(dispatchTasks.receivedAt))
+    .limit(8)
 
   return rows.map(row => toView(row, timezone))
 }
@@ -246,15 +161,16 @@ export async function listTasksForTrip(
     .where(and(
       eq(dispatchTasks.companyId, auth.companyId),
       eq(dispatchTasks.driverId, trip.driverId),
+      ne(dispatchTasks.status, 'DRAFT'),
       or(
         eq(dispatchTasks.tripId, trip.id),
         and(
           eq(dispatchTasks.workDate, workDate),
-          inArray(dispatchTasks.status, ['OPEN', 'IN_PROGRESS', 'DONE']),
+          inArray(dispatchTasks.status, [...VISIBLE_STATUSES]),
         ),
       ),
     ))
-    .orderBy(desc(dispatchTasks.receivedAt))
+    .orderBy(asc(dispatchTasks.sortOrder), desc(dispatchTasks.receivedAt))
     .limit(20)
 
   return rows.map(row => toView(row, timezone))
@@ -287,6 +203,20 @@ export async function attachOpenTasksToTrip(
     ))
 }
 
+export async function nextSortOrder(
+  db: DbExecutor,
+  driverId: string,
+  workDate: string,
+): Promise<number> {
+  const [row] = await db
+    .select({ sortOrder: dispatchTasks.sortOrder })
+    .from(dispatchTasks)
+    .where(and(eq(dispatchTasks.driverId, driverId), eq(dispatchTasks.workDate, workDate)))
+    .orderBy(desc(dispatchTasks.sortOrder))
+    .limit(1)
+  return (row?.sortOrder ?? -1) + 1
+}
+
 export async function createManualTask(
   db: Database,
   auth: AuthContext & { driverId: string },
@@ -299,17 +229,15 @@ export async function createManualTask(
 
   const timezone = await companyTimezone(db, auth.companyId)
   const todayIso = calendarDateInZone(new Date(), timezone)
-  const parsedSms = parseDispatchSms(blob, todayIso)
-  /** Manual paste files on the calendar day it was added, not a date inside the blob. */
-  const workDate = todayIso
-  const kind = parsedSms?.kind ?? 'NOTE'
-  const title = parsedSms?.title ?? firstLineTitle(blob)
+  const kind = classifyDispatchKind(blob)
+  const title = firstLineTitle(blob)
   const steps = stepsFromBlob(blob)
   if (!steps.length) {
     throw createError({ statusCode: 422, statusMessage: 'Paste the work first.' })
   }
 
   const now = new Date()
+  const sortOrder = await nextSortOrder(db, auth.driverId, todayIso)
   const [inserted] = await db
     .insert(dispatchTasks)
     .values({
@@ -319,15 +247,16 @@ export async function createManualTask(
       rawText: blob,
       sender: null,
       receivedAt: now,
-      workDate,
+      workDate: todayIso,
       kind,
       title,
       parsed: {
         origin: 'manual',
-        containerNumbers: parsedSms?.containerNumbers ?? [],
+        containerNumbers: [],
         steps,
       },
       status: 'OPEN',
+      sortOrder,
       fingerprint: `manual:${randomBytes(16).toString('hex')}`,
     })
     .returning()
@@ -343,23 +272,25 @@ export async function createAssignedTask(
   auth: AuthContext,
   input: {
     driverId: string
-    text: string
+    text?: string
     kind?: DispatchTaskKind
     containerNumber?: string | null
+    containerId?: string | null
+    containerPending?: boolean
     locationId?: string | null
     locationName?: string | null
+    destinationLocationId?: string | null
+    destinationLocationName?: string | null
+    notes?: string | null
+    workDate?: string
   },
 ): Promise<DispatchTaskView> {
-  const blob = input.text.trim()
-  if (!blob) {
-    throw createError({ statusCode: 422, statusMessage: 'Write the work first.' })
-  }
-
   const [driver] = await db
     .select({
       id: drivers.id,
       firstName: users.firstName,
       lastName: users.lastName,
+      email: users.email,
     })
     .from(drivers)
     .innerJoin(users, eq(users.id, drivers.userId))
@@ -372,46 +303,60 @@ export async function createAssignedTask(
 
   const timezone = await companyTimezone(db, auth.companyId)
   const todayIso = calendarDateInZone(new Date(), timezone)
-  const parsedSms = parseDispatchSms(blob, todayIso)
-  const kind = input.kind ?? parsedSms?.kind ?? 'NOTE'
-  const title = parsedSms?.title ?? firstLineTitle(blob)
-  const steps = stepsFromBlob(blob)
-  if (!steps.length) {
+  const workDate = input.workDate || todayIso
+  const card: DispatchCard = {
+    id: crypto.randomUUID(),
+    kind: input.kind ?? 'NOTE',
+    notes: input.notes?.trim() ?? '',
+    locationId: input.locationId ?? null,
+    locationName: input.locationName?.trim() ?? '',
+    destinationLocationId: input.destinationLocationId ?? null,
+    destinationLocationName: input.destinationLocationName?.trim() ?? '',
+    containerId: input.containerId ?? null,
+    containerNumber: (input.containerNumber ?? '').trim(),
+    containerPending: input.containerPending === true,
+  }
+  const blob = (input.text ?? composeDispatchCardText(card)).trim()
+  if (!blob) {
     throw createError({ statusCode: 422, statusMessage: 'Write the work first.' })
   }
 
+  const steps = stepsForDispatchCard(card)
   const now = new Date()
+  const sortOrder = await nextSortOrder(db, driver.id, workDate)
   const [inserted] = await db
     .insert(dispatchTasks)
     .values({
+      id: card.id,
       companyId: auth.companyId,
       driverId: driver.id,
-      source: 'MANUAL',
+      source: 'DISPATCH',
       rawText: blob,
       sender: auth.fullName,
       receivedAt: now,
-      workDate: todayIso,
-      kind,
-      title,
-      parsed: {
-        origin: 'dispatch',
-        containerNumbers: parsedSms?.containerNumbers?.length
-          ? parsedSms.containerNumbers
-          : (input.containerNumber ? [input.containerNumber] : []),
-        locationId: input.locationId ?? null,
-        locationName: input.locationName ?? null,
-        assignedByUserId: auth.userId,
-        steps,
-      },
+      workDate,
+      kind: card.kind,
+      title: dispatchCardTitle(card),
+      parsed: parsedFromDispatchCard(card, { assignedByUserId: auth.userId, steps }),
       status: 'OPEN',
-      fingerprint: `dispatch:${randomBytes(16).toString('hex')}`,
+      sortOrder,
+      fingerprint: `dispatch:${card.id}`,
     })
     .returning()
 
   if (!inserted) {
     throw createError({ statusCode: 500, statusMessage: 'Could not save the task.' })
   }
-  return toView(inserted, timezone, `${driver.firstName} ${driver.lastName}`)
+  const view = toView(inserted, timezone, `${driver.firstName} ${driver.lastName}`)
+  await notifyDriverTaskChange({
+    email: driver.email,
+    firstName: driver.firstName,
+    workDate,
+    dispatcherName: auth.fullName,
+    kind: 'assigned',
+    tasks: [view],
+  })
+  return view
 }
 
 export async function listCompanyOpenTasks(
@@ -459,6 +404,16 @@ export async function updateDriverTask(
     throw createError({ statusCode: 404, statusMessage: 'Task not found.' })
   }
 
+  if (row.status === 'DRAFT') {
+    throw createError({ statusCode: 404, statusMessage: 'Task not found.' })
+  }
+
+  const assigned = isAssignedTaskSource(row.source)
+
+  if (assigned && patch.status === 'DISMISSED') {
+    throw createError({ statusCode: 403, statusMessage: 'Dispatch work cannot be removed.' })
+  }
+
   if (patch.tripId) {
     const [trip] = await db
       .select({ id: trips.id })
@@ -480,14 +435,23 @@ export async function updateDriverTask(
   let nextRaw = row.rawText
 
   if (patch.steps) {
-    const steps = normalizeSteps(patch.steps)
+    const incoming = normalizeSteps(patch.steps)
+    const steps = assigned
+      ? applyAssignedStepPatch(stepsOrBlob(row.parsed, row.rawText), incoming)
+      : incoming
     nextParsed.steps = steps
-    nextRaw = steps.map(step => step.text).filter(Boolean).join('\n') || row.rawText
-    const firstOpen = steps.find(step => !step.done)?.text
-    nextTitle = firstOpen || steps[0]?.text || row.title
+    if (!assigned) {
+      nextRaw = steps.map(step => step.text).filter(Boolean).join('\n') || row.rawText
+      const firstOpen = steps.find(step => !step.done)?.text
+      nextTitle = firstOpen || steps[0]?.text || row.title
+    }
     if (allStepsDone(steps)) nextStatus = 'DONE'
     else if (someStepsDone(steps)) nextStatus = 'IN_PROGRESS'
     else if (!patch.status) nextStatus = 'OPEN'
+  }
+  else if (patch.status === 'DONE') {
+    const steps = stepsOrBlob(row.parsed, row.rawText).map(step => ({ ...step, done: true }))
+    if (steps.length) nextParsed.steps = steps
   }
 
   const [updated] = await db
@@ -504,96 +468,4 @@ export async function updateDriverTask(
     .returning()
 
   return toView(updated ?? row, await companyTimezone(db, auth.companyId))
-}
-
-export type InboundResult
-  = { ok: true, kind: 'test' }
-    | { ok: true, kind: 'ignored' }
-    | { ok: true, kind: 'duplicate', taskId: string }
-    | { ok: true, kind: 'task', taskId: string }
-
-export async function ingestInboundSms(
-  db: Database,
-  token: string,
-  payload: { text: string, sender: string | null },
-): Promise<InboundResult> {
-  const text = payload.text.trim()
-  if (!text) {
-    throw createError({ statusCode: 400, statusMessage: 'Message text is required.' })
-  }
-
-  const [endpoint] = await db
-    .select()
-    .from(smsInboundEndpoints)
-    .where(eq(smsInboundEndpoints.token, token))
-    .limit(1)
-
-  if (!endpoint) {
-    throw createError({ statusCode: 404, statusMessage: 'Unknown webhook.' })
-  }
-
-  const now = new Date()
-  const timezone = await companyTimezone(db, endpoint.companyId)
-  const todayIso = calendarDateInZone(now, timezone)
-
-  await db
-    .update(smsInboundEndpoints)
-    .set({
-      lastReceivedAt: now,
-      lastTestAt: isSetupTestMessage(text) ? now : endpoint.lastTestAt,
-      updatedAt: now,
-    })
-    .where(eq(smsInboundEndpoints.id, endpoint.id))
-
-  if (isSetupTestMessage(text)) {
-    return { ok: true, kind: 'test' }
-  }
-
-  if (!isDispatchMessage(text)) {
-    return { ok: true, kind: 'ignored' }
-  }
-
-  const parsed = parseDispatchSms(text, todayIso)
-  if (!parsed) {
-    return { ok: true, kind: 'ignored' }
-  }
-
-  const print = fingerprint(text, parsed.workDate)
-
-  const [inserted] = await db
-    .insert(dispatchTasks)
-    .values({
-      companyId: endpoint.companyId,
-      driverId: endpoint.driverId,
-      source: 'SMS',
-      rawText: text,
-      sender: payload.sender,
-      receivedAt: now,
-      workDate: parsed.workDate,
-      kind: parsed.kind,
-      title: parsed.title,
-      parsed: {
-        containerNumbers: parsed.containerNumbers,
-        steps: stepsFromBlob(text),
-      },
-      status: 'OPEN',
-      fingerprint: print,
-    })
-    .onConflictDoNothing()
-    .returning({ id: dispatchTasks.id })
-
-  if (inserted) {
-    return { ok: true, kind: 'task', taskId: inserted.id }
-  }
-
-  const [existing] = await db
-    .select({ id: dispatchTasks.id })
-    .from(dispatchTasks)
-    .where(and(
-      eq(dispatchTasks.driverId, endpoint.driverId),
-      eq(dispatchTasks.fingerprint, print),
-    ))
-    .limit(1)
-
-  return { ok: true, kind: 'duplicate', taskId: existing?.id ?? '' }
 }

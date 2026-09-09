@@ -4,53 +4,24 @@ import { groupTasksByWorkDate } from '#shared/utils/task-days'
 
 useHead({ title: 'Tasks' })
 
-type PhoneGuide = 'iphone' | 'android'
-type CopyKey = 'url' | 'phrase' | 'json'
-type PageMode = 'view' | 'edit'
-
 const { data, status, error, refresh } = await useFetch('/api/tasks')
 
-const mode = ref<PageMode>('view')
 const menuOpen = ref(false)
-const draft = ref('')
 const adding = ref(false)
+const composeOpen = ref(false)
+const draft = ref('')
 const persistTimers = new Map<string, ReturnType<typeof setTimeout>>()
-const guide = ref<PhoneGuide>('iphone')
-const setupOpen = ref(false)
-const checking = ref(false)
-const pinging = ref(false)
-const rotating = ref(false)
-const confirmRotate = ref(false)
 const flash = ref('')
-const testResult = ref('')
 const actionError = ref('')
-const copyState = reactive<Record<CopyKey, 'idle' | 'copied' | 'failed'>>({
-  url: 'idle',
-  phrase: 'idle',
-  json: 'idle',
-})
-const copyTimers: Partial<Record<CopyKey, ReturnType<typeof setTimeout>>> = {}
 
-const setup = computed(() => data.value?.setup)
 const todayIso = computed(() => data.value?.todayIso ?? '')
 const allTasks = computed(() => data.value?.tasks ?? [])
 const taskDays = computed(() => groupTasksByWorkDate(allTasks.value, todayIso.value))
 
-const jsonBody = computed(() => JSON.stringify({
-  text: '(the SMS text)',
-  from: '(the sender)',
-}, null, 2))
-
-const setupStateLabel = computed(() => {
-  if (setup.value?.tested) return 'SMS on'
-  if (setup.value?.connected) return 'SMS receiving'
-  return 'SMS forwarding'
-})
-
 onMounted(() => {
   const tick = () => {
     if (document.visibilityState !== 'visible') return
-    if (mode.value === 'edit' || persistTimers.size || adding.value) return
+    if (composeOpen.value || persistTimers.size || adding.value) return
     void refresh()
   }
   const id = window.setInterval(tick, 12000)
@@ -63,25 +34,6 @@ onMounted(() => {
   })
 })
 
-function setMode(next: PageMode) {
-  mode.value = next
-  menuOpen.value = false
-}
-
-async function copyValue(key: CopyKey, value: string) {
-  try {
-    await navigator.clipboard.writeText(value)
-    copyState[key] = 'copied'
-  }
-  catch {
-    copyState[key] = 'failed'
-  }
-  if (copyTimers[key]) clearTimeout(copyTimers[key])
-  copyTimers[key] = setTimeout(() => {
-    copyState[key] = 'idle'
-  }, 2200)
-}
-
 async function submitDraft() {
   const text = draft.value.trim()
   if (!text || adding.value) return
@@ -90,6 +42,8 @@ async function submitDraft() {
   try {
     await $fetch('/api/tasks', { method: 'POST', body: { text } })
     draft.value = ''
+    composeOpen.value = false
+    flash.value = 'Your note was added.'
     await refresh()
   }
   catch (err) {
@@ -145,73 +99,6 @@ function persistSteps(id: string, steps: TaskStep[], immediate = true) {
   }, 320))
 }
 
-async function checkNow() {
-  checking.value = true
-  actionError.value = ''
-  try {
-    await refresh()
-    if (setup.value?.tested) {
-      flash.value = 'Setup test received. SMS forwarding is working.'
-      testResult.value = 'Forwarding confirmed — the test phrase arrived on this webhook.'
-    }
-    else if (setup.value?.connected) {
-      flash.value = 'A message arrived, but not the setup test phrase yet.'
-      testResult.value = 'A message arrived, but it was not the setup test phrase.'
-    }
-    else {
-      flash.value = 'Nothing received yet. Send the test phrase from Messages, then check again.'
-      testResult.value = 'Nothing received yet. Send the test phrase from Messages, then check again.'
-    }
-  }
-  catch (err) {
-    actionError.value = apiErrorMessage(err, 'Could not check setup.')
-  }
-  finally {
-    checking.value = false
-  }
-}
-
-async function pingWebhook() {
-  const url = setup.value?.webhookUrl
-  if (!url || pinging.value) return
-  pinging.value = true
-  actionError.value = ''
-  try {
-    await $fetch(url, {
-      method: 'POST',
-      body: { text: setup.value?.testPhrase ?? 'Sensible setup test', from: 'app-check' },
-    })
-    await refresh()
-    flash.value = 'The webhook link is live. That does not prove Shortcuts yet — send the test phrase from Messages for the real check.'
-    testResult.value = 'Link is reachable. Send the test phrase from Messages to prove forwarding.'
-  }
-  catch (err) {
-    actionError.value = apiErrorMessage(err, 'Could not reach the webhook.')
-  }
-  finally {
-    pinging.value = false
-  }
-}
-
-async function rotateToken() {
-  if (rotating.value) return
-  rotating.value = true
-  actionError.value = ''
-  try {
-    await $fetch('/api/tasks/setup', { method: 'POST' })
-    confirmRotate.value = false
-    setupOpen.value = true
-    await refresh()
-    flash.value = 'New webhook link created. Update Shortcuts or Android with the URL below.'
-  }
-  catch (err) {
-    actionError.value = apiErrorMessage(err, 'Could not rotate the webhook.')
-  }
-  finally {
-    rotating.value = false
-  }
-}
-
 async function patchTask(id: string, statusValue: 'DONE' | 'DISMISSED') {
   actionError.value = ''
   try {
@@ -227,7 +114,7 @@ async function patchTask(id: string, statusValue: 'DONE' | 'DISMISSED') {
 <template>
   <section class="d-page">
     <PageHeader
-      eyebrow="Dispatch"
+      eyebrow="Work"
       title="Tasks"
     >
       <template #actions>
@@ -279,39 +166,32 @@ async function patchTask(id: string, statusValue: 'DONE' | 'DISMISSED') {
         <span>{{ flash }}</span>
       </p>
 
-      <p
-        v-if="mode === 'edit'"
-        class="task-mode-hint"
-      >
-        Paste the full dispatcher text. After you add it, use Split to break it into steps.
-      </p>
-
       <form
-        v-if="mode === 'edit'"
+        v-if="composeOpen"
         class="task-compose card"
         @submit.prevent="submitDraft"
       >
         <label
           class="sr-only"
           for="task-blob"
-        >Paste work for this day</label>
+        >Add your own note</label>
         <textarea
           id="task-blob"
           v-model="draft"
           class="task-compose-input"
-          rows="6"
-          placeholder="Paste the full dispatcher text here."
+          rows="5"
+          placeholder="Your own note for today. Dispatch work stays as assigned."
           autocomplete="off"
         />
         <p class="task-compose-hint">
-          Files under the day you add it. Stays one block until you split it.
+          Files under today. Dispatch cards cannot be rewritten from here.
         </p>
         <button
           class="btn-dark"
           type="submit"
           :disabled="adding || !draft.trim()"
         >
-          {{ adding ? 'Adding…' : 'Add work' }}
+          {{ adding ? 'Adding…' : 'Add note' }}
         </button>
       </form>
 
@@ -323,57 +203,46 @@ async function patchTask(id: string, statusValue: 'DONE' | 'DISMISSED') {
           <span>{{ formatDayOf(group.iso, todayIso) }}</span>
           <span v-if="group.tasks.length">{{ group.tasks.length }}</span>
         </div>
-        <article
+
+        <template
           v-for="task in group.tasks"
           :key="task.id"
-          class="task-card task-card-list"
-          :class="{
-            done: task.status === 'DONE',
-            compact: group.iso < todayIso,
-          }"
         >
-          <div class="task-card-top">
-            <StatusChip
-              :variant="task.status === 'DONE' ? 'ok' : (group.iso > todayIso ? 'idle' : 'warn')"
-              :label="task.status === 'DONE' ? 'Done' : 'Open'"
-            />
-          </div>
-          <TaskChecklist
+          <DispatchTaskCard
+            :id="task.id"
+            :title="task.title"
+            :raw-text="task.rawText"
+            :sender="task.sender"
+            :received-at="task.receivedAt"
+            :work-date="task.workDate"
+            :kind="task.kind"
+            :status="task.status"
+            :source="task.source"
+            :assigned="task.assigned"
+            :editable="task.editable"
+            :trip-id="task.tripId"
             :steps="task.steps"
-            :mode="mode"
+            :card="task.card"
+            :compact="group.iso < todayIso"
+            actions
+            @done="patchTask(task.id, 'DONE')"
+            @dismiss="patchTask(task.id, 'DISMISSED')"
+          />
+          <TaskChecklist
+            v-if="task.editable && group.iso >= todayIso"
+            :steps="task.steps"
+            mode="edit"
             @change="(steps, immediate) => persistSteps(task.id, steps, immediate)"
           />
-          <div
-            v-if="mode === 'edit'"
-            class="task-card-actions"
-          >
-            <button
-              type="button"
-              class="btn-ghost"
-              @click="patchTask(task.id, 'DISMISSED')"
-            >
-              Remove
-            </button>
-          </div>
-        </article>
+        </template>
+
         <EmptyState
           v-if="group.iso === todayIso && !group.tasks.length"
           glyph="☰"
-          title="No steps yet"
-          :description="mode === 'edit'
-            ? 'Paste the full dispatcher text above. It files under the day you add it.'
-            : 'Open the menu and choose Edit to paste work for today.'"
+          title="No work yet"
+          description="Dispatch work appears here after it is submitted. You can still add your own note."
         />
       </template>
-
-      <button
-        type="button"
-        class="task-sms-link"
-        @click="setupOpen = true"
-      >
-        <span>{{ setupStateLabel }}</span>
-        <span>{{ setup?.tested ? 'Connected' : 'Optional setup' }}</span>
-      </button>
     </template>
 
     <BottomSheet
@@ -382,180 +251,12 @@ async function patchTask(id: string, statusValue: 'DONE' | 'DISMISSED') {
       @close="menuOpen = false"
     >
       <button
-        v-if="mode === 'view'"
         type="button"
         class="menu-row"
-        @click="setMode('edit')"
+        @click="composeOpen = true; menuOpen = false"
       >
-        Edit
+        Add a note
       </button>
-      <button
-        v-else
-        type="button"
-        class="menu-row"
-        @click="setMode('view')"
-      >
-        Done editing
-      </button>
-    </BottomSheet>
-
-    <BottomSheet
-      :open="setupOpen"
-      title="SMS forwarding"
-      @close="setupOpen = false"
-    >
-      <p
-        v-if="setup"
-        class="text-sm text-[var(--color-ink-700)]"
-      >
-        Optional. Forward dispatcher texts from iPhone Shortcuts or Android. You can still paste
-        work by hand on this page.
-      </p>
-
-      <div
-        v-if="setup"
-        class="view-toggle mt-4"
-        role="tablist"
-        aria-label="Phone setup"
-      >
-        <button
-          type="button"
-          role="tab"
-          :aria-selected="guide === 'iphone'"
-          :class="{ on: guide === 'iphone' }"
-          @click="guide = 'iphone'"
-        >
-          iPhone
-        </button>
-        <button
-          type="button"
-          role="tab"
-          :aria-selected="guide === 'android'"
-          :class="{ on: guide === 'android' }"
-          @click="guide = 'android'"
-        >
-          Android
-        </button>
-      </div>
-
-      <ol
-        v-if="guide === 'iphone'"
-        class="task-steps"
-      >
-        <li>Open Shortcuts → Automation → Create Personal Automation → Message Received.</li>
-        <li>Add Get Contents of URL. Paste the webhook. Method POST, JSON body keys text and from.</li>
-        <li>Turn Ask Before Running off, then Done.</li>
-      </ol>
-      <ol
-        v-else
-        class="task-steps"
-      >
-        <li>MacroDroid or Tasker: SMS Received → HTTP POST to the webhook as JSON { text, from }.</li>
-        <li>Grant SMS permission and send a test from another phone.</li>
-      </ol>
-
-      <div
-        v-if="setup"
-        class="task-copy-block"
-      >
-        <span class="eyebrow">Webhook URL</span>
-        <code class="task-copy-value">{{ setup.webhookUrl }}</code>
-        <button
-          type="button"
-          class="btn-ghost"
-          @click="copyValue('url', setup.webhookUrl)"
-        >
-          {{ copyState.url === 'copied' ? '✓ Copied' : 'Copy URL' }}
-        </button>
-      </div>
-      <div
-        v-if="setup"
-        class="task-copy-block"
-      >
-        <span class="eyebrow">JSON body</span>
-        <pre class="task-copy-value">{{ jsonBody }}</pre>
-        <button
-          type="button"
-          class="btn-ghost"
-          @click="copyValue('json', jsonBody)"
-        >
-          {{ copyState.json === 'copied' ? '✓ Copied' : 'Copy JSON' }}
-        </button>
-      </div>
-      <div
-        v-if="setup"
-        class="task-copy-block"
-      >
-        <span class="eyebrow">Test phrase</span>
-        <code class="task-copy-value">{{ setup.testPhrase }}</code>
-        <button
-          type="button"
-          class="btn-ghost"
-          @click="copyValue('phrase', setup.testPhrase)"
-        >
-          {{ copyState.phrase === 'copied' ? '✓ Copied' : 'Copy phrase' }}
-        </button>
-      </div>
-      <div class="task-test-actions">
-        <button
-          type="button"
-          class="btn-dark"
-          :disabled="checking"
-          @click="checkNow"
-        >
-          {{ checking ? 'Checking…' : 'Check now' }}
-        </button>
-        <button
-          type="button"
-          class="btn-ghost"
-          :disabled="pinging"
-          @click="pingWebhook"
-        >
-          {{ pinging ? 'Pinging…' : 'Check the link only' }}
-        </button>
-      </div>
-      <p
-        v-if="testResult"
-        class="task-test-result"
-        :class="{ ok: setup?.tested }"
-        role="status"
-      >
-        {{ testResult }}
-      </p>
-      <button
-        type="button"
-        class="btn-ghost task-rotate"
-        @click="confirmRotate = true"
-      >
-        Rotate webhook link
-      </button>
-    </BottomSheet>
-
-    <BottomSheet
-      :open="confirmRotate"
-      title="Rotate webhook?"
-      @close="confirmRotate = false"
-    >
-      <p class="text-sm text-[var(--color-ink-500)]">
-        The old URL stops working. Update Shortcuts or Android after this, then send the test phrase again.
-      </p>
-      <div class="sheet-actions">
-        <button
-          type="button"
-          class="btn-cancel"
-          @click="confirmRotate = false"
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          class="btn-save"
-          :disabled="rotating"
-          @click="rotateToken"
-        >
-          {{ rotating ? 'Rotating…' : 'Rotate link' }}
-        </button>
-      </div>
     </BottomSheet>
   </section>
 </template>

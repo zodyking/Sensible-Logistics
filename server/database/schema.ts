@@ -207,12 +207,13 @@ export const dispatchTaskKindEnum = pgEnum('dispatch_task_kind', [
   'NOTE',
 ])
 export const dispatchTaskStatusEnum = pgEnum('dispatch_task_status', [
+  'DRAFT',
   'OPEN',
   'IN_PROGRESS',
   'DONE',
   'DISMISSED',
 ])
-export const dispatchTaskSourceEnum = pgEnum('dispatch_task_source', ['SMS', 'MANUAL'])
+export const dispatchTaskSourceEnum = pgEnum('dispatch_task_source', ['SMS', 'MANUAL', 'DISPATCH'])
 
 export const csxReleaseStatusEnum = pgEnum('csx_release_status', [
   'OPEN',
@@ -875,9 +876,10 @@ export const auditLogs = pgTable('audit_logs', {
 }, t => [index('audit_logs_company_idx').on(t.companyId, t.createdAt)])
 
 /* ============================================================
-   Dispatch SMS → driver tasks
-   One inbound webhook token per driver. Messages that look like work
-   become dated tasks and can be attached to a trip.
+   Dispatch desk → driver tasks
+   Dispatchers compose dated cards (draft or submitted). Drivers can add
+   their own notes but cannot rewrite an assigned card. The SMS webhook
+   table is leftover from the old phone-forwarding path and is unused.
    ============================================================ */
 
 export const smsInboundEndpoints = pgTable('sms_inbound_endpoints', {
@@ -898,7 +900,7 @@ export const dispatchTasks = pgTable('dispatch_tasks', {
   id: uuid('id').primaryKey().defaultRandom(),
   companyId: uuid('company_id').notNull().references(() => companies.id, { onDelete: 'cascade' }),
   driverId: uuid('driver_id').notNull().references(() => drivers.id, { onDelete: 'cascade' }),
-  source: dispatchTaskSourceEnum('source').notNull().default('SMS'),
+  source: dispatchTaskSourceEnum('source').notNull().default('MANUAL'),
   rawText: text('raw_text').notNull(),
   sender: text('sender'),
   receivedAt: utc('received_at').notNull().defaultNow(),
@@ -907,6 +909,7 @@ export const dispatchTasks = pgTable('dispatch_tasks', {
   title: text('title').notNull(),
   parsed: jsonb('parsed').$type<Record<string, unknown>>().notNull().default({}),
   status: dispatchTaskStatusEnum('status').notNull().default('OPEN'),
+  sortOrder: integer('sort_order').notNull().default(0),
   tripId: uuid('trip_id').references(() => trips.id, { onDelete: 'set null' }),
   fingerprint: text('fingerprint').notNull(),
   createdAt: utc('created_at').notNull().defaultNow(),

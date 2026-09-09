@@ -5445,7 +5445,7 @@
 }
 
 /* ============================================================
-   TASKS — SMS dispatch inbox
+   TASKS — assigned dispatch cards and driver notes
    ============================================================ */
 .task-head {
   display: flex;
@@ -6679,6 +6679,456 @@ html.keyboard-open .a-shell {
     box-shadow: 0 0 0 1px var(--color-navy-800);
     background: var(--color-blue-50);
   }
+
+/* ============================================================
+   DISPATCH DESK — driver day plans
+   Direction: utilitarian operations desk. Navy + amber tokens,
+   card-per-stop editor, readable driver viewer.
+   ============================================================ */
+.desk-head {
+  align-items: flex-end;
+}
+
+.desk-shell {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--s5);
+  align-items: start;
+}
+
+.desk-rail {
+  background: #fff;
+  border: 1px solid var(--color-line-200);
+  border-radius: var(--radius-lg);
+  padding: var(--s4);
+  min-width: 0;
+}
+
+.desk-drivers {
+  list-style: none;
+  margin: var(--s3) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 360px;
+  overflow: auto;
+}
+
+.desk-driver {
+  width: 100%;
+  text-align: left;
+  min-height: 48px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  background: var(--color-paper-50);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.desk-driver b {
+  font-size: var(--text-sm);
+}
+
+.desk-driver span {
+  font-size: 12px;
+  color: var(--color-ink-500);
+}
+
+.desk-driver.on {
+  border-color: var(--color-navy-800);
+  background: var(--color-blue-50);
+  box-shadow: 0 0 0 1px var(--color-navy-800);
+}
+
+.desk-main {
+  min-width: 0;
+}
+
+.desk-datebar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--s4);
+  align-items: flex-end;
+  margin-bottom: var(--s5);
+}
+
+.desk-datebar h2 {
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  margin: 0;
+}
+
+.desk-date-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  align-items: center;
+}
+
+.desk-date-nav .btn-ghost {
+  min-width: 44px;
+  padding: 0 var(--s3);
+}
+
+.desk-date {
+  width: auto;
+  min-width: 11.5rem;
+}
+
+.desk-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s3);
+  align-items: center;
+  margin-bottom: var(--s4);
+  font-size: var(--text-sm);
+  color: var(--color-ink-500);
+}
+
+.desk-bulk {
+  padding: var(--s4);
+  margin-bottom: var(--s4);
+}
+
+.desk-bulk-list {
+  list-style: none;
+  margin: 0 0 var(--s3);
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.desk-check {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  min-height: 44px;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+}
+
+.desk-check:hover {
+  background: var(--color-paper-50);
+}
+
+.desk-check small {
+  margin-left: auto;
+  color: var(--color-ink-500);
+}
+
+.desk-hint {
+  margin: 0 0 var(--s3);
+  font-size: var(--text-sm);
+  color: var(--color-ink-500);
+}
+
+.desk-card {
+  background: #fff;
+  border: 1px solid var(--color-line-200);
+  border-radius: var(--radius-lg);
+  padding: var(--s4);
+  margin-bottom: var(--s3);
+  box-shadow: var(--shadow-1);
+}
+
+.desk-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  margin-bottom: var(--s3);
+}
+
+.desk-card-kicker {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-ink-500);
+}
+
+.desk-card-tools {
+  display: flex;
+  gap: 6px;
+}
+
+.desk-icon-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-line-300);
+  background: #fff;
+  font-size: 16px;
+}
+
+.desk-icon-btn:disabled {
+  opacity: 0.35;
+}
+
+.desk-icon-btn.danger {
+  color: var(--color-err-600);
+}
+
+.desk-kinds,
+.desk-source {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: var(--s4);
+}
+
+.desk-kinds button,
+.desk-source button {
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--color-line-300);
+  background: #fff;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.desk-kinds button.on,
+.desk-source button.on {
+  background: var(--color-navy-800);
+  color: #fff;
+  border-color: var(--color-navy-800);
+}
+
+.desk-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--s3);
+}
+
+.desk-boxes {
+  list-style: none;
+  margin: 0 0 var(--s3);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 240px;
+  overflow: auto;
+}
+
+.desk-box {
+  width: 100%;
+  text-align: left;
+  min-height: 48px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-line-200);
+  background: var(--color-paper-50);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.desk-box span {
+  font-size: 12px;
+  color: var(--color-ink-500);
+}
+
+.desk-box.on {
+  border-color: var(--color-navy-800);
+  box-shadow: 0 0 0 1px var(--color-navy-800);
+  background: #fff;
+}
+
+.desk-picked {
+  margin: 0 0 var(--s3);
+  font-size: var(--text-sm);
+  color: var(--color-ok-600);
+  font-weight: 600;
+}
+
+.desk-notes {
+  min-height: 72px;
+  resize: vertical;
+}
+
+.desk-add {
+  width: 100%;
+  min-height: 48px;
+  margin: 0 0 var(--s5);
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--color-line-300);
+  background: #fff;
+  color: var(--color-ink-700);
+  font-weight: 600;
+}
+
+.desk-actions {
+  display: grid;
+  gap: var(--s3);
+  position: sticky;
+  bottom: var(--s3);
+  padding-top: var(--s3);
+  background: linear-gradient(180deg, transparent, var(--color-paper-100) 24%);
+}
+
+.desk-actions .btn-ghost,
+.desk-actions .btn-primary-action {
+  width: 100%;
+}
+
+.desk-history,
+.desk-side-history {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.desk-trips {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.task-view {
+  background: #fff;
+  border: 1px solid var(--color-line-200);
+  border-radius: var(--radius-lg);
+  padding: var(--s4);
+  margin-bottom: var(--s3);
+  box-shadow: var(--shadow-1);
+}
+
+.task-view.done {
+  opacity: 0.72;
+}
+
+.task-view.assigned {
+  border-left: 4px solid var(--color-navy-800);
+}
+
+.task-view-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  margin-bottom: var(--s2);
+}
+
+.task-view-source {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-ink-400);
+}
+
+.task-view-box,
+.task-view-title {
+  margin: 0 0 6px;
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 700;
+}
+
+.task-view-route {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: var(--text-sm);
+  color: var(--color-ink-700);
+}
+
+.task-view-arrow {
+  width: 18px;
+  height: 2px;
+  background: var(--color-navy-700);
+  position: relative;
+}
+
+.task-view-arrow::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: -3px;
+  border: 4px solid transparent;
+  border-left-color: var(--color-navy-700);
+}
+
+.task-view-pending {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-warn-600);
+}
+
+.task-view-notes {
+  margin: 0 0 8px;
+  font-size: var(--text-sm);
+  color: var(--color-ink-700);
+  white-space: pre-wrap;
+}
+
+.task-view-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s3);
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-ink-500);
+}
+
+.task-view-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  margin-top: var(--s3);
+}
+
+.task-view-actions .btn-dark,
+.task-view-actions .btn-ghost {
+  width: auto;
+  min-height: 44px;
+  padding: 0 var(--s4);
+}
+
+.task-view.compact {
+  padding: var(--s3);
+}
+
+@media (min-width: 720px) {
+  .desk-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .desk-actions {
+    grid-template-columns: 1fr 1.4fr;
+  }
+}
+
+@media (min-width: 1024px) {
+  .desk-shell {
+    grid-template-columns: 260px minmax(0, 1fr);
+  }
+
+  .desk-rail {
+    position: sticky;
+    top: var(--s4);
+  }
+
+  .desk-drivers {
+    max-height: calc(100dvh - 240px);
+  }
+}
+
+.task-sms-link {
+  display: none;
+}
 
 /* Invisible scrolling app-wide. Keep overflow; never paint a track, thumb,
    or arrow buttons.
