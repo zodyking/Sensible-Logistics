@@ -38,7 +38,6 @@ import {
   ROLES,
   roleHomePath,
   roleLabel,
-  SIGNUP_ROLE_HINTS,
   SIGNUP_ROLE_LABELS,
   SIGNUP_ROLES,
   SHORT_HAUL_LABELS,
@@ -170,8 +169,8 @@ describe('domain vocabulary integrity', () => {
     expect(roleLabel('ADMIN')).toBe('Dispatcher')
   })
 
-  it('keeps SIGNUP_ROLES in lockstep with labels and hints', () => {
-    expectUnionKeysMatch(SIGNUP_ROLES, SIGNUP_ROLE_LABELS, SIGNUP_ROLE_HINTS)
+  it('keeps SIGNUP_ROLES in lockstep with labels', () => {
+    expectUnionKeysMatch(SIGNUP_ROLES, SIGNUP_ROLE_LABELS)
   })
 
   it('exposes the documented FMCSA constants', () => {

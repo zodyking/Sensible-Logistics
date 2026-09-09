@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { formatPhoneInput } from '#shared/utils/phone'
 import {
-  SIGNUP_ROLE_HINTS,
   SIGNUP_ROLE_LABELS,
   SIGNUP_ROLES,
   type SignupRole,
@@ -215,7 +214,6 @@ async function resend() {
           @click="form.role = option"
         >
           <b>{{ SIGNUP_ROLE_LABELS[option] }}</b>
-          <small>{{ SIGNUP_ROLE_HINTS[option] }}</small>
         </button>
       </div>
 
