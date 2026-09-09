@@ -163,7 +163,9 @@ const availableDrivers = computed(() => drivers.value.filter(driver => driver.st
     <div class="dispatch-map-col">
       <div class="dispatch-map-hud">
         <div>
-          <p class="eyebrow">Dispatch</p>
+          <p class="eyebrow">
+            Dispatch
+          </p>
           <h1>Container pool</h1>
         </div>
         <dl class="dispatch-stats">
@@ -216,7 +218,9 @@ const availableDrivers = computed(() => drivers.value.filter(driver => driver.st
     >
       <template v-if="selected">
         <header class="dispatch-panel-head">
-          <p class="eyebrow">{{ LOCATION_TYPE_LABELS[selected.type] }}</p>
+          <p class="eyebrow">
+            {{ LOCATION_TYPE_LABELS[selected.type] }}
+          </p>
           <h2>{{ selected.name }}</h2>
           <p
             v-if="placeLine(selected)"
@@ -287,7 +291,9 @@ const availableDrivers = computed(() => drivers.value.filter(driver => driver.st
           class="dispatch-task"
           @submit.prevent="assignTask"
         >
-          <p class="eyebrow">Create task</p>
+          <p class="eyebrow">
+            Create task
+          </p>
           <p class="dispatch-task-box mono">
             {{ formatContainerNumber(taskBox.number) || taskBox.number }}
           </p>
