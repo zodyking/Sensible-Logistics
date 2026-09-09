@@ -358,9 +358,9 @@ export const LOCATION_GLYPH: Record<LocationType, string> = {
 }
 
 /**
- * Location lists and the new-location type picker share these headers.
- * Marine terminals and rail yards sit together because drivers treat them
- * as the same kind of gate: inbound/outbound infrastructure.
+ * Headers for existing-location lists. The add-location type picker is a
+ * flat list — marine terminals and rail yards still sit together here
+ * because drivers treat them as the same kind of gate.
  */
 export const LOCATION_TYPE_GROUPS = [
   { key: 'company', label: 'Company yards', types: ['COMPANY_YARD'] },
