@@ -6234,23 +6234,32 @@ html.keyboard-open .a-shell {
 }
 
 /* Invisible scrolling app-wide. Overflow still works; the track, thumb,
-   and arrow buttons stay hidden on desktop Chromium, Firefox, and Safari. */
+   and arrow buttons stay hidden on desktop Chromium, Firefox, and Safari.
+   A bare ::-webkit-scrollbar is required for the document viewport; * alone
+   does not always hide that bar. */
+html,
+body {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
 *,
 *::before,
 *::after {
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
 }
 
+::-webkit-scrollbar,
 *::-webkit-scrollbar,
 *::-webkit-scrollbar-button,
 *::-webkit-scrollbar-thumb,
 *::-webkit-scrollbar-track,
 *::-webkit-scrollbar-corner {
-  display: none;
-  width: 0;
-  height: 0;
-  background: transparent;
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
 }
 
 @media print {
