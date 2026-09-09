@@ -6,6 +6,32 @@
 export const ROLES = ['DRIVER', 'ADMIN'] as const
 export type Role = (typeof ROLES)[number]
 
+/** Public signup picks. Dispatcher memberships are stored as ADMIN. */
+export const SIGNUP_ROLES = ['DRIVER', 'DISPATCHER'] as const
+export type SignupRole = (typeof SIGNUP_ROLES)[number]
+
+export const SIGNUP_ROLE_LABELS: Record<SignupRole, string> = {
+  DRIVER: 'Driver',
+  DISPATCHER: 'Dispatcher',
+}
+
+export const SIGNUP_ROLE_HINTS: Record<SignupRole, string> = {
+  DRIVER: 'Trips, pickups, and yard work',
+  DISPATCHER: 'Map, container pool, and tasks',
+}
+
+export function membershipRoleForSignup(role: SignupRole): Role {
+  return role === 'DISPATCHER' ? 'ADMIN' : 'DRIVER'
+}
+
+export function roleHomePath(role: Role | null | undefined): string {
+  return role === 'ADMIN' ? '/admin' : '/'
+}
+
+export function roleLabel(role: Role | null | undefined): string {
+  return role === 'ADMIN' ? 'Dispatcher' : 'Driver'
+}
+
 export const ACTIVE_POOL_STATES = [
   'INACTIVE',
   'PICKUP_IN_PROGRESS',

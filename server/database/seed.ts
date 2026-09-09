@@ -869,7 +869,7 @@ async function main() {
 
   console.log('\nSeed complete.')
   console.log(`  Company      ${DEMO_COMPANY}  (invite code: ${INVITE_CODE})`)
-  console.log(`  Admin        ${ADMIN_EMAIL} / ${PASSWORD}  → /admin/containers`)
+  console.log(`  Admin        ${ADMIN_EMAIL} / ${PASSWORD}  → /admin`)
   console.log(`  Driver       ${DRIVER_EMAIL} / ${PASSWORD}  → /`)
   console.log(`  Containers   ${containerSeed.length}`)
   console.log(`  Locations    ${locationSeed.length}`)

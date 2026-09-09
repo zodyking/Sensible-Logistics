@@ -1,5 +1,6 @@
 import { eq } from 'drizzle-orm'
 import { z } from 'zod'
+import { roleHomePath } from '#shared/utils/domain'
 import { companies, companyMemberships, drivers, users } from '../../database/schema'
 import { consumeEmailVerification } from '../../services/email-verification'
 
@@ -8,10 +9,10 @@ const schema = z.object({
 })
 
 /**
- * Confirms a driver's email address and signs them in (spec 4).
+ * Confirms an email address and signs the user in (spec 4).
  *
  * Signing in here is deliberate: the link proves control of the address, and it
- * saves a driver standing in a yard from typing their password again.
+ * saves someone standing in a yard from typing their password again.
  */
 export default defineEventHandler(async (event) => {
   const body = await readValidatedJson(event, schema)
@@ -78,6 +79,6 @@ export default defineEventHandler(async (event) => {
 
   return {
     ok: true,
-    redirectTo: membership.role === 'ADMIN' ? '/admin/containers' : '/',
+    redirectTo: roleHomePath(membership.role),
   }
 })

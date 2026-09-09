@@ -1,17 +1,23 @@
 <script setup lang="ts">
 /**
- * Admin management shell — persistent left nav on desktop, drawer on mobile.
- * Denser than the driver experience and deliberately dashboard-free (spec 3).
+ * Admin / dispatcher shell — persistent left nav on desktop, drawer on mobile.
+ * Dispatch is the home: a map-first board, then the management records.
  */
+import { roleLabel } from '#shared/utils/domain'
+
 const route = useRoute()
 const { user, clear } = useUserSession()
 const { appName } = useRuntimeConfig().public
 const drawerOpen = ref(false)
 
-const nav = [
+const nav: Array<{
+  section: string
+  items: Array<{ to: string, label: string, icon: string, exact?: boolean }>
+}> = [
   {
     section: 'Operations',
     items: [
+      { to: '/admin', label: 'Dispatch', icon: '◎', exact: true },
       { to: '/admin/containers', label: 'Containers', icon: '▦' },
       { to: '/admin/drivers', label: 'Drivers & timecards', icon: '☰' },
       { to: '/admin/locations', label: 'Locations & yards', icon: '◫' },
@@ -26,6 +32,18 @@ const nav = [
     ],
   },
 ]
+
+function navActive(to: string, exact?: boolean) {
+  return exact ? route.path === to : route.path.startsWith(to)
+}
+
+const heading = computed(() => {
+  for (const group of nav) {
+    const hit = group.items.find(item => navActive(item.to, item.exact))
+    if (hit) return hit.label
+  }
+  return 'Dispatch'
+})
 
 watch(() => route.fullPath, () => {
   drawerOpen.value = false
@@ -42,7 +60,7 @@ async function signOut() {
   <div class="a-shell">
     <nav
       class="a-nav a-nav-fixed"
-      aria-label="Management navigation"
+      aria-label="Dispatcher navigation"
     >
       <div class="brand !items-start px-3 pb-4">
         <b>{{ appName }}</b>
@@ -62,8 +80,8 @@ async function signOut() {
           v-for="item in group.items"
           :key="item.to"
           :to="item.to"
-          :class="{ on: route.path.startsWith(item.to) }"
-          :aria-current="route.path.startsWith(item.to) ? 'page' : undefined"
+          :class="{ on: navActive(item.to, item.exact) }"
+          :aria-current="navActive(item.to, item.exact) ? 'page' : undefined"
         >
           <span
             class="n-ico"
@@ -83,9 +101,9 @@ async function signOut() {
         >
           ≡
         </button>
-        <strong class="font-[family-name:var(--font-display)] text-sm tracking-wide">Management</strong>
+        <strong class="font-[family-name:var(--font-display)] text-sm tracking-wide">{{ heading }}</strong>
         <div class="ml-auto flex items-center gap-3">
-          <span class="hidden text-xs text-white/70 sm:inline">{{ user?.fullName }} · Admin</span>
+          <span class="hidden text-xs text-white/70 sm:inline">{{ user?.fullName }} · {{ roleLabel(user?.role) }}</span>
           <button
             class="min-h-11 rounded-[var(--radius-sm)] bg-white/10 px-3 text-xs font-semibold"
             @click="signOut"
@@ -95,7 +113,10 @@ async function signOut() {
         </div>
       </header>
 
-      <main class="a-main">
+      <main
+        class="a-main"
+        :class="{ 'a-main-flush': route.path === '/admin' }"
+      >
         <slot />
       </main>
     </div>
@@ -107,7 +128,7 @@ async function signOut() {
     >
       <nav
         class="a-nav"
-        aria-label="Management navigation"
+        aria-label="Dispatcher navigation"
       >
         <div class="brand !items-start px-3 pb-4">
           <b>{{ appName }}</b>
@@ -127,7 +148,7 @@ async function signOut() {
             v-for="item in group.items"
             :key="item.to"
             :to="item.to"
-            :class="{ on: route.path.startsWith(item.to) }"
+            :class="{ on: navActive(item.to, item.exact) }"
           >
             <span
               class="n-ico"

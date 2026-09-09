@@ -168,7 +168,7 @@ const countCards = computed(() => {
         </dl>
 
         <div class="mt-5 border-t border-[var(--color-line-200)] pt-4">
-          <span class="eyebrow block">Driver invite code</span>
+          <span class="eyebrow block">Company invite code</span>
           <div class="mt-2 flex flex-wrap items-center gap-3">
             <code class="mono rounded-[var(--radius-sm)] bg-[var(--color-paper-100)] px-3 py-2 text-lg font-semibold tracking-widest">
               {{ data.company.inviteCode }}
@@ -187,12 +187,12 @@ const countCards = computed(() => {
             </span>
           </div>
           <p class="field-hint">
-            Public driver signup asks for this code to join {{ data.company.name }}. Admin accounts
-            are invited separately and are never created through public signup.
+            Public signup asks for this code to join {{ data.company.name }} as a driver
+            or dispatcher.
           </p>
           <p class="field-hint">
             Set by the <code class="mono">NUXT_COMPANY_INVITE_CODE</code> environment variable. To
-            rotate it — after a driver leaves, for example — change that value and redeploy.
+            rotate it — after someone leaves, for example — change that value and redeploy.
             Existing accounts keep working.
           </p>
         </div>
@@ -231,7 +231,7 @@ const countCards = computed(() => {
         </div>
 
         <p class="field-hint mt-3">
-          Driver signup cannot finish without outbound email. A test send reports the mail
+          Signup cannot finish without outbound email. A test send reports the mail
           server's own answer, so a rejected login or blocked port is named rather than guessed.
         </p>
 
