@@ -79,6 +79,9 @@
   --app-footer-h: 56px;
   --app-height: 100dvh;
   --app-top: 0px;
+  /* Extra width clipped off overflow regions so classic desktop
+     scrollbars never paint. Content size stays the same. */
+  --scrollbar-hide: 24px;
 }
 
 /* ============================================================
@@ -202,15 +205,16 @@
     flex: 1 1 auto;
     min-height: 0;
     overflow-x: hidden;
-    overflow-y: auto;
+    overflow-y: scroll;
     -webkit-overflow-scrolling: touch;
     display: flex;
     flex-direction: column;
     min-width: 0;
     width: 100%;
-    max-width: 440px;
+    max-width: calc(440px + var(--scrollbar-hide));
     margin: 0 auto;
-    padding: var(--s8) var(--s4);
+    padding: var(--s8) calc(var(--s4) + var(--scrollbar-hide)) var(--s8) var(--s4);
+    clip-path: inset(0 var(--scrollbar-hide) 0 0);
   }
 
   .auth-main-inner {
@@ -224,13 +228,15 @@
     min-height: 0;
     min-width: 0;
     width: 100%;
-    max-width: 520px;
+    max-width: calc(520px + var(--scrollbar-hide));
     margin: 0 auto;
     padding-top: var(--s4);
+    padding-right: var(--scrollbar-hide);
     padding-bottom: var(--s6);
     overflow-x: hidden;
-    overflow-y: auto;
+    overflow-y: scroll;
     -webkit-overflow-scrolling: touch;
+    clip-path: inset(0 var(--scrollbar-hide) 0 0);
   }
 
   .d-topbar {
@@ -3113,9 +3119,10 @@
     background: #fff;
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
     box-shadow: var(--shadow-2);
-    padding: var(--s4) var(--s4) calc(var(--s4) + env(safe-area-inset-bottom));
+    padding: var(--s4) calc(var(--s4) + var(--scrollbar-hide)) calc(var(--s4) + env(safe-area-inset-bottom)) var(--s4);
     max-height: 70vh;
-    overflow: auto;
+    overflow: scroll;
+    clip-path: inset(0 var(--scrollbar-hide) 0 0);
     animation: sheetUp 0.25s ease;
   }
 
@@ -5199,8 +5206,10 @@
   .a-body {
     min-width: 0;
     min-height: 0;
-    overflow: auto;
+    overflow: scroll;
     -webkit-overflow-scrolling: touch;
+    padding-right: var(--scrollbar-hide);
+    clip-path: inset(0 var(--scrollbar-hide) 0 0);
   }
 
   .a-topbar {
@@ -6394,8 +6403,9 @@ html.keyboard-open .a-shell {
 
   .dispatch-panel {
     background: var(--color-paper-50);
-    overflow: auto;
-    padding: var(--s4);
+    overflow: scroll;
+    padding: var(--s4) calc(var(--s4) + var(--scrollbar-hide)) var(--s4) var(--s4);
+    clip-path: inset(0 var(--scrollbar-hide) 0 0);
     display: flex;
     flex-direction: column;
     gap: var(--s4);
@@ -6552,6 +6562,34 @@ html.keyboard-open .a-shell {
     box-shadow: 0 0 0 1px var(--color-navy-800);
     background: var(--color-blue-50);
   }
+
+/* Invisible scrolling app-wide. Keep overflow; never paint a track, thumb,
+   or arrow buttons.
+   Modern Chromium overlay bars only honor scrollbar-width. Classic WebKit
+   bars still need ::-webkit-scrollbar. Overflow shells also clip a gutter so
+   Linux GTK bars cannot show even when CSS hide is ignored. */
+html,
+body,
+* {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+::-webkit-scrollbar,
+::-webkit-scrollbar-button,
+::-webkit-scrollbar-thumb,
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner,
+*::-webkit-scrollbar,
+*::-webkit-scrollbar-button,
+*::-webkit-scrollbar-thumb,
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
+}
 
 @media print {
   .no-print {
