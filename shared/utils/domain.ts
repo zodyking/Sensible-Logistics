@@ -15,11 +15,6 @@ export const SIGNUP_ROLE_LABELS: Record<SignupRole, string> = {
   DISPATCHER: 'Dispatcher',
 }
 
-export const SIGNUP_ROLE_HINTS: Record<SignupRole, string> = {
-  DRIVER: 'Trips, pickups, and yard work',
-  DISPATCHER: 'Map, container pool, and tasks',
-}
-
 export function membershipRoleForSignup(role: SignupRole): Role {
   return role === 'DISPATCHER' ? 'ADMIN' : 'DRIVER'
 }
