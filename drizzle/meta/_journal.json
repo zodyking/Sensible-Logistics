@@ -120,6 +120,13 @@
       "when": 1787914000000,
       "tag": "0016_shipcsx",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1787915000000,
+      "tag": "0017_drop_phone_challenges",
+      "breakpoints": true
     }
   ]
 }

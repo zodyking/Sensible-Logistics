@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   evaluateQuoInboundMessage,
-  extractSmsCode,
   isQuoInboundDirection,
   parseQuoMessageReceivedPayload,
 } from '../shared/quo-webhook-payload'
@@ -57,14 +56,6 @@ describe('parseQuoMessageReceivedPayload', () => {
   it('treats missing direction as inbound', () => {
     expect(isQuoInboundDirection(null)).toBe(true)
     expect(isQuoInboundDirection('outgoing')).toBe(false)
-  })
-})
-
-describe('extractSmsCode', () => {
-  it('pulls a 6-digit code from an inbound body', () => {
-    expect(extractSmsCode('Sensible Logistics code: 123456. Reply with this code to verify.')).toBe('123456')
-    expect(extractSmsCode('123456')).toBe('123456')
-    expect(extractSmsCode('no code here')).toBeNull()
   })
 })
 

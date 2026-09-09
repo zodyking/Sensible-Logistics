@@ -265,7 +265,7 @@ export async function ensureQuoInboundWebhook(db: DbExecutor, companyId: string,
     events: ['message.received'],
     resourceIds: ['*'],
     status: 'enabled',
-    label: 'Sensible Logistics phone verification',
+    label: 'Sensible Logistics inbound SMS',
   }
 
   let created: { data?: { id?: string, key?: string } }

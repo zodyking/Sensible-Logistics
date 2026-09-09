@@ -260,6 +260,7 @@ export const users = pgTable('users', {
   lastName: text('last_name').notNull(),
   mobileNumber: text('mobile_number'),
   emailVerifiedAt: utc('email_verified_at'),
+  /** Unused leftover. Signup and Settings collect a number without SMS verification. */
   phoneVerifiedAt: utc('phone_verified_at'),
   profilePhotoUrl: text('profile_photo_url'),
   lastLoginAt: utc('last_login_at'),
@@ -289,28 +290,6 @@ export const emailVerificationTokens = pgTable('email_verification_tokens', {
 }, t => [
   uniqueIndex('email_verification_tokens_hash_key').on(t.tokenHash),
   index('email_verification_tokens_user_idx').on(t.userId),
-])
-
-/**
- * One-time SMS codes sent through the selected Quo platform number.
- * The raw code and the post-verify ticket are stored only as SHA-256 digests.
- */
-export const phoneChallenges = pgTable('phone_challenges', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  companyId: uuid('company_id').notNull().references(() => companies.id, { onDelete: 'cascade' }),
-  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
-  purpose: text('purpose').notNull(),
-  phoneE164: text('phone_e164').notNull(),
-  codeHash: text('code_hash').notNull(),
-  ticketHash: text('ticket_hash'),
-  attemptCount: integer('attempt_count').notNull().default(0),
-  expiresAt: utc('expires_at').notNull(),
-  verifiedAt: utc('verified_at'),
-  consumedAt: utc('consumed_at'),
-  createdAt: utc('created_at').notNull().defaultNow(),
-}, t => [
-  index('phone_challenges_phone_idx').on(t.companyId, t.phoneE164, t.purpose),
-  index('phone_challenges_ticket_idx').on(t.ticketHash),
 ])
 
 export const companyMemberships = pgTable('company_memberships', {
@@ -1091,7 +1070,6 @@ export const csxPollState = pgTable('csx_poll_state', {
 
 export type Company = typeof companies.$inferSelect
 export type User = typeof users.$inferSelect
-export type PhoneChallenge = typeof phoneChallenges.$inferSelect
 export type CompanyMembership = typeof companyMemberships.$inferSelect
 export type Driver = typeof drivers.$inferSelect
 export type Truck = typeof trucks.$inferSelect

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { formatPhoneDisplay, formatPhoneInput, phonesEqual } from '#shared/utils/phone'
+import { formatPhoneDisplay, formatPhoneInput } from '#shared/utils/phone'
 
 useHead({ title: 'Settings' })
 
@@ -32,24 +32,12 @@ const sheet = ref<Sheet>(null)
 const emailForm = reactive({ email: '', currentPassword: '' })
 const passwordForm = reactive({ currentPassword: '', password: '', confirm: '' })
 const phoneForm = reactive({ mobileNumber: '', currentPassword: '' })
-const phoneTicket = ref('')
-const phoneReady = ref(true)
 
 const sheetBusy = ref(false)
 const sheetError = ref('')
 const sheetFieldErrors = ref<Record<string, string>>({})
 
 const phoneDisplay = computed(() => formatPhoneDisplay(profile.value?.mobileNumber) || 'Add a mobile number')
-const phoneChanged = computed(() => !phonesEqual(phoneForm.mobileNumber, profile.value?.mobileNumber))
-
-watch(phoneChanged, (changed) => {
-  if (!changed) {
-    phoneReady.value = true
-    phoneTicket.value = ''
-    return
-  }
-  phoneReady.value = false
-})
 
 function fieldIssues(error: unknown): Record<string, string> {
   const issues = (error as { data?: { data?: { issues?: Array<{ path: string, message: string }> } } })
@@ -68,8 +56,6 @@ function openSheet(next: Exclude<Sheet, null>) {
   passwordForm.confirm = ''
   phoneForm.currentPassword = ''
   phoneForm.mobileNumber = formatPhoneInput(profile.value?.mobileNumber)
-  phoneTicket.value = ''
-  phoneReady.value = true
   sheet.value = next
 }
 
@@ -170,10 +156,6 @@ async function savePassword() {
 
 async function savePhone() {
   if (sheetBusy.value) return
-  if (!phoneReady.value) {
-    sheetError.value = 'Verify this mobile number before saving.'
-    return
-  }
   sheetBusy.value = true
   sheetError.value = ''
   sheetFieldErrors.value = {}
@@ -184,7 +166,6 @@ async function savePhone() {
       body: {
         mobileNumber: phoneForm.mobileNumber,
         currentPassword: phoneForm.currentPassword,
-        phoneTicket: phoneTicket.value || undefined,
       },
     })
     await afterSave('Phone number updated.')
@@ -387,13 +368,6 @@ async function savePhone() {
             class="field-error"
           >{{ sheetFieldErrors.mobileNumber }}</small>
         </label>
-        <PhoneVerifyField
-          v-if="phoneChanged"
-          v-model:ticket="phoneTicket"
-          v-model:ready="phoneReady"
-          :mobile-number="phoneForm.mobileNumber"
-          purpose="CHANGE"
-        />
         <label class="field">
           <span>Current password</span>
           <input
@@ -421,7 +395,7 @@ async function savePhone() {
           <button
             type="submit"
             class="btn-save"
-            :disabled="sheetBusy || !phoneReady"
+            :disabled="sheetBusy"
           >
             {{ sheetBusy ? 'Saving…' : 'Save number' }}
           </button>
