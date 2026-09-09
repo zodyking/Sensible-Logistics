@@ -130,22 +130,6 @@ export function formatDayHeading(isoDate: string, todayIso = new Date().toISOStr
   return `${weekday} · ${pretty}`
 }
 
-/** Short ledger heading: `Mon 24` */
-export function formatLedgerDay(isoDate: string): string {
-  const [y, m, d] = isoDate.split('-').map(Number)
-  return new Intl.DateTimeFormat('en-US', { weekday: 'short', day: 'numeric', timeZone: 'UTC' })
-    .format(new Date(Date.UTC(y!, m! - 1, d!)))
-}
-
-/** `06:42:11` running clock for the live on-duty elapsed readout. */
-export function formatElapsedClock(totalSeconds: number): string {
-  const safe = Math.max(0, Math.floor(totalSeconds))
-  const hours = Math.floor(safe / 3600)
-  const minutes = Math.floor((safe % 3600) / 60)
-  const seconds = safe % 60
-  return [hours, minutes, seconds].map(v => String(v).padStart(2, '0')).join(':')
-}
-
 /** Pulls a readable message out of an $fetch error. */
 export function apiErrorMessage(error: unknown, fallback = 'Something went wrong.'): string {
   if (typeof error === 'object' && error !== null) {

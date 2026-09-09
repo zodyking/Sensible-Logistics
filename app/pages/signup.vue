@@ -33,8 +33,6 @@ function onMobileInput(event: Event) {
 const submitting = ref(false)
 const errorMessage = ref('')
 const fieldErrors = ref<Record<string, string>>({})
-const phoneTicket = ref('')
-const phoneReady = ref(true)
 
 /** Set once the account exists; the form is replaced by the confirmation. */
 const submittedEmail = ref('')
@@ -52,13 +50,9 @@ async function submit() {
   fieldErrors.value = {}
 
   try {
-    if (!phoneReady.value) {
-      errorMessage.value = 'Verify this mobile number before creating your account.'
-      return
-    }
     const result = await $fetch('/api/auth/signup', {
       method: 'POST',
-      body: { ...form, phoneTicket: phoneTicket.value || undefined },
+      body: form,
     })
     submittedEmail.value = result.email
     emailSent.value = result.emailSent
@@ -277,13 +271,6 @@ async function resend() {
         >{{ fieldErrors.mobileNumber }}</small>
       </label>
 
-      <PhoneVerifyField
-        v-model:ticket="phoneTicket"
-        v-model:ready="phoneReady"
-        :mobile-number="form.mobileNumber"
-        purpose="SIGNUP"
-      />
-
       <label class="field">
         <span>Email</span>
         <input
@@ -337,7 +324,7 @@ async function resend() {
       <button
         class="btn-primary-action"
         type="submit"
-        :disabled="submitting || !phoneReady"
+        :disabled="submitting"
       >
         {{ submitting ? 'Creating account…' : 'Create account' }}
       </button>

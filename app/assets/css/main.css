@@ -727,90 +727,6 @@
     content: none;
   }
 
-  /* --- Duty status card (driver home) --- */
-  .duty-card {
-    position: relative;
-    color: #fff;
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-2);
-    overflow: hidden;
-    margin-bottom: var(--s4);
-    background:
-      repeating-linear-gradient(90deg, rgb(255 255 255 / 0.025) 0 3px, transparent 3px 14px),
-      linear-gradient(155deg, var(--color-navy-800) 0%, var(--color-navy-950) 100%);
-  }
-
-  .duty-card::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: 4px;
-    background: var(--color-amber-500);
-  }
-
-  .duty-card.off::before {
-    background: var(--color-ink-400);
-  }
-
-  .duty-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: var(--s4) var(--s4) 0;
-  }
-
-  .duty-head .eyebrow {
-    color: #7e9bb6;
-  }
-
-  .duty-body {
-    padding: var(--s3) var(--s4) var(--s4);
-  }
-
-  .duty-elapsed {
-    font-family: var(--font-mono);
-    font-size: var(--text-3xl);
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .duty-sub {
-    font-size: var(--text-sm);
-    color: #a9c0d4;
-    margin-top: 2px;
-  }
-
-  .duty-facts {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: var(--s2);
-    margin: var(--s4) 0;
-    padding: var(--s3);
-    background: rgb(255 255 255 / 0.06);
-    border: 1px solid rgb(255 255 255 / 0.08);
-    border-radius: var(--radius-md);
-  }
-
-  .duty-fact small {
-    display: block;
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.07em;
-    text-transform: uppercase;
-    color: #7e9bb6;
-    margin-bottom: 3px;
-  }
-
-  .duty-fact b {
-    display: block;
-    font-size: var(--text-sm);
-    font-weight: 600;
-    font-family: var(--font-mono);
-  }
-
   /* --- Buttons --- */
   .btn-primary-action {
     width: 100%;
@@ -6148,10 +6064,6 @@
 .switch:focus-visible {
   outline: 3px solid var(--color-blue-500);
   outline-offset: 3px;
-}
-
-.phone-verify {
-  margin: 0 0 var(--s4);
 }
 
 .conn-meta {

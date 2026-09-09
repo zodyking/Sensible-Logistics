@@ -5,7 +5,6 @@ import { membershipRoleForSignup, SIGNUP_ROLES } from '#shared/utils/domain'
 import { companyMemberships, drivers, users } from '../../database/schema'
 import { sendEmailVerification } from '../../services/email-verification'
 import { useMail } from '../../services/mail'
-import { consumePhoneTicket, isPhoneVerificationRequired } from '../../services/phone-verification'
 
 const schema = z.object({
   firstName: z.string().trim().min(1, 'First name is required.').max(80),
@@ -17,7 +16,6 @@ const schema = z.object({
     .refine(isValidPhone, 'Enter a 10-digit mobile number.'),
   password: z.string().min(10, 'Use at least 10 characters.').max(200),
   inviteCode: z.string().trim().min(1, 'A company invite code is required.').max(60),
-  phoneTicket: z.string().trim().max(200).optional(),
   role: z.enum(SIGNUP_ROLES).default('DRIVER'),
 })
 
@@ -58,22 +56,11 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 409, statusMessage: 'An account already exists for that email address.' })
   }
 
-  const phoneRequired = await isPhoneVerificationRequired(db, company.id)
-  if (phoneRequired) {
-    await consumePhoneTicket(db, {
-      companyId: company.id,
-      purpose: 'SIGNUP',
-      mobileNumber: body.mobileNumber,
-      ticket: body.phoneTicket ?? '',
-    })
-  }
-
   // Fail before creating anything if mail is unavailable, so a misconfigured
   // deployment cannot strand someone with an account they can never verify.
   useMail()
 
   const passwordHash = await hashPassword(body.password)
-  const phoneVerifiedAt = phoneRequired ? new Date() : null
   const membershipRole = membershipRoleForSignup(body.role)
 
   const result = await db.transaction(async (tx) => {
@@ -86,7 +73,6 @@ export default defineEventHandler(async (event) => {
         lastName: body.lastName,
         // Stored canonically so the same number is never duplicated by format.
         mobileNumber: toE164(body.mobileNumber),
-        phoneVerifiedAt,
       })
       .returning()
 
