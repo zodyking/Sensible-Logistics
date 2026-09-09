@@ -5,25 +5,16 @@ const { user, clear, fetch: refreshSession } = useUserSession()
 setPageLayout(user.value?.role === 'ADMIN' ? 'admin' : 'default')
 
 const isDriver = computed(() => user.value?.role === 'DRIVER')
-const { data: home } = await useFetch('/api/home', { immediate: isDriver.value })
 const { data: features, refresh: refreshFeatures } = await useFetch('/api/features')
 const unlocked = ref<string[]>(features.value?.unlocked ?? [])
 watch(() => features.value?.unlocked, (next) => {
   if (next) unlocked.value = [...next]
 }, { immediate: true })
 
-const pendingSync = useState('pending-sync', () => 0)
-watchEffect(() => {
-  const events = home.value?.pendingSync.events ?? 0
-  const photos = home.value?.pendingSync.photos ?? 0
-  pendingSync.value = events + photos
-})
-
 const initials = computed(() =>
   `${user.value?.firstName?.[0] ?? ''}${user.value?.lastName?.[0] ?? ''}`.toUpperCase() || '—',
 )
 
-const onTrip = computed(() => Boolean(home.value?.active))
 const signingOut = ref(false)
 const systemCode = ref('')
 const codeBusy = ref(false)
@@ -87,13 +78,6 @@ const buildLabel = computed(() => {
           <b>{{ user?.fullName }}</b>
           <small>{{ user?.role === 'ADMIN' ? 'Admin' : 'Driver' }} · {{ user?.companyName }}</small>
         </div>
-        <div class="row-end">
-          <StatusChip
-            v-if="isDriver"
-            :variant="onTrip ? 'ok' : 'idle'"
-            :label="onTrip ? 'On Trip' : 'Off Duty'"
-          />
-        </div>
       </div>
       <NuxtLink
         v-if="isDriver"
@@ -119,52 +103,6 @@ const buildLabel = computed(() => {
       </NuxtLink>
       <NuxtLink
         v-if="isDriver"
-        to="/documents"
-        class="row"
-      >
-        <div
-          class="row-ico"
-          aria-hidden="true"
-        >
-          ▤
-        </div>
-        <div class="row-main">
-          <b>My Documents</b>
-          <small>EIRs, PODs, gate tickets</small>
-        </div>
-        <div
-          class="row-end"
-          aria-hidden="true"
-        >
-          ›
-        </div>
-      </NuxtLink>
-      <div
-        v-if="isDriver"
-        class="row"
-      >
-        <div
-          class="row-ico"
-          aria-hidden="true"
-        >
-          ⇅
-        </div>
-        <div class="row-main">
-          <b>Pending Sync</b>
-          <small>
-            {{ pendingSync === 0 ? 'All work is synced' : `${pendingSync} item${pendingSync === 1 ? '' : 's'} queued` }}
-          </small>
-        </div>
-        <div class="row-end">
-          <StatusChip
-            v-if="pendingSync > 0"
-            variant="warn"
-            :label="String(pendingSync)"
-          />
-        </div>
-      </div>
-      <NuxtLink
-        v-if="isDriver"
         to="/settings"
         class="row"
       >
@@ -176,7 +114,7 @@ const buildLabel = computed(() => {
         </div>
         <div class="row-main">
           <b>Settings</b>
-          <small>Name, email, password, and phone</small>
+          <small>Edit your account information</small>
         </div>
         <div
           class="row-end"

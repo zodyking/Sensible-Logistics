@@ -116,12 +116,6 @@ export function isQuoInboundDirection(direction: string | null | undefined): boo
   return direction === 'incoming' || direction === 'inbound'
 }
 
-/** Pull a 6-digit verification code out of an inbound SMS body. */
-export function extractSmsCode(body: string): string | null {
-  const match = String(body ?? '').match(/\b(\d{6})\b/)
-  return match?.[1] ?? null
-}
-
 export type QuoInboundIgnoreReason = 'wrong_type' | 'not_inbound' | 'wrong_number' | 'self_message'
 
 /**
