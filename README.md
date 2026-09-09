@@ -1,115 +1,117 @@
-# Yard Manager
+<div align="center">
+  <img src="public/icons/icon-192.svg" width="88" height="88" alt="Yard Manager" />
 
-PWA for one drayage company: track containers and chassis from pickup through the yard to drop-off.
+  <h1>Yard Manager</h1>
 
-The brand bar uses `NUXT_PUBLIC_APP_NAME` (default **Yard Manager**). This repo is the Sensible Logistics deployment.
+  <p>
+    <strong>Container operations for Sensible Logistics</strong><br />
+    Drivers run the yard from a phone. Dispatchers run the company from a desk.
+  </p>
 
----
+  <p>
+    <img alt="Node.js" src="https://img.shields.io/badge/Node.js-22-339933?style=flat-square&logo=nodedotjs&logoColor=white" />
+    <img alt="Nuxt" src="https://img.shields.io/badge/Nuxt-4-00DC82?style=flat-square&logo=nuxt&logoColor=white" />
+    <img alt="Vue.js" src="https://img.shields.io/badge/Vue-3-42B883?style=flat-square&logo=vuedotjs&logoColor=white" />
+    <img alt="PostgreSQL" src="https://img.shields.io/badge/PostgreSQL-16-4169E1?style=flat-square&logo=postgresql&logoColor=white" />
+    <img alt="PWA" src="https://img.shields.io/badge/PWA-ready-5A0FC8?style=flat-square&logo=pwa&logoColor=white" />
+  </p>
+</div>
+
+<br />
 
 ## Features
 
-Driver tabs: **Home · Trips · Tasks · Containers · More**
+Installable PWA with a four-tab driver bar: **Dashboard**, **Tasks**, **Locations**, **Me**. Sign-in is email plus a six-digit code. Session cookies last **30 days**.
+
+### Driver
 
 | | |
-| --- | --- |
-| **Trips** | New pickup or customer swap. ISO container numbers, chassis hang, empty/load, seal on a load, confirm into custody. Arrive and drop off; keep or detach the chassis. |
-| **Home** | The live trip, plus SMS, contacts, and documents for that movement. |
-| **Yard** | Locations with occupancy. Add a box or chassis already on site (a load needs a seal). Yard map, move between sites, chassis records. |
-| **Scan** | Photograph the container and chassis; OpenOCR runs in the app image. |
-| **CSX** | Check CSX on a container or location. Public ShipCSX lookup in Chromium — snapshots only, never a reservation. |
-| **Tasks** | Dispatch list, including work created from inbound SMS. |
-| **Admin** | Lands on `/admin/containers`. Pool, drivers, locations, documents, and email-delivery test. No admin dashboard. |
+| :--- | :--- |
+| **Dashboard** | Assigned work, pickup list, in-progress trips, and SMS to a trip contact. |
+| **Tasks** | Open jobs, trip history, and equipment search. |
+| **Arrive** | Confirm arrival, drop, hook, and swap. Destination, chassis, and load/empty are collected in the flow. |
+| **Locations** | Yards, terminals, customers, and chassis pools. Add equipment, inspect, and run OCR from the camera. |
+| **Trips** | Timeline, documents, contacts, and SMS. |
+| **Equipment** | Container detail, chassis, and per-diem. |
 
-Every movement write uses a client-generated event UUID, so a retry cannot double-post.
+### Admin
+
+| | |
+| :--- | :--- |
+| **Overview** | Company snapshot and operational counts. |
+| **Drivers** | Invite by email. Drivers finish setup with a verification code. |
+| **Inventory** | Containers and chassis across locations. |
+| **Locations** | Directory, contacts, and notes. |
+| **Billing** | Per-diem rates, billing parties, and invoices. |
+| **Account** | Company profile. |
 
 ---
 
 ## Development
 
-### Stats
-
 | | |
-| --- | --- |
-| Nuxt / Vue | **4.5.2** / **3.5.41** |
-| Node | **22** (`node:22-alpine` build, `node:22-bookworm-slim` run) |
-| Postgres | **14+** via `DATABASE_URL` (no PostGIS) |
-| Pages / API routes / components | 39 / 86 / 41 |
-| Vitest | 46 files, 395 cases (`npm run test`) |
-| Drizzle migrations | 17 (`drizzle/`) |
+| ---: | :--- |
+| **App** | Nuxt **4.5.2** · Vue **3.5.41** · Pinia · Tailwind CSS v4 · Vite PWA |
+| **API** | Nitro · Zod **4.4.3** · `h3-session` |
+| **Data** | Drizzle ORM **0.45.2** · `pg` **8.23.0** · PostgreSQL **16** |
+| **Auth** | Session cookie · email verification codes (Resend in production) |
+| **Pages** | **39** |
+| **API routes** | **82** |
+| **Components** | **40** |
+| **Tests** | **46** Vitest files · **394** cases |
+| **Migrations** | **18** |
 
-Other pins from `package.json`: Drizzle ORM **0.45.2**, `pg` **8.23.0**, Zod **4.4.3**, `nuxt-auth-utils` **0.5.30**, Tailwind **4.3.3**, Leaflet, Konva, Playwright.
+### Prerequisites
 
-### Run locally
+- Node.js **22+**
+- PostgreSQL **16** (`createdb sensible_logistics`)
 
-Node.js 22+ and PostgreSQL 14+. The app does not start Postgres.
+### Setup
 
 ```bash
+npm install
 cp .env.example .env
-# Set NUXT_SESSION_PASSWORD (32+ chars) and DATABASE_URL.
-# SMTP can stay empty here — the verification link prints to the console.
-
-npm install --legacy-peer-deps --no-audit --no-fund
 npm run db:migrate
 npm run db:seed
-npm run dev                 # http://localhost:3000
+npm run dev
 ```
 
-`--legacy-peer-deps` is required (npm 10 / Nuxt 4.5 peer tree).
+App: [http://localhost:3000](http://localhost:3000)
 
-| Role | Email | Password |
-| --- | --- | --- |
-| Admin | `admin@sensible.test` | `Password123!` |
-| Driver | `driver@sensible.test` | `Password123!` |
-
-Signup invite code is `NUXT_COMPANY_INVITE_CODE` (seed default **`SENSIBLE`**). Seed is idempotent. Not for production.
+| | |
+| :--- | :--- |
+| **Driver** | `driver@sensible.test` / `Password123!` |
+| **Admin** | `admin@sensible.test` / `Password123!` |
 
 ```bash
 npm run lint          # ESLint
-npm run test          # Vitest
-npm run build         # → .output/
-npm run db:generate | db:migrate | db:push | db:studio | db:seed
+npm run typecheck     # vue-tsc
+npm test              # Vitest
+npm run build         # Production bundle
 ```
-
-### Layout
-
-```
-app/pages/          Driver + admin screens
-server/api/         HTTP
-server/services/    Pool, events, placements, OCR, mail, ShipCSX, SMS
-server/database/    Drizzle schema + seed
-shared/utils/       ISO 6346, domain, wizard steps
-drizzle/            SQL migrations
-docker/             Entrypoint + migrator
-```
-
-**Containers** tab is the location list (`/containers` → `/locations/:id`). A box is `/containers/:id`.
 
 ### Environment
 
-Required in production: `NUXT_APP_URL`, `NUXT_SESSION_PASSWORD`, `NUXT_COMPANY_INVITE_CODE`, `DATABASE_URL`, `NUXT_SMTP_HOST` (plus port / user / password). Full list: `.env.example`.
+Copy `.env.example`. Required for a full local run:
 
-`openssl rand -base64 32` for the session secret. Unprefixed `SMTP_*` still works.
+| Variable | Purpose |
+| :--- | :--- |
+| `DATABASE_URL` | PostgreSQL connection string |
+| `NUXT_SESSION_PASSWORD` | Session signing secret (**≥32 characters**) |
+| `APP_BASE_URL` | Public origin (seeded users and links) |
+| `RESEND_API_KEY` | Transactional email |
+| `RESEND_FROM` | From address |
+| `TWILIO_ACCOUNT_SID` | SMS |
+| `TWILIO_AUTH_TOKEN` | SMS |
+| `TWILIO_FROM_NUMBER` | SMS |
+| `GOOGLE_PLACES_API_KEY` | Address autocomplete |
+| `GOOGLE_TIMEZONE_API_KEY` | Timezone lookup |
+| `OCR_SERVICE_URL` | Document OCR endpoint |
 
-Signup needs a confirmed email. Empty SMTP in production refuses signup; in development it logs the link. Test mail from **Admin → Settings → Email delivery**. First boot creates the company from env — no seed required in production.
+Unset Twilio, Resend, Google, or OCR variables disable those integrations. Seeded logins still work.
 
-Optional: `NUXT_PUBLIC_APP_NAME`, `NUXT_COMPANY_NAME`, `NUXT_DATABASE_SSL`, `PORT` (`3847` in Docker), `NUXT_S3_*` (SeaweedFS, not Amazon), `NUXT_SHIPCSX_DEFAULT_TERMINAL` / `NUXT_SHIPCSX_POLL`, `NUXT_PUBLIC_MAP_TILES_URL` / `GEOCODER_URL`.
+### Production
 
-**More → system code** unlocks API connections (Quo SMS) and a demo data reset. ShipCSX is not on that screen — use Check CSX on a container. Production images install Chromium after the Nitro build; locally `npx playwright install chromium` if lookups fail.
+Dokploy on a **Debian** runner: Node 22, PostgreSQL 16, Nginx. Build with `npm ci && npm run build`. Start with `node .output/server/index.mjs`. Run `npm run db:migrate` against the production database before first traffic.
 
-Maps default to OpenStreetMap / Esri. Set `NUXT_PUBLIC_MAP_TILES_URL` for your own tiles.
-
-### Deploy (Dokploy)
-
-1. Create Postgres outside Compose. Copy `DATABASE_URL`.
-2. Compose app from this repo (`app` + `seaweedfs`). It does not start a database.
-3. Paste env. Minimum: session password, database, public URL, invite code, SMTP.
-4. Domain → `app`, container port **3847**. Do not publish host 3000 or SeaweedFS.
-5. Deploy. Entrypoint migrates, then Nitro. Health: `/api/health` (database must be up).
-6. Confirm mail. Seed only on a demo box.
-
-OCR models and Chromium are in the Debian runner. `SKIP_MIGRATIONS=true` only if you migrate elsewhere.
-
-### Not wired yet
-
-- SeaweedFS is in Compose; the S3 client in `server/services/storage.ts` still returns `501`.
-- Offline Dexie outbox is not built. APIs are already idempotent. The Synced pill is a placeholder.
+Set `APP_BASE_URL` to the public HTTPS origin. Use a session password of at least 32 characters.
