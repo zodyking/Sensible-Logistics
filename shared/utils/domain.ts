@@ -38,10 +38,10 @@ export type ActivePoolState = (typeof ACTIVE_POOL_STATES)[number]
 
 export const ACTIVE_POOL_LABELS: Record<ActivePoolState, string> = {
   INACTIVE: 'Inactive',
-  PICKUP_IN_PROGRESS: 'Pickup in progress',
-  DRIVER_CUSTODY: 'Driver custody',
-  AT_LOCATION: 'At location',
-  EXCEPTION: 'Exception',
+  PICKUP_IN_PROGRESS: 'Pickup underway',
+  DRIVER_CUSTODY: 'In transit',
+  AT_LOCATION: 'On site',
+  EXCEPTION: 'Needs attention',
 }
 
 /** Chip variants pair a colour with a glyph so status never depends on hue alone. */
@@ -69,7 +69,7 @@ export type ContainerStatus = (typeof CONTAINER_STATUSES)[number]
 export const CONTAINER_STATUS_LABELS: Record<ContainerStatus, string> = {
   AVAILABLE: 'Available',
   IN_TRANSIT: 'In transit',
-  AT_YARD: 'At yard',
+  AT_YARD: 'On site',
   LOADING: 'Loading',
   RETURNED: 'Returned',
 }
@@ -80,6 +80,90 @@ export const CONTAINER_STATUS_CHIP: Record<ContainerStatus, 'ok' | 'warn' | 'err
   AT_YARD: 'ok',
   LOADING: 'warn',
   RETURNED: 'idle',
+}
+
+export type StatusChipVariant = 'ok' | 'warn' | 'err' | 'transit' | 'idle'
+
+/**
+ * One operator-facing situation for a box. Container status and pool state
+ * overlap (AT_YARD vs AT_LOCATION), so screens should show this instead of
+ * two badges that say the same thing.
+ */
+export const CONTAINER_SITUATIONS = [
+  'ON_SITE',
+  'LOADING',
+  'PICKUP_UNDERWAY',
+  'IN_TRANSIT',
+  'NEEDS_ATTENTION',
+  'RETURNED',
+  'INACTIVE',
+  'AVAILABLE',
+] as const
+export type ContainerSituationKey = (typeof CONTAINER_SITUATIONS)[number]
+
+export const CONTAINER_SITUATION_LABELS: Record<ContainerSituationKey, string> = {
+  ON_SITE: 'On site',
+  LOADING: 'Loading',
+  PICKUP_UNDERWAY: 'Pickup underway',
+  IN_TRANSIT: 'In transit',
+  NEEDS_ATTENTION: 'Needs attention',
+  RETURNED: 'Returned',
+  INACTIVE: 'Inactive',
+  AVAILABLE: 'Available',
+}
+
+export const CONTAINER_SITUATION_CHIP: Record<ContainerSituationKey, StatusChipVariant> = {
+  ON_SITE: 'ok',
+  LOADING: 'warn',
+  PICKUP_UNDERWAY: 'warn',
+  IN_TRANSIT: 'transit',
+  NEEDS_ATTENTION: 'err',
+  RETURNED: 'idle',
+  INACTIVE: 'idle',
+  AVAILABLE: 'idle',
+}
+
+/** Filter chips on the containers table — Available is folded into On site. */
+export const CONTAINER_SITUATION_FILTERS = [
+  'ON_SITE',
+  'LOADING',
+  'PICKUP_UNDERWAY',
+  'IN_TRANSIT',
+  'NEEDS_ATTENTION',
+  'RETURNED',
+  'INACTIVE',
+] as const
+export type ContainerSituationFilter = (typeof CONTAINER_SITUATION_FILTERS)[number]
+
+export interface ContainerSituationInput {
+  containerStatus: ContainerStatus
+  activePoolState: ActivePoolState
+}
+
+export interface ContainerSituation {
+  key: ContainerSituationKey
+  label: string
+  variant: StatusChipVariant
+}
+
+export function containerSituation(input: ContainerSituationInput): ContainerSituation {
+  const { containerStatus, activePoolState } = input
+
+  let key: ContainerSituationKey = 'ON_SITE'
+  if (activePoolState === 'EXCEPTION') key = 'NEEDS_ATTENTION'
+  else if (activePoolState === 'PICKUP_IN_PROGRESS') key = 'PICKUP_UNDERWAY'
+  else if (activePoolState === 'DRIVER_CUSTODY' || containerStatus === 'IN_TRANSIT') key = 'IN_TRANSIT'
+  else if (containerStatus === 'LOADING') key = 'LOADING'
+  else if (containerStatus === 'RETURNED') key = 'RETURNED'
+  else if (activePoolState === 'INACTIVE') key = 'INACTIVE'
+  else if (activePoolState === 'AT_LOCATION' || containerStatus === 'AT_YARD') key = 'ON_SITE'
+  else if (containerStatus === 'AVAILABLE') key = 'AVAILABLE'
+
+  return {
+    key,
+    label: CONTAINER_SITUATION_LABELS[key],
+    variant: CONTAINER_SITUATION_CHIP[key],
+  }
 }
 
 /** Business classification required on every container (spec 5.1). */
@@ -358,9 +442,9 @@ export const LOCATION_GLYPH: Record<LocationType, string> = {
 }
 
 /**
- * Location lists and the new-location type picker share these headers.
- * Marine terminals and rail yards sit together because drivers treat them
- * as the same kind of gate: inbound/outbound infrastructure.
+ * Headers for existing-location lists. The add-location type picker is a
+ * flat list — marine terminals and rail yards still sit together here
+ * because drivers treat them as the same kind of gate.
  */
 export const LOCATION_TYPE_GROUPS = [
   { key: 'company', label: 'Company yards', types: ['COMPANY_YARD'] },
@@ -393,31 +477,6 @@ export function groupLocationsByType<T extends { type: LocationType, isUncategor
   const grouped = [...buckets.values()].filter(group => group.items.length)
   if (leftover.length) grouped.push({ key: 'other', label: 'Uncategorized', items: leftover })
   return grouped
-}
-
-export const TIMECARD_STATUSES = ['OPEN', 'COMPLETED', 'LOCKED'] as const
-export type TimecardStatus = (typeof TIMECARD_STATUSES)[number]
-
-/**
- * Short-haul qualification state for a work date (spec 14.3). QUALIFIED is only
- * ever asserted from recorded data; UNKNOWN is used while a tour is still open.
- */
-export const SHORT_HAUL_STATUSES = ['QUALIFIED', 'AT_RISK', 'NOT_AVAILABLE', 'UNKNOWN'] as const
-export type ShortHaulStatus = (typeof SHORT_HAUL_STATUSES)[number]
-
-export const SHORT_HAUL_LABELS: Record<ShortHaulStatus, string> = {
-  QUALIFIED: 'Short-haul conditions met',
-  AT_RISK: 'Approaching the 14-hour limit',
-  NOT_AVAILABLE: 'SHORT-HAUL EXCEPTION NOT AVAILABLE FOR THIS DAY',
-  UNKNOWN: 'Duty tour in progress',
-}
-
-export const CYCLE_TYPES = ['SIXTY_SEVEN', 'SEVENTY_EIGHT'] as const
-export type CycleType = (typeof CYCLE_TYPES)[number]
-
-export const CYCLE_LIMITS: Record<CycleType, { days: number, minutes: number, label: string }> = {
-  SIXTY_SEVEN: { days: 7, minutes: 60 * 60, label: '60 hours / 7 days' },
-  SEVENTY_EIGHT: { days: 8, minutes: 70 * 60, label: '70 hours / 8 days' },
 }
 
 export const DOCUMENT_CATEGORIES = [
@@ -504,10 +563,3 @@ export const DISPATCH_TASK_SOURCE_LABELS: Record<DispatchTaskSource, string> = {
   MANUAL: 'Your note',
   DISPATCH: 'Dispatch',
 }
-
-/** 150 air miles expressed in statute miles (spec 14.3). */
-export const SHORT_HAUL_RADIUS_MILES = 172.6
-/** Duty must end within 14 consecutive hours of reporting for duty. */
-export const SHORT_HAUL_WINDOW_MINUTES = 14 * 60
-/** Property-carrying CMV drivers need 10 consecutive hours off between tours. */
-export const REQUIRED_OFF_DUTY_MINUTES = 10 * 60

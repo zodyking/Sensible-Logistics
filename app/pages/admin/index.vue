@@ -1,29 +1,26 @@
 <script setup lang="ts">
+import type { EventType, ActivePoolState, ContainerStatus, ContainerType, EquipmentType, LocationType } from '#shared/utils/domain'
 import {
-  CONTAINER_STATUS_CHIP,
-  CONTAINER_STATUS_LABELS,
   CONTAINER_TYPE_LABELS,
-  DISPATCH_TASK_KIND_LABELS,
-  DISPATCH_TASK_KINDS,
-  DISPATCH_TASK_STATUS_CHIP,
-  DISPATCH_TASK_STATUS_LABELS,
   EQUIPMENT_TYPE_SHORT,
   LOCATION_TYPE_LABELS,
-  type DispatchTaskKind,
+  containerSituation,
 } from '#shared/utils/domain'
-import { formatContainerNumber } from '#shared/utils/iso6346'
+import { formatChassisNumber, formatContainerNumber } from '#shared/utils/iso6346'
+import { visibleTimelineEntries } from '#shared/utils/timeline'
+import type { ViewerDocument } from '~/utils/documents'
 
 definePageMeta({ layout: 'admin' })
-useHead({ title: 'Dispatch' })
+useHead({ title: 'Board' })
 
 interface DispatchBox {
   id: string
   number: string
-  containerType: keyof typeof CONTAINER_TYPE_LABELS
-  equipmentType: keyof typeof EQUIPMENT_TYPE_SHORT
+  containerType: ContainerType
+  equipmentType: EquipmentType
   isLoaded: boolean
-  containerStatus: keyof typeof CONTAINER_STATUS_LABELS
-  activePoolState: string
+  containerStatus: ContainerStatus
+  activePoolState: ActivePoolState
   sealNumber: string | null
   chassisNumber: string | null
   droppedOffAt: string | null
@@ -32,7 +29,7 @@ interface DispatchBox {
 interface DispatchSite {
   id: string
   name: string
-  type: keyof typeof LOCATION_TYPE_LABELS
+  type: LocationType
   addressLine1: string | null
   city: string | null
   state: string | null
@@ -42,40 +39,44 @@ interface DispatchSite {
   containers: DispatchBox[]
 }
 
-interface DispatchDriver {
-  id: string
-  name: string
-  status: string
+interface InspectedContainer {
+  container: {
+    id: string
+    number: string
+    containerType: ContainerType
+    equipmentType: EquipmentType
+    isLoaded: boolean
+    containerStatus: ContainerStatus
+    activePoolState: ActivePoolState
+    sealNumber: string | null
+  }
+  currentLocation: { id: string, name: string, type: LocationType } | null
+  currentChassis: { id: string, number: string } | null
+  currentDriver: { id: string, name: string } | null
+  documents: ViewerDocument[]
+  timeline: Array<{
+    id: string
+    eventType: EventType
+    occurredAt: string
+    createdAt?: string
+    locationName?: string | null
+    chassisNumber?: string | null
+    actorFirstName?: string | null
+    actorLastName?: string | null
+  }>
 }
 
-interface OpenTask {
-  id: string
-  title: string
-  kind: keyof typeof DISPATCH_TASK_KIND_LABELS
-  status: keyof typeof DISPATCH_TASK_STATUS_LABELS
-  driverName?: string | null
-}
-
-const { data, status, error, refresh } = await useFetch('/api/admin/dispatch')
+const { data, status, error } = await useFetch('/api/admin/dispatch')
 
 const selectedId = ref<string | null>(null)
-const taskBox = ref<DispatchBox | null>(null)
-const taskKind = ref<DispatchTaskKind>('PICKUP')
-const taskDriverId = ref('')
-const taskNotes = ref('')
-const assigning = ref(false)
-const assignError = ref('')
-const assignOk = ref('')
+const inspectedId = ref<string | null>(null)
+const inspected = ref<InspectedContainer | null>(null)
+const inspectPending = ref(false)
+const inspectError = ref('')
 const poolQuery = ref('')
 
 const locations = computed(() => (data.value?.locations ?? []) as DispatchSite[])
-const drivers = computed(() => (data.value?.drivers ?? []) as DispatchDriver[])
-const tasks = computed(() => (data.value?.tasks ?? []) as OpenTask[])
-
 const selected = computed(() => locations.value.find(site => site.id === selectedId.value) ?? null)
-
-const mappedCount = computed(() => locations.value.filter(site => site.latitude != null && site.longitude != null).length)
-const poolCount = computed(() => locations.value.reduce((sum, site) => sum + site.occupancy, 0))
 
 const filteredPool = computed(() => {
   const q = poolQuery.value.trim().toLowerCase()
@@ -97,16 +98,10 @@ watch(locations, (sites) => {
   selectedId.value = withBoxes?.id ?? sites[0]?.id ?? null
 }, { immediate: true })
 
-watch(drivers, (list) => {
-  if (taskDriverId.value && list.some(driver => driver.id === taskDriverId.value)) return
-  const ready = list.find(driver => driver.status === 'AVAILABLE') ?? list[0]
-  taskDriverId.value = ready?.id ?? ''
-}, { immediate: true })
-
 watch(selectedId, () => {
-  taskBox.value = null
-  assignOk.value = ''
-  assignError.value = ''
+  inspectedId.value = null
+  inspected.value = null
+  inspectError.value = ''
 })
 
 function selectSite(id: string) {
@@ -117,79 +112,50 @@ function placeLine(site: DispatchSite) {
   return [site.addressLine1, [site.city, site.state].filter(Boolean).join(', ')].filter(Boolean).join(' · ')
 }
 
-function openTask(box: DispatchBox) {
-  taskBox.value = box
-  taskKind.value = box.isLoaded ? 'DROPOFF' : 'PICKUP'
-  assignOk.value = ''
-  assignError.value = ''
+function situationFor(box: Pick<DispatchBox, 'containerStatus' | 'activePoolState'>) {
+  return containerSituation(box)
 }
 
-async function assignTask() {
-  if (!taskBox.value || !selected.value || !taskDriverId.value || assigning.value) return
-  assigning.value = true
-  assignError.value = ''
-  assignOk.value = ''
+async function openInspect(box: DispatchBox) {
+  if (inspectPending.value && inspectedId.value === box.id) return
+  inspectedId.value = box.id
+  inspectError.value = ''
+  inspectPending.value = true
   try {
-    await $fetch('/api/admin/tasks', {
-      method: 'POST',
-      body: {
-        driverId: taskDriverId.value,
-        kind: taskKind.value,
-        containerNumber: taskBox.value.number,
-        locationId: selected.value.id,
-        locationName: selected.value.name,
-        notes: taskNotes.value.trim() || undefined,
-      },
-    })
-    const driver = drivers.value.find(item => item.id === taskDriverId.value)
-    assignOk.value = `Task sent to ${driver?.name ?? 'the driver'}.`
-    taskNotes.value = ''
-    taskBox.value = null
-    await refresh()
+    inspected.value = await $fetch<InspectedContainer>(`/api/containers/${box.id}`)
   }
   catch (err) {
-    assignError.value = apiErrorMessage(err, 'Could not create that task.')
+    inspected.value = null
+    inspectError.value = apiErrorMessage(err, 'Could not load this container.')
   }
   finally {
-    assigning.value = false
+    inspectPending.value = false
   }
 }
 
-const availableDrivers = computed(() => drivers.value.filter(driver => driver.status !== 'INACTIVE'))
+function closeInspect() {
+  inspectedId.value = null
+  inspected.value = null
+  inspectError.value = ''
+}
+
+const inspectSituation = computed(() => {
+  const c = inspected.value?.container
+  if (!c) return null
+  return containerSituation(c)
+})
+
+const inspectTimeline = computed(() => visibleTimelineEntries(inspected.value?.timeline ?? []).slice(0, 5))
+
+const selectedBox = computed(() => {
+  if (!inspectedId.value || !selected.value) return null
+  return selected.value.containers.find(box => box.id === inspectedId.value) ?? null
+})
 </script>
 
 <template>
   <section class="dispatch-board">
     <div class="dispatch-map-col">
-      <div class="dispatch-map-hud">
-        <div>
-          <p class="eyebrow">
-            Board
-          </p>
-          <h1>Container pool</h1>
-        </div>
-        <dl class="dispatch-stats">
-          <div>
-            <dt>On the map</dt>
-            <dd>{{ mappedCount }}</dd>
-          </div>
-          <div>
-            <dt>Boxes</dt>
-            <dd>{{ poolCount }}</dd>
-          </div>
-          <div>
-            <dt>Open tasks</dt>
-            <dd>{{ tasks.length }}</dd>
-          </div>
-        </dl>
-        <NuxtLink
-          to="/admin/dispatch"
-          class="btn-ghost dispatch-desk-link"
-        >
-          Open Dispatch
-        </NuxtLink>
-      </div>
-
       <p
         v-if="status === 'pending'"
         class="dispatch-map-msg"
@@ -220,9 +186,127 @@ const availableDrivers = computed(() => drivers.value.filter(driver => driver.st
 
     <aside
       class="dispatch-panel"
-      aria-label="Location detail"
+      :aria-label="inspected ? 'Container detail' : 'Location detail'"
     >
-      <template v-if="selected">
+      <template v-if="inspectedId">
+        <button
+          type="button"
+          class="dispatch-back"
+          @click="closeInspect"
+        >
+          ‹ {{ selected?.name || 'Location' }}
+        </button>
+
+        <p
+          v-if="inspectError"
+          class="banner err"
+          role="alert"
+        >
+          {{ inspectError }}
+        </p>
+
+        <div
+          v-else-if="inspectPending && !inspected"
+          class="dispatch-empty"
+          role="status"
+        >
+          Loading container…
+        </div>
+
+        <template v-else-if="inspected">
+          <header class="dispatch-panel-head">
+            <p class="eyebrow">
+              Container
+            </p>
+            <h2 class="mono">
+              {{ formatContainerNumber(inspected.container.number) || inspected.container.number }}
+            </h2>
+            <div class="dispatch-inspect-chips">
+              <StatusChip
+                v-if="inspectSituation"
+                :variant="inspectSituation.variant"
+                :label="inspectSituation.label"
+              />
+              <StatusChip
+                plain
+                variant="idle"
+                :label="EQUIPMENT_TYPE_SHORT[inspected.container.equipmentType]"
+              />
+              <StatusChip
+                :variant="inspected.container.isLoaded ? 'ok' : 'idle'"
+                :label="inspected.container.isLoaded ? 'Loaded' : 'Empty'"
+              />
+              <StatusChip
+                plain
+                variant="idle"
+                :label="CONTAINER_TYPE_LABELS[inspected.container.containerType]"
+              />
+            </div>
+            <p
+              v-if="inspected.currentLocation"
+              class="dispatch-panel-place"
+            >
+              {{ inspected.currentLocation.name }}
+              <template v-if="selected && placeLine(selected)">
+                · {{ placeLine(selected) }}
+              </template>
+            </p>
+            <p
+              v-if="inspected.currentDriver"
+              class="dispatch-panel-place"
+            >
+              With {{ inspected.currentDriver.name }}
+            </p>
+            <p
+              v-if="inspected.currentChassis"
+              class="dispatch-panel-place"
+            >
+              Chassis {{ formatChassisNumber(inspected.currentChassis.number) || inspected.currentChassis.number }}
+            </p>
+            <p
+              v-if="inspected.container.isLoaded && inspected.container.sealNumber"
+              class="dispatch-panel-place"
+            >
+              Seal {{ inspected.container.sealNumber }}
+            </p>
+            <p
+              v-if="selectedBox?.droppedOffAt"
+              class="dispatch-panel-count"
+            >
+              Dropped off {{ formatDateTime(selectedBox.droppedOffAt) }}
+            </p>
+          </header>
+
+          <section class="dispatch-inspect-section">
+            <h3>Photos & documents</h3>
+            <DocumentCarousel
+              :documents="inspected.documents"
+              empty-title="No photos or documents"
+              empty-description="Container photos and paperwork will appear here."
+            />
+          </section>
+
+          <section
+            v-if="inspectTimeline.length"
+            class="dispatch-inspect-section"
+          >
+            <h3>Recent movement</h3>
+            <EventTimeline
+              subject="container"
+              :entries="inspectTimeline"
+            />
+          </section>
+
+          <NuxtLink
+            class="btn-primary-action dispatch-full-record"
+            :to="`/containers/${inspected.container.id}`"
+          >
+            Open full record
+          </NuxtLink>
+        </template>
+      </template>
+
+      <template v-else-if="selected">
         <header class="dispatch-panel-head">
           <p class="eyebrow">
             {{ LOCATION_TYPE_LABELS[selected.type] }}
@@ -267,14 +351,13 @@ const availableDrivers = computed(() => drivers.value.filter(driver => driver.st
             <button
               type="button"
               class="dispatch-box"
-              :class="{ on: taskBox?.id === box.id }"
-              @click="openTask(box)"
+              @click="openInspect(box)"
             >
               <div class="dispatch-box-top">
                 <b class="mono">{{ formatContainerNumber(box.number) || box.number }}</b>
                 <StatusChip
-                  :variant="CONTAINER_STATUS_CHIP[box.containerStatus]"
-                  :label="CONTAINER_STATUS_LABELS[box.containerStatus]"
+                  :variant="situationFor(box).variant"
+                  :label="situationFor(box).label"
                 />
               </div>
               <p>
@@ -291,100 +374,11 @@ const availableDrivers = computed(() => drivers.value.filter(driver => driver.st
             </button>
           </li>
         </ul>
-
-        <form
-          v-if="taskBox"
-          class="dispatch-task"
-          @submit.prevent="assignTask"
-        >
-          <p class="eyebrow">
-            Create task
-          </p>
-          <p class="dispatch-task-box mono">
-            {{ formatContainerNumber(taskBox.number) || taskBox.number }}
-          </p>
-          <p
-            v-if="assignError"
-            class="banner err"
-            role="alert"
-          >
-            {{ assignError }}
-          </p>
-          <label class="field">
-            <span>Work</span>
-            <select
-              v-model="taskKind"
-              class="input"
-            >
-              <option
-                v-for="kind in DISPATCH_TASK_KINDS"
-                :key="kind"
-                :value="kind"
-              >
-                {{ DISPATCH_TASK_KIND_LABELS[kind] }}
-              </option>
-            </select>
-          </label>
-          <label class="field">
-            <span>Driver</span>
-            <select
-              v-model="taskDriverId"
-              class="input"
-              required
-            >
-              <option
-                v-if="!availableDrivers.length"
-                value=""
-              >
-                No drivers yet
-              </option>
-              <option
-                v-for="driver in availableDrivers"
-                :key="driver.id"
-                :value="driver.id"
-              >
-                {{ driver.name }} · {{ driver.status === 'AVAILABLE' ? 'Available' : driver.status === 'ON_TRIP' ? 'On trip' : 'Off duty' }}
-              </option>
-            </select>
-          </label>
-          <label class="field">
-            <span>Notes</span>
-            <input
-              v-model="taskNotes"
-              class="input"
-              maxlength="200"
-              placeholder="Optional — appointment, chassis, gate"
-            >
-          </label>
-          <div class="dispatch-task-actions">
-            <button
-              class="btn-primary-action"
-              type="submit"
-              :disabled="assigning || !taskDriverId"
-            >
-              {{ assigning ? 'Sending…' : 'Send task' }}
-            </button>
-            <button
-              class="btn-ghost"
-              type="button"
-              @click="taskBox = null"
-            >
-              Cancel
-            </button>
-          </div>
-        </form>
         <p
-          v-else-if="assignOk"
-          class="banner ok"
-          role="status"
-        >
-          {{ assignOk }}
-        </p>
-        <p
-          v-else-if="selected.occupancy"
+          v-if="selected.occupancy"
           class="dispatch-hint"
         >
-          Tap a container to send a pickup, empty, or drop-off task.
+          Tap a container for its record, photos, and documents.
         </p>
       </template>
       <EmptyState
@@ -393,31 +387,6 @@ const availableDrivers = computed(() => drivers.value.filter(driver => driver.st
         title="No locations yet"
         description="Add a yard or customer with a map pin, then the pool shows up here."
       />
-
-      <section
-        v-if="tasks.length"
-        class="dispatch-tasks"
-      >
-        <h3>Open tasks</h3>
-        <ul>
-          <li
-            v-for="task in tasks"
-            :key="task.id"
-          >
-            <p class="dispatch-task-title">
-              {{ task.title }}
-            </p>
-            <p>
-              {{ task.driverName || 'Driver' }}
-              · {{ DISPATCH_TASK_KIND_LABELS[task.kind] }}
-            </p>
-            <StatusChip
-              :variant="DISPATCH_TASK_STATUS_CHIP[task.status]"
-              :label="DISPATCH_TASK_STATUS_LABELS[task.status]"
-            />
-          </li>
-        </ul>
-      </section>
     </aside>
   </section>
 </template>

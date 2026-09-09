@@ -215,11 +215,6 @@ export const dispatchTaskStatusEnum = pgEnum('dispatch_task_status', [
 ])
 export const dispatchTaskSourceEnum = pgEnum('dispatch_task_source', ['SMS', 'MANUAL', 'DISPATCH'])
 
-export const timecardStatusEnum = pgEnum('timecard_status', ['OPEN', 'COMPLETED', 'LOCKED'])
-export const shortHaulStatusEnum = pgEnum('short_haul_status', ['QUALIFIED', 'AT_RISK', 'NOT_AVAILABLE', 'UNKNOWN'])
-export const cycleTypeEnum = pgEnum('cycle_type', ['SIXTY_SEVEN', 'SEVENTY_EIGHT'])
-export const radiusEvidenceEnum = pgEnum('radius_evidence_level', ['NONE', 'RECORDED_LOCATIONS_ONLY', 'GPS_VERIFIED'])
-
 export const csxReleaseStatusEnum = pgEnum('csx_release_status', [
   'OPEN',
   'CLAIMED',
@@ -247,7 +242,6 @@ export const companies = pgTable('companies', {
   /** Shared code used by the public driver signup flow to join a company. */
   inviteCode: text('invite_code').notNull(),
   timezone: text('timezone').notNull().default('America/New_York'),
-  cycleType: cycleTypeEnum('cycle_type').notNull().default('SEVENTY_EIGHT'),
   settings: jsonb('settings').$type<Record<string, unknown>>().notNull().default({}),
   createdAt: utc('created_at').notNull().defaultNow(),
   updatedAt: utc('updated_at').notNull().defaultNow(),
@@ -927,90 +921,6 @@ export const dispatchTasks = pgTable('dispatch_tasks', {
 ])
 
 /* ============================================================
-   FMCSA 150 air-mile short-haul time records (spec 14.6)
-   Retention: 6 months minimum; deletion is blocked inside that window.
-   ============================================================ */
-
-export const driverTimecards = pgTable('driver_timecards', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  companyId: uuid('company_id').notNull().references(() => companies.id, { onDelete: 'cascade' }),
-  driverId: uuid('driver_id').notNull().references(() => drivers.id, { onDelete: 'cascade' }),
-  /** Calendar day in the reporting location's timezone. */
-  workDate: date('work_date').notNull(),
-  reportingLocationId: uuid('reporting_location_id'),
-
-  /** Authoritative Clock In — never inferred from the first pickup (spec 14.2). */
-  reportedForDutyAt: utc('reported_for_duty_at'),
-  releasedFromDutyAt: utc('released_from_duty_at'),
-  totalOnDutyMinutes: integer('total_on_duty_minutes').notNull().default(0),
-
-  status: timecardStatusEnum('status').notNull().default('OPEN'),
-  shortHaulStatus: shortHaulStatusEnum('short_haul_status').notNull().default('UNKNOWN'),
-  cycleType: cycleTypeEnum('cycle_type').notNull().default('SEVENTY_EIGHT'),
-  /** Rolling total for the 7 days preceding this work date — §395.8(j)(2). */
-  preceding7DayMinutes: integer('preceding_7_day_minutes').notNull().default(0),
-
-  createdAt: utc('created_at').notNull().defaultNow(),
-  completedAt: utc('completed_at'),
-  /** Earliest date this record may be purged. Enforced by the service layer. */
-  retainUntil: date('retain_until'),
-}, t => [
-  uniqueIndex('driver_timecards_driver_date_key').on(t.driverId, t.workDate),
-  index('driver_timecards_company_date_idx').on(t.companyId, t.workDate),
-])
-
-export const timecardBreaks = pgTable('timecard_breaks', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  companyId: uuid('company_id').notNull().references(() => companies.id, { onDelete: 'cascade' }),
-  timecardId: uuid('timecard_id').notNull().references(() => driverTimecards.id, { onDelete: 'cascade' }),
-  startedAt: utc('started_at').notNull(),
-  endedAt: utc('ended_at'),
-  /** Only true off-duty intervals reduce the daily on-duty total. */
-  countedAsOffDuty: boolean('counted_as_off_duty').notNull().default(true),
-  reason: text('reason'),
-  createdAt: utc('created_at').notNull().defaultNow(),
-}, t => [index('timecard_breaks_timecard_idx').on(t.timecardId)])
-
-export const timecardComplianceChecks = pgTable('timecard_compliance_checks', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  companyId: uuid('company_id').notNull().references(() => companies.id, { onDelete: 'cascade' }),
-  timecardId: uuid('timecard_id').notNull().references(() => driverTimecards.id, { onDelete: 'cascade' }),
-  priorOffDutyMinutes: integer('prior_off_duty_minutes'),
-  /** Straight-line geodesic miles from the reporting location — never road miles. */
-  maxRecordedAirMiles: real('max_recorded_air_miles'),
-  returnedToReportingLocation: boolean('returned_to_reporting_location'),
-  releasedWithin14Hours: boolean('released_within_14_hours'),
-  rollingCycleMinutes: integer('rolling_cycle_minutes'),
-  radiusEvidenceLevel: radiusEvidenceEnum('radius_evidence_level').notNull().default('RECORDED_LOCATIONS_ONLY'),
-  evaluatedAt: utc('evaluated_at').notNull().defaultNow(),
-}, t => [uniqueIndex('timecard_compliance_checks_timecard_key').on(t.timecardId)])
-
-export const timecardCorrections = pgTable('timecard_corrections', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  companyId: uuid('company_id').notNull().references(() => companies.id, { onDelete: 'cascade' }),
-  timecardId: uuid('timecard_id').notNull().references(() => driverTimecards.id, { onDelete: 'cascade' }),
-  fieldName: text('field_name').notNull(),
-  originalValue: text('original_value'),
-  correctedValue: text('corrected_value'),
-  changedByUserId: uuid('changed_by_user_id').notNull(),
-  reason: text('reason').notNull(),
-  changedAt: utc('changed_at').notNull().defaultNow(),
-}, t => [index('timecard_corrections_timecard_idx').on(t.timecardId)])
-
-export const timecardExports = pgTable('timecard_exports', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  companyId: uuid('company_id').notNull().references(() => companies.id, { onDelete: 'cascade' }),
-  timecardId: uuid('timecard_id'),
-  rangeStart: date('range_start'),
-  rangeEnd: date('range_end'),
-  generatedAt: utc('generated_at').notNull().defaultNow(),
-  generatedByUserId: uuid('generated_by_user_id'),
-  fileId: uuid('file_id'),
-  /** Lets a printed copy be matched back to the stored record (spec 14.4). */
-  verificationHash: text('verification_hash').notNull(),
-}, t => [index('timecard_exports_company_idx').on(t.companyId, t.generatedAt)])
-
-/* ============================================================
    ShipCSX pickup releases and shipment snapshots
    ============================================================ */
 
@@ -1091,14 +1001,10 @@ export type DocumentRecord = typeof documents.$inferSelect
 export type OcrResult = typeof ocrResults.$inferSelect
 export type SmsInboundEndpoint = typeof smsInboundEndpoints.$inferSelect
 export type DispatchTask = typeof dispatchTasks.$inferSelect
-export type DriverTimecard = typeof driverTimecards.$inferSelect
-export type TimecardBreak = typeof timecardBreaks.$inferSelect
-export type TimecardCorrection = typeof timecardCorrections.$inferSelect
 
 export type NewContainer = typeof containers.$inferInsert
 export type NewContainerEvent = typeof containerEvents.$inferInsert
 export type NewTrip = typeof trips.$inferInsert
 export type NewLocation = typeof locations.$inferInsert
-export type NewDriverTimecard = typeof driverTimecards.$inferInsert
 export type CsxPickupRelease = typeof csxPickupReleases.$inferSelect
 export type CsxShipmentSnapshot = typeof csxShipmentSnapshots.$inferSelect

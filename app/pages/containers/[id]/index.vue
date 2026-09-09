@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import {
-  CONTAINER_STATUS_CHIP,
-  CONTAINER_STATUS_LABELS,
   CONTAINER_TYPE_LABELS,
   EQUIPMENT_TYPE_SHORT,
+  containerSituation,
 } from '#shared/utils/domain'
 import { formatChassisNumber, formatContainerNumber } from '#shared/utils/iso6346'
 import { visibleTimelineEntries } from '#shared/utils/timeline'
@@ -121,16 +120,22 @@ const flags = computed(() => {
   ].filter(Boolean) as Array<{ label: string, variant: 'transit' | 'err' | 'warn' }>
 })
 
+const situation = computed(() => {
+  const c = data.value?.container
+  if (!c) return null
+  return containerSituation(c)
+})
+
 const serviceCaption = computed(() => {
   const life = data.value?.serviceLife
-  if (!life) return 'Pickups, drop-offs, and chassis changes for the current service life.'
+  if (!life) return 'Pickups, drop-offs, and chassis changes for this container.'
   if (life.status === 'COMPLETE' && life.completedAt) {
-    return `Service life complete · returned ${formatDateTime(life.completedAt)}`
+    return `Returned ${formatDateTime(life.completedAt)}`
   }
   if (life.startedAt) {
-    return `Open service life · started ${formatDateTime(life.startedAt)}`
+    return `Current cycle started ${formatDateTime(life.startedAt)}`
   }
-  return 'Pickups, drop-offs, and chassis changes for the current service life.'
+  return 'Pickups, drop-offs, and chassis changes for this container.'
 })
 const timeline = computed(() => visibleTimelineEntries(data.value?.timeline ?? []))
 const csxStatus = computed(() => {
@@ -219,8 +224,9 @@ const csxNote = computed(() => {
               :label="`Seal ${data.container.sealNumber}`"
             />
             <StatusChip
-              :variant="CONTAINER_STATUS_CHIP[data.container.containerStatus]"
-              :label="CONTAINER_STATUS_LABELS[data.container.containerStatus]"
+              v-if="situation"
+              :variant="situation.variant"
+              :label="situation.label"
             />
             <StatusChip
               plain
@@ -228,8 +234,15 @@ const csxNote = computed(() => {
               :label="CONTAINER_TYPE_LABELS[data.container.containerType]"
             />
             <StatusChip
+              v-if="data.currentLocation"
+              plain
+              variant="idle"
+              :label="data.currentLocation.name"
+            />
+            <StatusChip
+              v-else-if="data.currentDriver"
               variant="transit"
-              :label="data.currentLocation ? `At ${data.currentLocation.name}` : (data.currentDriver ? `With ${data.currentDriver.name}` : 'In transit')"
+              :label="`With ${data.currentDriver.name}`"
             />
             <StatusChip
               v-for="flag in flags"
@@ -300,11 +313,25 @@ const csxNote = computed(() => {
           </p>
         </div>
 
+        <div class="cd-media px-4 pb-4">
+          <div
+            class="section-label"
+            style="margin: 0; padding: var(--s2) 0"
+          >
+            Photos & documents
+          </div>
+          <DocumentCarousel
+            :documents="data.documents"
+            empty-title="No photos or documents"
+            empty-description="Container photos and paperwork attached to this box show up here."
+          />
+        </div>
+
         <div
           class="section-label"
           style="margin: 0; padding: var(--s2) var(--s4)"
         >
-          Service history
+          Movement history
         </div>
         <p class="px-4 pb-2 text-xs text-[var(--color-ink-500)]">
           {{ serviceCaption }}
@@ -319,24 +346,8 @@ const csxNote = computed(() => {
           v-else
           glyph="⇄"
           title="No pickups, drop-offs, or chassis changes yet"
-          description="This record lists pickups, drop-offs, and chassis hang or unhang for the current service life."
+          description="Pickups, drop-offs, and chassis hang or unhang will list here."
         />
-
-        <div
-          v-if="data.documents.length"
-          class="px-4 pb-4"
-        >
-          <div class="tl-docs">
-            <span
-              v-for="doc in data.documents"
-              :key="doc.id"
-              class="doc-chip"
-              :class="{ photo: doc.category === 'PHOTO' }"
-            >
-              {{ doc.fileName }}
-            </span>
-          </div>
-        </div>
       </div>
 
       <BottomSheet
