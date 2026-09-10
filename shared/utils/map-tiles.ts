@@ -1,6 +1,14 @@
-/** OSM street raster tiles. */
-export const OSM_TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
-export const OSM_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+/**
+ * Street raster tiles — Carto Voyager (OSM data).
+ * OSM’s own tile.openstreetmap.org CDN forbids production apps; Carto is the
+ * keyless street layer we ship when NUXT_PUBLIC_MAP_TILES_URL is unset.
+ */
+export const STREET_TILE_URL = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png'
+export const STREET_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>'
+
+/** @deprecated Use STREET_TILE_URL — kept so existing imports keep working. */
+export const OSM_TILE_URL = STREET_TILE_URL
+export const OSM_ATTRIBUTION = STREET_ATTRIBUTION
 
 /**
  * Esri World Imagery — keyless aerial/satellite tiles for drawing a yard fence.
