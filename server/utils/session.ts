@@ -1,7 +1,10 @@
 import type { H3Event } from 'h3'
+import { eq } from 'drizzle-orm'
 import type { Role } from '#shared/utils/domain'
 import { parseUnlockedFeatures, type FeatureId } from '../../shared/utils/feature-codes'
+import { users } from '../database/schema'
 import { loadUnlockedFeatures } from '../services/features'
+import { accountLockedError } from './account-lock'
 
 /**
  * Authenticated request context. Every tenant-scoped query must be filtered by
@@ -32,6 +35,21 @@ export async function requireAuth(event: H3Event): Promise<AuthContext> {
 
   if (!user?.userId || !user?.companyId) {
     throw createError({ statusCode: 401, statusMessage: 'Sign in required.' })
+  }
+
+  const [row] = await useDb()
+    .select({ disabledAt: users.disabledAt })
+    .from(users)
+    .where(eq(users.id, user.userId))
+    .limit(1)
+
+  if (!row) {
+    throw createError({ statusCode: 401, statusMessage: 'Sign in required.' })
+  }
+
+  if (row.disabledAt) {
+    await clearUserSession(event)
+    throw accountLockedError()
   }
 
   return user
