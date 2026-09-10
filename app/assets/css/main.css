@@ -5340,6 +5340,13 @@
     letter-spacing: -0.02em;
   }
 
+  .a-head-copy {
+    margin-top: var(--s2);
+    max-width: 36rem;
+    font-size: var(--text-sm);
+    color: var(--color-ink-500);
+  }
+
   .a-head-actions {
     display: flex;
     align-items: center;
@@ -5444,6 +5451,95 @@
 
   .dtable a:hover {
     text-decoration: underline;
+  }
+
+  .driver-roster {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--s3);
+  }
+
+  .driver-card {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: var(--s3);
+    align-items: start;
+    background: #fff;
+    border: 1px solid var(--color-line-200);
+    border-radius: var(--radius-md);
+    padding: var(--s4);
+    box-shadow: var(--shadow-1);
+  }
+
+  .driver-card.locked {
+    background: var(--color-paper-50);
+    border-color: var(--color-line-300);
+  }
+
+  .driver-card-main {
+    min-width: 0;
+  }
+
+  .driver-card-top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--s2) var(--s3);
+    margin-bottom: 4px;
+  }
+
+  .driver-card-top b {
+    font-size: var(--text-base);
+    font-weight: 700;
+  }
+
+  .driver-card-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .driver-card-main p {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--color-ink-500);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .driver-card-main a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .driver-card-main a:hover {
+    color: var(--color-navy-800);
+    text-decoration: underline;
+  }
+
+  .driver-card-meta {
+    margin-top: 4px !important;
+    font-size: 12px !important;
+  }
+
+  .driver-card-menu {
+    margin-top: -4px;
+    margin-right: -4px;
+  }
+
+  .driver-temp-password {
+    margin: var(--s4) 0 0;
+    padding: var(--s4);
+    border-radius: var(--radius-md);
+    background: var(--color-navy-950);
+    color: #fff;
+    font-size: var(--text-lg);
+    letter-spacing: 0.08em;
+    text-align: center;
   }
 }
 

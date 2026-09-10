@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { roleHomePath } from '#shared/utils/domain'
 import { companies, companyMemberships, drivers, users } from '../../database/schema'
 import { consumeEmailVerification } from '../../services/email-verification'
+import { accountLockedError } from '../../utils/account-lock'
 
 const schema = z.object({
   token: z.string().trim().min(1, 'A verification token is required.').max(400),
@@ -29,8 +30,11 @@ export default defineEventHandler(async (event) => {
 
   const [user] = await db.select().from(users).where(eq(users.id, verified.userId)).limit(1)
 
-  if (!user || user.disabledAt) {
+  if (!user) {
     throw createError({ statusCode: 403, statusMessage: 'This account is not active.' })
+  }
+  if (user.disabledAt) {
+    throw accountLockedError()
   }
 
   const [membership] = await db

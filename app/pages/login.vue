@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { ACCOUNT_LOCKED_MESSAGE } from '#shared/utils/account-lock'
+
 definePageMeta({ layout: 'auth' })
 useHead({ title: 'Sign in' })
 
@@ -9,11 +11,22 @@ const email = ref('')
 const password = ref('')
 const submitting = ref(false)
 const errorMessage = ref('')
+const accountLocked = ref(false)
 
 /** Set when the password was correct but the address is unconfirmed. */
 const needsVerification = ref(false)
 const resending = ref(false)
 const resendMessage = ref('')
+
+if (route.query.locked === '1') {
+  accountLocked.value = true
+  errorMessage.value = ACCOUNT_LOCKED_MESSAGE
+}
+
+function lockedFromError(error: unknown) {
+  const detail = (error as { data?: { data?: { accountLocked?: boolean }, accountLocked?: boolean } }).data
+  return Boolean(detail?.data?.accountLocked || detail?.accountLocked)
+}
 
 async function resend() {
   if (resending.value) return
@@ -40,6 +53,7 @@ async function submit() {
   submitting.value = true
   errorMessage.value = ''
   needsVerification.value = false
+  accountLocked.value = false
   resendMessage.value = ''
 
   try {
@@ -62,7 +76,10 @@ async function submit() {
     const detail = (error as { data?: { data?: { emailVerificationRequired?: boolean } } })
       .data?.data
     needsVerification.value = Boolean(detail?.emailVerificationRequired)
-    errorMessage.value = apiErrorMessage(error, 'Email or password is incorrect.')
+    accountLocked.value = lockedFromError(error)
+    errorMessage.value = accountLocked.value
+      ? ACCOUNT_LOCKED_MESSAGE
+      : apiErrorMessage(error, 'Email or password is incorrect.')
   }
   finally {
     submitting.value = false
@@ -88,10 +105,11 @@ async function submit() {
     >
       <p
         v-if="errorMessage"
-        class="banner err"
+        class="banner"
+        :class="accountLocked ? 'warn' : 'err'"
         role="alert"
       >
-        <span aria-hidden="true">✕</span>
+        <span aria-hidden="true">{{ accountLocked ? '!' : '✕' }}</span>
         <span>{{ errorMessage }}</span>
       </p>
 

@@ -1,4 +1,4 @@
-import { and, desc, eq, or, sql } from 'drizzle-orm'
+import { and, eq, or, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { companyMemberships, drivers, trips, users } from '../../database/schema'
 import { requireAdmin } from '../../utils/session'
@@ -42,6 +42,7 @@ export default defineEventHandler(async (event) => {
       role: companyMemberships.role,
       membershipStatus: companyMemberships.status,
       lastLoginAt: users.lastLoginAt,
+      lockedAt: users.disabledAt,
       activeTrips: sql<number>`(
         select count(*)::int from ${trips} t
         where t.driver_id = ${drivers.id}
@@ -55,7 +56,7 @@ export default defineEventHandler(async (event) => {
       eq(companyMemberships.companyId, drivers.companyId),
     ))
     .where(and(...filters))
-    .orderBy(desc(drivers.status), users.lastName)
+    .orderBy(sql`${users.disabledAt} asc nulls first`, users.lastName)
     .limit(query.limit)
 
   return { items }

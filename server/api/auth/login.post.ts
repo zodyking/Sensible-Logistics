@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { parseUnlockedFeatures } from '#shared/utils/feature-codes'
 import { roleHomePath } from '#shared/utils/domain'
 import { companies, companyMemberships, drivers, users } from '../../database/schema'
+import { accountLockedError } from '../../utils/account-lock'
 
 const schema = z.object({
   email: z.string().trim().email('Enter a valid email address.'),
@@ -27,13 +28,17 @@ export default defineEventHandler(async (event) => {
     .where(sql`lower(${users.email}) = lower(${body.email})`)
     .limit(1)
 
-  if (!user || user.disabledAt) {
+  if (!user) {
     throw createError({ statusCode: 401, statusMessage: INVALID })
   }
 
   const valid = await verifyPassword(user.passwordHash, body.password)
   if (!valid) {
     throw createError({ statusCode: 401, statusMessage: INVALID })
+  }
+
+  if (user.disabledAt) {
+    throw accountLockedError()
   }
 
   // Checked only after the password succeeds, so this cannot be used to probe

@@ -1,6 +1,7 @@
 import type { H3Event } from 'h3'
 import { eq } from 'drizzle-orm'
 import { users } from '../database/schema'
+import { accountLockedError } from './account-lock'
 import type { AuthContext } from './session'
 
 export interface AccountUser {
@@ -29,8 +30,11 @@ export async function loadAccountUser(userId: string): Promise<AccountUser> {
     .where(eq(users.id, userId))
     .limit(1)
 
-  if (!user || user.disabledAt) {
+  if (!user) {
     throw createError({ statusCode: 401, statusMessage: 'Sign in required.' })
+  }
+  if (user.disabledAt) {
+    throw accountLockedError()
   }
 
   return user
