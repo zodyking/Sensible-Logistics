@@ -1,8 +1,8 @@
 import { eq } from 'drizzle-orm'
-import { users } from '../../../database/schema'
-import { loadCompanyDriver } from '../../../utils/admin-drivers'
-import { generateTemporaryPassword } from '../../../utils/passwords'
-import { requireAdmin } from '../../../utils/session'
+import { users } from '../../../../database/schema'
+import { loadCompanyDriver } from '../../../../utils/admin-drivers'
+import { generateTemporaryPassword } from '../../../../utils/passwords'
+import { requireAdmin } from '../../../../utils/session'
 
 /** Replace a driver's password and return the temporary value once. */
 export default defineEventHandler(async (event) => {
