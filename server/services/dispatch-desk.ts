@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm'
-import { aliasedTable } from 'drizzle-orm/pg-core'
+import { aliasedTable } from 'drizzle-orm'
 import {
   chassis,
   containers,
