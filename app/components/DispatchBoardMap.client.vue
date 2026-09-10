@@ -1,9 +1,17 @@
 <script setup lang="ts">
 import { LOCATION_TYPE_LABELS, type LocationType } from '#shared/utils/domain'
 import { loadLeaflet, observeMapSize, waitForMapSize } from '~/utils/leaflet-map'
-import { OSM_ATTRIBUTION, osmTileUrl } from '~/utils/map-tiles'
+import {
+  LABELS_ATTRIBUTION,
+  LABELS_TILE_URL,
+  OSM_ATTRIBUTION,
+  osmTileUrl,
+  SATELLITE_ATTRIBUTION,
+  satelliteTileUrl,
+} from '~/utils/map-tiles'
 
 type LeafletModule = typeof import('leaflet')
+type Basemap = 'street' | 'satellite'
 
 export interface DispatchMapSite {
   id: string
@@ -24,12 +32,17 @@ const emit = defineEmits<{
 }>()
 
 const host = ref<HTMLElement | null>(null)
+const basemap = ref<Basemap>('street')
 const FALLBACK: [number, number] = [40.792, -74.042]
 
 let map: import('leaflet').Map | null = null
-let layer: import('leaflet').LayerGroup | null = null
+let pinsLayer: import('leaflet').LayerGroup | null = null
+let baseLayer: import('leaflet').TileLayer | null = null
+let labelsLayer: import('leaflet').TileLayer | null = null
 let Lref: LeafletModule | null = null
 let stopSize: (() => void) | null = null
+let cancelled = false
+let sizeRetries: number[] = []
 
 function sitesWithPins(list: DispatchMapSite[]) {
   return list.filter(site => site.latitude != null && site.longitude != null) as Array<DispatchMapSite & { latitude: number, longitude: number }>
@@ -45,8 +58,8 @@ function pinHtml(site: DispatchMapSite, selected: boolean) {
 }
 
 function drawPins() {
-  if (!map || !layer || !Lref) return
-  layer.clearLayers()
+  if (!map || !pinsLayer || !Lref) return
+  pinsLayer.clearLayers()
   const L = Lref
   for (const site of sitesWithPins(props.locations)) {
     const icon = L.divIcon({
@@ -58,7 +71,7 @@ function drawPins() {
     const marker = L.marker([site.latitude, site.longitude], { icon, keyboard: true })
     marker.on('click', () => emit('select', site.id))
     marker.bindTooltip(LOCATION_TYPE_LABELS[site.type], { direction: 'top', offset: [0, -12] })
-    layer.addLayer(marker)
+    pinsLayer.addLayer(marker)
   }
 }
 
@@ -77,22 +90,85 @@ function fitSites() {
   map.fitBounds(bounds, { padding: [48, 48], maxZoom: 13 })
 }
 
-async function boot() {
-  const el = host.value
-  if (!el) return
-  const L = await loadLeaflet()
+function paintBaseLayer() {
+  if (!map || !Lref) return
+  baseLayer?.remove()
+  labelsLayer?.remove()
+  labelsLayer = null
+  if (basemap.value === 'satellite') {
+    baseLayer = Lref.tileLayer(satelliteTileUrl(), {
+      maxZoom: 19,
+      maxNativeZoom: 19,
+      attribution: SATELLITE_ATTRIBUTION,
+    })
+    labelsLayer = Lref.tileLayer(LABELS_TILE_URL, {
+      maxZoom: 19,
+      attribution: LABELS_ATTRIBUTION,
+      pane: 'overlayPane',
+    })
+  }
+  else {
+    baseLayer = Lref.tileLayer(osmTileUrl(), {
+      maxZoom: 19,
+      attribution: OSM_ATTRIBUTION,
+    })
+  }
+  baseLayer.addTo(map)
+  baseLayer.bringToBack()
+  labelsLayer?.addTo(map)
+}
+
+function syncMapSize() {
+  if (!map) return
+  map.invalidateSize({ animate: false })
+}
+
+function scheduleSizeSync() {
+  for (const id of sizeRetries) window.clearTimeout(id)
+  sizeRetries = [0, 50, 200, 600].map(ms => window.setTimeout(() => {
+    syncMapSize()
+    if (ms === 0) fitSites()
+  }, ms))
+}
+
+function createMap(L: LeafletModule, el: HTMLElement) {
+  if (map || cancelled) return
   Lref = L
-  await waitForMapSize(el, () => false)
   map = L.map(el, {
     zoomControl: true,
     attributionControl: true,
   })
-  L.tileLayer(osmTileUrl(), { attribution: OSM_ATTRIBUTION, maxZoom: 19 }).addTo(map)
-  layer = L.layerGroup().addTo(map)
+  paintBaseLayer()
+  pinsLayer = L.layerGroup().addTo(map)
   drawPins()
   fitSites()
-  map.invalidateSize()
-  stopSize = observeMapSize(el, () => map?.invalidateSize())
+  map.whenReady(() => {
+    syncMapSize()
+    fitSites()
+  })
+  scheduleSizeSync()
+  stopSize?.()
+  stopSize = observeMapSize(el, () => syncMapSize())
+}
+
+async function boot() {
+  const el = host.value
+  if (!el || cancelled) return
+  const L = await loadLeaflet()
+  if (cancelled || !host.value) return
+  const sized = await waitForMapSize(el, () => cancelled, 4000)
+  if (cancelled || !host.value) return
+  if (sized) {
+    createMap(L, host.value)
+    return
+  }
+  stopSize = observeMapSize(el, () => {
+    if (map) {
+      syncMapSize()
+      return
+    }
+    if (el.clientWidth > 8 && el.clientHeight > 8) createMap(L, el)
+  })
 }
 
 watch(() => props.locations, () => {
@@ -107,23 +183,69 @@ watch(() => props.selectedId, (id) => {
   if (site) map.panTo([site.latitude, site.longitude], { animate: true })
 })
 
+watch(basemap, () => {
+  paintBaseLayer()
+})
+
 onMounted(() => {
-  void boot()
+  cancelled = false
+  void nextTick(() => {
+    void boot()
+  })
 })
 
 onBeforeUnmount(() => {
+  cancelled = true
+  for (const id of sizeRetries) window.clearTimeout(id)
+  sizeRetries = []
   stopSize?.()
-  map?.remove()
+  stopSize = null
+  try {
+    labelsLayer?.remove()
+    baseLayer?.remove()
+    pinsLayer?.remove()
+    map?.remove()
+  }
+  catch {
+    // Leaflet throws if the pane was already detached during a route change.
+  }
   map = null
-  layer = null
+  pinsLayer = null
+  labelsLayer = null
+  baseLayer = null
+  Lref = null
 })
 </script>
 
 <template>
-  <div
-    ref="host"
-    class="dmap"
-    role="application"
-    aria-label="Location map"
-  />
+  <div class="dmap-wrap">
+    <div
+      ref="host"
+      class="dmap"
+      role="application"
+      aria-label="Location map"
+    />
+    <div
+      class="dmap-basemap"
+      role="group"
+      aria-label="Map type"
+    >
+      <button
+        type="button"
+        :class="{ on: basemap === 'street' }"
+        :aria-pressed="basemap === 'street'"
+        @click="basemap = 'street'"
+      >
+        Map
+      </button>
+      <button
+        type="button"
+        :class="{ on: basemap === 'satellite' }"
+        :aria-pressed="basemap === 'satellite'"
+        @click="basemap = 'satellite'"
+      >
+        Satellite
+      </button>
+    </div>
+  </div>
 </template>

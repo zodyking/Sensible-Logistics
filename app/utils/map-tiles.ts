@@ -5,6 +5,8 @@ import {
   OSM_TILE_URL,
   SATELLITE_ATTRIBUTION,
   SATELLITE_TILE_URL,
+  STREET_ATTRIBUTION,
+  STREET_TILE_URL,
 } from '#shared/utils/map-tiles'
 
 export {
@@ -14,12 +16,14 @@ export {
   OSM_TILE_URL,
   SATELLITE_ATTRIBUTION,
   SATELLITE_TILE_URL,
+  STREET_ATTRIBUTION,
+  STREET_TILE_URL,
 }
 
-/** OSM street tiles — self-hosted when `NUXT_PUBLIC_MAP_TILES_URL` is set. */
+/** Street tiles — self-hosted when `NUXT_PUBLIC_MAP_TILES_URL` is set. */
 export function osmTileUrl(): string {
   const custom = String(useRuntimeConfig().public.mapTilesUrl ?? '').trim()
-  return custom || OSM_TILE_URL
+  return custom || STREET_TILE_URL
 }
 
 /** Aerial/satellite tiles for drawing a yard zone. */

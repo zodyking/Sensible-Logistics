@@ -66,7 +66,7 @@ interface InspectedContainer {
   }>
 }
 
-const { data, status, error } = await useFetch('/api/admin/dispatch')
+const { data, error } = await useFetch('/api/admin/dispatch')
 
 const selectedId = ref<string | null>(null)
 const inspectedId = ref<string | null>(null)
@@ -157,14 +157,7 @@ const selectedBox = computed(() => {
   <section class="dispatch-board">
     <div class="dispatch-map-col">
       <p
-        v-if="status === 'pending'"
-        class="dispatch-map-msg"
-        role="status"
-      >
-        Loading locations…
-      </p>
-      <p
-        v-else-if="error"
+        v-if="error"
         class="dispatch-map-msg err"
         role="alert"
       >

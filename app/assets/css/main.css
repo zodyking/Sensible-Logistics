@@ -5288,10 +5288,6 @@
     -webkit-overflow-scrolling: touch;
   }
 
-  .a-main .account-settings {
-    max-width: 560px;
-  }
-
   .a-drawer {
     position: fixed;
     inset: 0;
@@ -6354,13 +6350,66 @@ html.keyboard-open .a-shell {
     position: relative;
     min-height: 0;
     min-width: 0;
+    height: 100%;
     background: #cfd8df;
+  }
+
+  .dispatch-map-col .dmap-wrap {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
   }
 
   .dispatch-map-col .dmap {
     position: absolute;
     inset: 0;
+    width: 100%;
+    height: 100%;
     z-index: 1;
+  }
+
+  .dmap.leaflet-container {
+    width: 100%;
+    height: 100%;
+    background: #cfd8df;
+    font-family: var(--font-body);
+  }
+
+  .dmap-basemap {
+    position: absolute;
+    left: 12px;
+    bottom: 28px;
+    z-index: 1000;
+    display: flex;
+    gap: 2px;
+    padding: 3px;
+    border-radius: 10px;
+    background: #fff;
+    box-shadow: 0 8px 20px rgb(12 30 48 / 0.22);
+  }
+
+  .dmap-basemap button {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 0 14px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--color-navy-900);
+    cursor: pointer;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .dmap-basemap button.on {
+    background: var(--color-navy-900);
+    color: #fff;
+  }
+
+  .dmap-basemap button:focus-visible {
+    outline: 2px solid var(--color-amber-500);
+    outline-offset: 2px;
   }
 
   .dispatch-map-msg {
