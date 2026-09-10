@@ -4,6 +4,7 @@ import type { LocationType } from '#shared/utils/domain'
 import { isPlacedPin } from '#shared/utils/yard-slots'
 import { formatPhoneInput, isBlankOrValidPhone } from '#shared/utils/phone'
 import { formatCityStateZip, parseUsAddressQuery } from '#shared/utils/us-address'
+import { rolePageClass } from '#shared/utils/page-shell'
 
 const { user } = useUserSession()
 setPageLayout(user.value?.role === 'ADMIN' ? 'admin' : 'default')
@@ -13,7 +14,8 @@ useHead({ title: 'Add location' })
 const route = useRoute()
 const returnTo = computed(() => {
   const raw = String(route.query.returnTo ?? '')
-  return raw.startsWith('/') ? raw : '/locations'
+  if (raw.startsWith('/')) return raw
+  return user.value?.role === 'ADMIN' ? '/admin/inventory' : '/locations'
 })
 
 type Step = 'type' | 'name' | 'phones' | 'address'
@@ -224,7 +226,7 @@ function createAnyway() {
 </script>
 
 <template>
-  <section :class="user?.role === 'ADMIN' ? '' : 'd-page'">
+  <section :class="rolePageClass(user?.role)">
     <WizardNav
       :title="STEP_TITLES[step]"
       :back-to="stepIndex > 0 ? undefined : returnTo"

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { GeoJsonPolygon } from '#shared/utils/geo'
 import { isPlausibleYardFence } from '#shared/utils/geo'
+import { rolePageClass } from '#shared/utils/page-shell'
 
 const { user } = useUserSession()
 setPageLayout(user.value?.role === 'ADMIN' ? 'admin' : 'default')
@@ -75,7 +76,7 @@ async function generate() {
 </script>
 
 <template>
-  <section :class="user?.role === 'ADMIN' ? '' : 'd-page'">
+  <section :class="rolePageClass(user?.role)">
     <PageHeader
       eyebrow="Yard"
       title="Draw the usable area"

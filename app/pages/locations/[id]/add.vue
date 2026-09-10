@@ -22,6 +22,7 @@ import { ADD_EQUIPMENT_STEPS, addEquipmentSteps } from '#shared/utils/add-equipm
 import type { AddEquipmentStep } from '#shared/utils/add-equipment-steps'
 import { LOADED_SEAL_REQUIRED } from '#shared/utils/seal'
 import { driverOcrMessage } from '#shared/utils/ocr-parse'
+import { rolePageClass } from '#shared/utils/page-shell'
 
 const { user } = useUserSession()
 setPageLayout(user.value?.role === 'ADMIN' ? 'admin' : 'default')
@@ -358,7 +359,7 @@ async function onPhoto(dataUrl: string) {
 </script>
 
 <template>
-  <section :class="user?.role === 'ADMIN' ? '' : 'd-page'">
+  <section :class="rolePageClass(user?.role)">
     <WizardNav
       :title="navTitle"
       :back-label="stepIndex > 0 ? 'Back' : (locationData?.location.name ?? 'Location')"

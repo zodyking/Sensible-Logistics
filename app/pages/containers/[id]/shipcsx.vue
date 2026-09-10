@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { SHIPCSX_REFERENCE, SHIPCSX_TERMINALS, shipcsxEquipmentParts, wizardShipcsxTerminal } from '#shared/utils/csx-lookup'
 import { readWizardTerminal, rememberWizardTerminal } from '~/utils/shipcsx-wizard'
+import { rolePageClass } from '#shared/utils/page-shell'
 
 const route = useRoute()
 const { user } = useUserSession()
@@ -80,7 +81,7 @@ const backTo = computed(() => `/containers/${id.value}`)
 </script>
 
 <template>
-  <section :class="user?.role === 'ADMIN' ? '' : 'd-page'">
+  <section :class="rolePageClass(user?.role)">
     <WizardNav
       title="Check CSX"
       back-label="Container"

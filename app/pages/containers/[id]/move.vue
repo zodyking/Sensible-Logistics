@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { formatContainerNumber } from '#shared/utils/iso6346'
+import { rolePageClass } from '#shared/utils/page-shell'
 
 const { user } = useUserSession()
 setPageLayout(user.value?.role === 'ADMIN' ? 'admin' : 'default')
@@ -63,7 +64,7 @@ function locationAddressLine(location: { addressLine1: string | null, city: stri
 </script>
 
 <template>
-  <section :class="user?.role === 'ADMIN' ? '' : 'd-page'">
+  <section :class="rolePageClass(user?.role)">
     <div
       v-if="status === 'pending'"
       class="card p-6 text-center text-sm text-[var(--color-ink-500)]"

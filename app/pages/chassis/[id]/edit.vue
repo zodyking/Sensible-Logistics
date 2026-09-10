@@ -4,6 +4,7 @@ import {
   isCompleteChassisNumber,
   maskChassisInput,
 } from '#shared/utils/iso6346'
+import { rolePageClass } from '#shared/utils/page-shell'
 
 const route = useRoute()
 const { user } = useUserSession()
@@ -86,7 +87,7 @@ async function save() {
 </script>
 
 <template>
-  <section class="d-page">
+  <section :class="rolePageClass(user?.role)">
     <PageHeader
       eyebrow="Edit chassis"
       :title="loading ? 'Chassis' : (formatChassisNumber(form.number) || 'Chassis')"

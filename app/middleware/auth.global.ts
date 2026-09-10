@@ -25,6 +25,11 @@ export default defineNuxtRouteMiddleware((to) => {
     return navigateTo({ path: '/login', query: to.fullPath === '/' ? undefined : { redirect: to.fullPath } })
   }
 
+  // Dispatchers keep location records, but the company directory lives on Inventory.
+  if (user.value?.role === 'ADMIN' && to.path === '/locations') {
+    return navigateTo('/admin/inventory')
+  }
+
   const isAdminRoute = to.path.startsWith('/admin')
   const locationPool = to.path === '/locations' || to.path.startsWith('/locations/')
   const containerRecord = to.path.startsWith('/containers')

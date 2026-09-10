@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { formatContainerNumber, maskContainerInput } from '#shared/utils/iso6346'
 import type { CsxListPair } from '#shared/utils/csx-list-parse'
+import { rolePageClass } from '#shared/utils/page-shell'
 
 const { user } = useUserSession()
 setPageLayout(user.value?.role === 'ADMIN' ? 'admin' : 'default')
@@ -109,7 +110,7 @@ async function save() {
 </script>
 
 <template>
-  <section :class="user?.role === 'ADMIN' ? '' : 'd-page'">
+  <section :class="rolePageClass(user?.role)">
     <PageHeader
       eyebrow="CSX empties"
       :title="data?.location.name ?? 'Location'"

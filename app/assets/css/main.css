@@ -5351,6 +5351,75 @@
     flex-wrap: wrap;
   }
 
+  /* Admin reuses driver wizard logic. On desktop the same screens fill the
+     dashboard instead of sitting in a phone-width column. Below 1024px the
+     driver grouped-list format stays. */
+  .a-wizard {
+    width: 100%;
+    min-width: 0;
+  }
+
+  @media (min-width: 1024px) {
+    .a-wizard .wiz-nav {
+      margin: 0 0 var(--s5);
+      padding: 0 0 var(--s4);
+      grid-template-columns: auto 1fr auto;
+      align-items: end;
+      gap: var(--s4);
+    }
+
+    .a-wizard .wiz-nav-title {
+      grid-column: auto;
+      justify-self: start;
+      text-align: left;
+      font-size: var(--text-2xl);
+      letter-spacing: -0.02em;
+    }
+
+    .a-wizard .wiz-gap {
+      display: none;
+    }
+
+    .a-wizard .wiz-group:has(> .wiz-pick) {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: var(--s3);
+      background: transparent;
+      border: 0;
+      box-shadow: none;
+      overflow: visible;
+    }
+
+    .a-wizard .wiz-group:has(> .wiz-pick) > .wiz-pick {
+      border: 1px solid var(--color-line-200);
+      border-radius: var(--radius-lg);
+      background: #fff;
+      box-shadow: var(--shadow-1);
+      min-height: 72px;
+    }
+
+    .a-wizard .wiz-group:has(> .wiz-pick) > .wiz-pick:last-child {
+      border-bottom: 1px solid var(--color-line-200);
+    }
+
+    .a-wizard .wiz-row-label {
+      flex-basis: 140px;
+    }
+
+    .a-wizard .wiz-actions {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: var(--s6);
+    }
+
+    .a-wizard .wiz-next,
+    .a-wizard .wiz-text-btn {
+      width: auto;
+      min-width: 220px;
+      padding-inline: var(--s8);
+    }
+  }
+
   .a-toolbar {
     display: flex;
     gap: var(--s2);

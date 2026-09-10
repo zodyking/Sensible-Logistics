@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import type { LocationType } from '#shared/utils/domain'
-import { LOCATION_TYPE_LABELS, LOCATION_TYPES } from '#shared/utils/domain'
+import { LOCATION_TYPE_LABELS } from '#shared/utils/domain'
 
 /* Location status vocabulary is page-local: domain.ts does not export it yet. */
 type LocationStatus = 'ACTIVE' | 'PENDING_APPROVAL' | 'ARCHIVED'
@@ -19,7 +18,6 @@ const LOCATION_STATUS_CHIP: Record<LocationStatus, 'ok' | 'warn' | 'err' | 'tran
 
 const searchInput = ref('')
 const q = ref('')
-const type = ref<LocationType | ''>('')
 
 let searchTimer: ReturnType<typeof setTimeout> | undefined
 watch(searchInput, (value) => {
@@ -36,7 +34,6 @@ onBeforeUnmount(() => {
 const { data, status, error, refresh } = await useFetch('/api/locations', {
   query: computed(() => ({
     q: q.value || undefined,
-    type: type.value || undefined,
     includeUncategorized: '1',
   })),
 })
@@ -61,35 +58,6 @@ function occupancyPercent(occupancy: number, capacity: number | null): number {
           placeholder="Name, address, city, location code…"
         >
       </label>
-    </div>
-
-    <div
-      class="a-toolbar"
-      role="group"
-      aria-label="Location type filter"
-    >
-      <button
-        class="fchip min-h-11"
-        :class="{ on: type === '' }"
-        :aria-pressed="type === ''"
-        @click="type = ''"
-      >
-        All types
-      </button>
-      <button
-        v-for="value in LOCATION_TYPES"
-        :key="value"
-        class="fchip min-h-11 inline-flex items-center gap-1.5"
-        :class="{ on: type === value }"
-        :aria-pressed="type === value"
-        @click="type = value"
-      >
-        <LocationIcon
-          :name="value"
-          :size="16"
-        />
-        {{ LOCATION_TYPE_LABELS[value] }}
-      </button>
     </div>
 
     <div
@@ -237,7 +205,7 @@ function occupancyPercent(occupancy: number, capacity: number | null): number {
       description="Create the terminals, yards and customer sites your drivers work with."
     >
       <NuxtLink
-        to="/locations/new"
+        to="/locations/new?returnTo=/admin/inventory"
         class="btn-ghost"
       >
         Create a location
