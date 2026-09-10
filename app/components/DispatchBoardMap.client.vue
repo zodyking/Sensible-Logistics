@@ -6,6 +6,8 @@ import {
   LABELS_TILE_URL,
   OSM_ATTRIBUTION,
   osmTileUrl,
+  ROADS_ATTRIBUTION,
+  ROADS_TILE_URL,
   SATELLITE_ATTRIBUTION,
   satelliteTileUrl,
 } from '~/utils/map-tiles'
@@ -38,7 +40,7 @@ const FALLBACK: [number, number] = [40.792, -74.042]
 let map: import('leaflet').Map | null = null
 let pinsLayer: import('leaflet').LayerGroup | null = null
 let baseLayer: import('leaflet').TileLayer | null = null
-let labelsLayer: import('leaflet').TileLayer | null = null
+let labelsLayer: import('leaflet').LayerGroup | null = null
 let Lref: LeafletModule | null = null
 let stopSize: (() => void) | null = null
 let cancelled = false
@@ -101,15 +103,24 @@ function paintBaseLayer() {
       maxNativeZoom: 19,
       attribution: SATELLITE_ATTRIBUTION,
     })
-    labelsLayer = Lref.tileLayer(LABELS_TILE_URL, {
+    labelsLayer = Lref.layerGroup()
+    Lref.tileLayer(ROADS_TILE_URL, {
       maxZoom: 19,
+      maxNativeZoom: 19,
+      attribution: ROADS_ATTRIBUTION,
+      pane: 'overlayPane',
+    }).addTo(labelsLayer)
+    Lref.tileLayer(LABELS_TILE_URL, {
+      maxZoom: 19,
+      maxNativeZoom: 19,
       attribution: LABELS_ATTRIBUTION,
       pane: 'overlayPane',
-    })
+    }).addTo(labelsLayer)
   }
   else {
     baseLayer = Lref.tileLayer(osmTileUrl(), {
       maxZoom: 19,
+      maxNativeZoom: 19,
       attribution: OSM_ATTRIBUTION,
     })
   }

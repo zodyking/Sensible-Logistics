@@ -43,7 +43,7 @@ export function isServiceTerminus(type: LocationType | null | undefined): boolea
   return type === 'MARINE_TERMINAL' || type === 'RAIL_TERMINAL'
 }
 
-export function isCustomerLoadingSite(type: LocationType | null | undefined): boolean {
+export function isCustomerLoadingSite(type: LocationType | string | null | undefined): boolean {
   return type === 'CUSTOMER'
 }
 
@@ -65,6 +65,28 @@ export function containerStatusAfterDropoff(type: LocationType | null | undefine
   if (isCustomerLoadingSite(type)) return 'LOADING'
   if (isCompanyYard(type)) return 'AT_YARD'
   return 'AVAILABLE'
+}
+
+/**
+ * Status when a box is added or moved onto a site (not a trip drop-off).
+ * Customer sites are always Loading. Terminals stay Available — Returned is drop-off only.
+ */
+export function containerStatusAtLocation(type: LocationType | null | undefined): ContainerStatus {
+  if (isCustomerLoadingSite(type)) return 'LOADING'
+  if (isCompanyYard(type)) return 'AT_YARD'
+  return 'AVAILABLE'
+}
+
+/** On-site at a customer is Loading, even if the stored column is stale. */
+export function effectiveContainerStatus(input: {
+  containerStatus: ContainerStatus
+  activePoolState?: string | null
+  locationType?: LocationType | string | null
+}): ContainerStatus {
+  if (isCustomerLoadingSite(input.locationType) && input.activePoolState === 'AT_LOCATION') {
+    return 'LOADING'
+  }
+  return input.containerStatus
 }
 
 export function describeDropoffEffect(type: LocationType | null | undefined): string {

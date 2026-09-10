@@ -15,6 +15,8 @@ import {
   LABELS_TILE_URL,
   OSM_ATTRIBUTION,
   osmTileUrl,
+  ROADS_ATTRIBUTION,
+  ROADS_TILE_URL,
   SATELLITE_ATTRIBUTION,
   satelliteTileUrl,
 } from '~/utils/map-tiles'
@@ -55,7 +57,7 @@ type LeafletModule = typeof import('leaflet')
 let L: LeafletModule | null = null
 let map: import('leaflet').Map | null = null
 let baseLayer: import('leaflet').TileLayer | null = null
-let labelsLayer: import('leaflet').TileLayer | null = null
+let labelsLayer: import('leaflet').LayerGroup | null = null
 let fenceLayer: import('leaflet').Polygon | null = null
 let pinMarker: import('leaflet').Marker | null = null
 let draftLayer: import('leaflet').LayerGroup | null = null
@@ -146,16 +148,25 @@ function paintBaseLayer() {
     })
     baseLayer.addTo(map)
     baseLayer.bringToBack()
-    labelsLayer = L.tileLayer(LABELS_TILE_URL, {
+    labelsLayer = L.layerGroup()
+    L.tileLayer(ROADS_TILE_URL, {
       maxZoom: 22,
+      maxNativeZoom: 19,
+      attribution: ROADS_ATTRIBUTION,
+      pane: 'overlayPane',
+    }).addTo(labelsLayer)
+    L.tileLayer(LABELS_TILE_URL, {
+      maxZoom: 22,
+      maxNativeZoom: 19,
       attribution: LABELS_ATTRIBUTION,
       pane: 'overlayPane',
-    })
+    }).addTo(labelsLayer)
     labelsLayer.addTo(map)
   }
   else {
     baseLayer = L.tileLayer(osmTileUrl(), {
       maxZoom: 22,
+      maxNativeZoom: 19,
       attribution: OSM_ATTRIBUTION,
     })
     baseLayer.addTo(map)

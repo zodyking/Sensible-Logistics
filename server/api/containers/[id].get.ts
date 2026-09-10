@@ -13,7 +13,7 @@ import {
 import { assertTenant, requireAuth } from '../../utils/session'
 import { latestSnapshotsForContainers } from '../../services/csx-releases'
 import { getShipcsxCheckJob } from '../../services/shipcsx-jobs'
-import { sliceCurrentServiceLife, summarizeServiceLife } from '#shared/utils/service-life'
+import { sliceCurrentServiceLife, summarizeServiceLife, effectiveContainerStatus } from '#shared/utils/service-life'
 import { normalizeContainerNumber } from '#shared/utils/iso6346'
 import { wizardShipcsxTerminal } from '#shared/utils/csx-lookup'
 
@@ -115,7 +115,14 @@ export default defineEventHandler(async (event) => {
   const suggestedTerminal = wizardShipcsxTerminal(shipcsx?.terminalName) ?? ''
 
   return {
-    container,
+    container: {
+      ...container!,
+      containerStatus: effectiveContainerStatus({
+        containerStatus: container!.containerStatus,
+        activePoolState: container!.activePoolState,
+        locationType: currentLocation?.type,
+      }),
+    },
     currentLocation: currentLocation ?? null,
     currentChassis: currentChassis ?? null,
     currentDriver: currentDriver ? { id: currentDriver.id, name: `${currentDriver.firstName} ${currentDriver.lastName}` } : null,

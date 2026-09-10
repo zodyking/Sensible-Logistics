@@ -18,6 +18,7 @@ import {
   validateContainerNumber,
 } from '#shared/utils/iso6346'
 import { CONTAINER_TYPES, type ContainerType, type EquipmentType } from '#shared/utils/domain'
+import { containerStatusAtLocation } from '#shared/utils/service-life'
 import { LOADED_SEAL_REQUIRED, missingLoadedSeal, sealForLoad } from '#shared/utils/seal'
 import {
   bboxAround,
@@ -414,6 +415,8 @@ export async function addContainerAtLocation(
       throw createError({ statusCode: 422, statusMessage: LOADED_SEAL_REQUIRED })
     }
 
+    const onSiteStatus = containerStatusAtLocation(location.type)
+
     if (!container) {
       const formatted = `${numberNormalized.slice(0, 4)} ${numberNormalized.slice(4, 10)}-${numberNormalized.slice(10)}`
       const [created] = await tx
@@ -427,6 +430,7 @@ export async function addContainerAtLocation(
           equipmentType: input.equipmentType,
           isLoaded: input.isLoaded,
           sealNumber,
+          containerStatus: onSiteStatus,
           activePoolState: 'AT_LOCATION',
           currentLocationId: location.id,
           activatedAt: now,
@@ -478,6 +482,7 @@ export async function addContainerAtLocation(
         activeMovementId: null,
         isLoaded: input.isLoaded,
         sealNumber,
+        containerStatus: onSiteStatus,
         deletedAt: null,
         currentChassisId: reservedChassis?.id ?? container.currentChassisId ?? null,
         activatedAt: container.activatedAt ?? now,

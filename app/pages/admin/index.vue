@@ -113,7 +113,7 @@ function placeLine(site: DispatchSite) {
 }
 
 function situationFor(box: Pick<DispatchBox, 'containerStatus' | 'activePoolState'>) {
-  return containerSituation(box)
+  return containerSituation({ ...box, locationType: selected.value?.type })
 }
 
 async function openInspect(box: DispatchBox) {
@@ -142,7 +142,7 @@ function closeInspect() {
 const inspectSituation = computed(() => {
   const c = inspected.value?.container
   if (!c) return null
-  return containerSituation(c)
+  return containerSituation({ ...c, locationType: inspected.value?.currentLocation?.type })
 })
 
 const inspectTimeline = computed(() => visibleTimelineEntries(inspected.value?.timeline ?? []).slice(0, 5))

@@ -11,7 +11,8 @@ import {
 import type { Database } from '../utils/db'
 import type { AuthContext } from '../utils/session'
 import { calendarDateInZone } from '#shared/utils/sms-task'
-import type { ContainerType, TripKind, TripStatus } from '#shared/utils/domain'
+import { effectiveContainerStatus } from '#shared/utils/service-life'
+import type { ContainerStatus, ContainerType, TripKind, TripStatus } from '#shared/utils/domain'
 import {
   cardFromTask,
   composeDispatchCardText,
@@ -168,7 +169,14 @@ export async function loadDispatchLocations(db: Database, companyId: string): Pr
     type: row.type,
     city: row.city,
     state: row.state,
-    containers: byLocation.get(row.id) ?? [],
+    containers: (byLocation.get(row.id) ?? []).map(box => ({
+      ...box,
+      containerStatus: effectiveContainerStatus({
+        containerStatus: box.containerStatus as ContainerStatus,
+        activePoolState: 'AT_LOCATION',
+        locationType: row.type,
+      }),
+    })),
   }))
 }
 

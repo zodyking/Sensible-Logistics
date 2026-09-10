@@ -5,8 +5,10 @@ import {
   SERVICE_RECORD_EVENT_TYPES,
   SERVICE_RECORD_LABELS,
   containerStatusAfterDropoff,
+  containerStatusAtLocation,
   describeDropoffEffect,
   dropoffCompletesServiceLife,
+  effectiveContainerStatus,
   isCustomerLoadingSite,
   isServiceRecordEvent,
   isServiceTerminus,
@@ -38,6 +40,24 @@ describe('service-life location rules', () => {
     expect(containerStatusAfterDropoff('COMPANY_YARD')).toBe('AT_YARD')
     expect(containerStatusAfterDropoff('MARINE_TERMINAL')).toBe('RETURNED')
     expect(containerStatusAfterDropoff('RAIL_TERMINAL')).toBe('RETURNED')
+    expect(containerStatusAtLocation('CUSTOMER')).toBe('LOADING')
+    expect(containerStatusAtLocation('COMPANY_YARD')).toBe('AT_YARD')
+    expect(containerStatusAtLocation('MARINE_TERMINAL')).toBe('AVAILABLE')
+    expect(effectiveContainerStatus({
+      containerStatus: 'AT_YARD',
+      activePoolState: 'AT_LOCATION',
+      locationType: 'CUSTOMER',
+    })).toBe('LOADING')
+    expect(effectiveContainerStatus({
+      containerStatus: 'AT_YARD',
+      activePoolState: 'AT_LOCATION',
+      locationType: 'COMPANY_YARD',
+    })).toBe('AT_YARD')
+    expect(effectiveContainerStatus({
+      containerStatus: 'IN_TRANSIT',
+      activePoolState: 'DRIVER_CUSTODY',
+      locationType: 'CUSTOMER',
+    })).toBe('IN_TRANSIT')
   })
 
   it('completes a service life only on a marine or rail drop-off', () => {

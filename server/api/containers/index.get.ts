@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { containers, drivers, locations, users } from '../../database/schema'
 import { requireAuth } from '../../utils/session'
 import { ACTIVE_POOL_STATES, CONTAINER_SITUATION_FILTERS, CONTAINER_STATUSES, CONTAINER_TYPES } from '#shared/utils/domain'
+import { effectiveContainerStatus } from '#shared/utils/service-life'
 import { normalizeContainerNumber } from '#shared/utils/iso6346'
 
 const querySchema = z.object({
@@ -33,13 +34,26 @@ export default defineEventHandler(async (event) => {
   if (query.state) filters.push(eq(containers.activePoolState, query.state))
   if (query.type) filters.push(eq(containers.containerType, query.type))
   if (query.loaded) filters.push(eq(containers.isLoaded, query.loaded === 'true'))
-  if (query.status) filters.push(eq(containers.containerStatus, query.status))
+  const onCustomerSite = and(
+    eq(containers.activePoolState, 'AT_LOCATION'),
+    eq(locations.type, 'CUSTOMER'),
+  )
+  const notCustomerSite = or(ne(locations.type, 'CUSTOMER'), isNull(locations.type))!
+
+  if (query.status === 'LOADING') {
+    filters.push(or(eq(containers.containerStatus, 'LOADING'), onCustomerSite)!)
+  }
+  else if (query.status) {
+    filters.push(eq(containers.containerStatus, query.status))
+    filters.push(notCustomerSite)
+  }
   if (query.situation === 'ON_SITE') {
     filters.push(eq(containers.activePoolState, 'AT_LOCATION'))
     filters.push(ne(containers.containerStatus, 'LOADING'))
+    filters.push(notCustomerSite)
   }
   else if (query.situation === 'LOADING') {
-    filters.push(eq(containers.containerStatus, 'LOADING'))
+    filters.push(or(eq(containers.containerStatus, 'LOADING'), onCustomerSite)!)
   }
   else if (query.situation === 'PICKUP_UNDERWAY') {
     filters.push(eq(containers.activePoolState, 'PICKUP_IN_PROGRESS'))
@@ -93,6 +107,7 @@ export default defineEventHandler(async (event) => {
       customsHold: containers.customsHold,
       locationId: locations.id,
       locationName: locations.name,
+      locationType: locations.type,
       driverName: sql<string | null>`nullif(concat_ws(' ', ${users.firstName}, ${users.lastName}), '')`,
     })
     .from(containers)
@@ -107,7 +122,20 @@ export default defineEventHandler(async (event) => {
   const [counts] = await db
     .select({ total: sql<number>`count(*)::int` })
     .from(containers)
+    .leftJoin(locations, eq(locations.id, containers.currentLocationId))
     .where(where)
 
-  return { items: rows, total: counts?.total ?? 0, limit: query.limit, offset: query.offset }
+  return {
+    items: rows.map(row => ({
+      ...row,
+      containerStatus: effectiveContainerStatus({
+        containerStatus: row.containerStatus,
+        activePoolState: row.activePoolState,
+        locationType: row.locationType,
+      }),
+    })),
+    total: counts?.total ?? 0,
+    limit: query.limit,
+    offset: query.offset,
+  }
 })

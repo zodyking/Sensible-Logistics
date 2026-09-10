@@ -82,6 +82,12 @@ function pickBox(box: DeskBox) {
   card.value.containerPending = false
 }
 
+function boxStatusLabel(box: DeskBox) {
+  const loc = props.locations.find(site => site.id === box.locationId)
+  if (loc?.type === 'CUSTOMER') return CONTAINER_STATUS_LABELS.LOADING
+  return CONTAINER_STATUS_LABELS[box.containerStatus as keyof typeof CONTAINER_STATUS_LABELS] || box.containerStatus
+}
+
 function setPending(on: boolean) {
   card.value.containerPending = on
   if (on) {
@@ -266,7 +272,7 @@ function brandLabel(type: string) {
               {{ equipmentLabel(box.equipmentType) }}
               · {{ brandLabel(box.containerType) }}
               · {{ box.isLoaded ? 'Loaded' : 'Empty' }}
-              · {{ CONTAINER_STATUS_LABELS[box.containerStatus as keyof typeof CONTAINER_STATUS_LABELS] || box.containerStatus }}
+              · {{ boxStatusLabel(box) }}
             </span>
           </button>
         </li>

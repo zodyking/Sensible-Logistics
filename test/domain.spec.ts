@@ -110,6 +110,24 @@ describe('domain vocabulary integrity', () => {
     expect(CONTAINER_SITUATION_FILTERS).not.toContain('AVAILABLE')
   })
 
+  it('treats on-site customer boxes as Loading even when stored status is stale', () => {
+    expect(containerSituation({
+      containerStatus: 'AT_YARD',
+      activePoolState: 'AT_LOCATION',
+      locationType: 'CUSTOMER',
+    })).toMatchObject({ key: 'LOADING', label: 'Loading' })
+    expect(containerSituation({
+      containerStatus: 'AVAILABLE',
+      activePoolState: 'AT_LOCATION',
+      locationType: 'CUSTOMER',
+    })).toMatchObject({ key: 'LOADING', label: 'Loading' })
+    expect(containerSituation({
+      containerStatus: 'AT_YARD',
+      activePoolState: 'AT_LOCATION',
+      locationType: 'COMPANY_YARD',
+    })).toMatchObject({ key: 'ON_SITE' })
+  })
+
   it('keeps CONTAINER_TYPES in lockstep with labels', () => {
     expectUnionKeysMatch(CONTAINER_TYPES, CONTAINER_TYPE_LABELS)
   })

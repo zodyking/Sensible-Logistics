@@ -3,6 +3,7 @@ import { chassis, containerEvents, containers, drivers, locations, users } from 
 import { requireAdmin } from '../../utils/session'
 import { listCompanyOpenTasks } from '../../services/tasks'
 import { countContainersByType, emptyTypeCounts } from '#shared/utils/domain'
+import { effectiveContainerStatus } from '#shared/utils/service-life'
 
 /** Map board payload: locations, on-site pool, drivers, and open tasks. */
 export default defineEventHandler(async (event) => {
@@ -98,7 +99,11 @@ export default defineEventHandler(async (event) => {
       containerType: item.containerType,
       equipmentType: item.equipmentType,
       isLoaded: item.isLoaded,
-      containerStatus: item.containerStatus,
+      containerStatus: effectiveContainerStatus({
+        containerStatus: item.containerStatus,
+        activePoolState: item.activePoolState,
+        locationType: row.type,
+      }),
       activePoolState: item.activePoolState,
       sealNumber: item.sealNumber,
       chassisNumber: item.chassisNumber,

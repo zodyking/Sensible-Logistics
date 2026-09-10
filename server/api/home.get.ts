@@ -5,6 +5,7 @@ import type { Trip } from '../database/schema'
 import { findActiveTrips } from '../services/movements'
 import { countHomeDayTally } from '#shared/utils/home-tally'
 import { calendarDateInZone } from '#shared/utils/sms-task'
+import { effectiveContainerStatus } from '#shared/utils/service-life'
 import { companyTimezone, listOpenTasksForHome } from '../services/tasks'
 import { requireDriver } from '../utils/session'
 
@@ -170,6 +171,7 @@ export default defineEventHandler(async (event) => {
       containerStatus: containers.containerStatus,
       lastActivityAt: containers.lastActivityAt,
       locationName: locations.name,
+      locationType: locations.type,
     })
     .from(containers)
     .leftJoin(locations, eq(locations.id, containers.currentLocationId))
@@ -210,7 +212,14 @@ export default defineEventHandler(async (event) => {
     active,
     swapPartner,
     recentCompleted,
-    recentContainers,
+    recentContainers: recentContainers.map(row => ({
+      ...row,
+      containerStatus: effectiveContainerStatus({
+        containerStatus: row.containerStatus,
+        activePoolState: row.activePoolState,
+        locationType: row.locationType,
+      }),
+    })),
     recentLocations,
     recentTrips,
     // TODO(Phase 2): replaced by the real Dexie outbox depth.

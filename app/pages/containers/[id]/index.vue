@@ -123,7 +123,7 @@ const flags = computed(() => {
 const situation = computed(() => {
   const c = data.value?.container
   if (!c) return null
-  return containerSituation(c)
+  return containerSituation({ ...c, locationType: data.value?.currentLocation?.type })
 })
 
 const serviceCaption = computed(() => {

@@ -138,6 +138,8 @@ export type ContainerSituationFilter = (typeof CONTAINER_SITUATION_FILTERS)[numb
 export interface ContainerSituationInput {
   containerStatus: ContainerStatus
   activePoolState: ActivePoolState
+  /** Customer sites always read as Loading while the box is on site. */
+  locationType?: string | null
 }
 
 export interface ContainerSituation {
@@ -147,7 +149,10 @@ export interface ContainerSituation {
 }
 
 export function containerSituation(input: ContainerSituationInput): ContainerSituation {
-  const { containerStatus, activePoolState } = input
+  const { activePoolState } = input
+  const containerStatus = activePoolState === 'AT_LOCATION' && input.locationType === 'CUSTOMER'
+    ? 'LOADING'
+    : input.containerStatus
 
   let key: ContainerSituationKey = 'ON_SITE'
   if (activePoolState === 'EXCEPTION') key = 'NEEDS_ATTENTION'
