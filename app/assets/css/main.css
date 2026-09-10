@@ -5288,10 +5288,6 @@
     -webkit-overflow-scrolling: touch;
   }
 
-  .a-main .account-settings {
-    max-width: 560px;
-  }
-
   .a-drawer {
     position: fixed;
     inset: 0;
