@@ -1,8 +1,8 @@
 import { eq } from 'drizzle-orm'
 import { z } from 'zod'
-import { drivers, users } from '../../../database/schema'
-import { loadCompanyDriver } from '../../../utils/admin-drivers'
-import { requireAdmin } from '../../../utils/session'
+import { drivers, users } from '../../../../database/schema'
+import { loadCompanyDriver } from '../../../../utils/admin-drivers'
+import { requireAdmin } from '../../../../utils/session'
 
 const schema = z.object({
   locked: z.boolean(),
