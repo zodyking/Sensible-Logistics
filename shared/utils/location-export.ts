@@ -95,7 +95,7 @@ function comboSection(containers: readonly LocationExportContainer[]): string | 
     blocks.push(numberedBlock(blocks.length + 1, lines))
   }
   if (!blocks.length) return null
-  return `${toSentenceCase(COMBO_TITLE)}\n${blocks.join('\n\n')}`
+  return `${toSentenceCase(COMBO_TITLE)}\n\n${blocks.join('\n\n')}`
 }
 
 function bareSection(
@@ -111,7 +111,7 @@ function bareSection(
     blocks.push(numberedBlock(blocks.length + 1, [`${toCapitalCase('chassis')}: ${number}`]))
   }
   if (!blocks.length) return null
-  return `${toSentenceCase(BARE_TITLE)}\n${blocks.join('\n')}`
+  return `${toSentenceCase(BARE_TITLE)}\n\n${blocks.join('\n')}`
 }
 
 /**

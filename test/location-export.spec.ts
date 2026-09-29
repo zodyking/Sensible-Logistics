@@ -52,6 +52,7 @@ describe('formatLocationExportList', () => {
       'NJ Yard',
       '',
       'Container & chassis combos',
+      '',
       '1. CT: BSIU818594',
       '   Chassis: TRAC 123456',
       '   Tropical',
@@ -69,6 +70,7 @@ describe('formatLocationExportList', () => {
       '   King Ocean',
       '',
       'Bare chassis',
+      '',
       '1. Chassis: DCLI 628451',
       '2. Chassis: TRAC 905734',
       '3. Chassis: FLEXI 218659',
@@ -86,6 +88,7 @@ describe('formatLocationExportList', () => {
       'Jersey Yard',
       '',
       'Container & chassis combos',
+      '',
       '1. CT: MSCU4521894',
       '   Tropical',
     ].join('\n'))
@@ -100,6 +103,7 @@ describe('formatLocationExportList', () => {
       'Jersey Yard',
       '',
       'Bare chassis',
+      '',
       '1. Chassis: TRAC 905734',
     ].join('\n'))
   })
@@ -118,11 +122,13 @@ describe('formatLocationExportList', () => {
       'Jersey Yard',
       '',
       'Container & chassis combos',
+      '',
       '1. CT: BSIU818594',
       '   Chassis: TRAC 123456',
       '   Tropical',
       '',
       'Bare chassis',
+      '',
       '1. Chassis: DCLI 628451',
     ].join('\n'))
   })
