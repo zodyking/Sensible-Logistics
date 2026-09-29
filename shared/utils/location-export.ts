@@ -1,4 +1,10 @@
-import { CONTAINER_TYPE_LABELS, type ContainerType } from './domain'
+import {
+  CONTAINER_TYPE_LABELS,
+  EQUIPMENT_TYPES,
+  pickupEquipmentSizeLabel,
+  type ContainerType,
+  type EquipmentType,
+} from './domain'
 import { maskChassisInput, maskContainerInput } from './iso6346'
 
 /** Capital-cased steamship names for the pasted list. CMA matches the line as CMA CGM. */
@@ -12,6 +18,7 @@ const EXPORT_TYPE_LABELS: Record<ContainerType, string> = {
 export type LocationExportContainer = {
   number: string
   containerType?: ContainerType | string | null
+  equipmentType?: EquipmentType | string | null
   chassisNumber?: string | null
 }
 
@@ -19,8 +26,8 @@ export type LocationExportChassis = {
   number: string
 }
 
-const COMBO_TITLE = 'Container & chassis combos'
-const BARE_TITLE = 'Bare chassis'
+const CONTAINER_TITLE = 'Containers'
+const BARE_TITLE = 'Bare Chassis'
 
 /** First letter up, remainder lower — for section titles. */
 export function toSentenceCase(value: string): string {
@@ -63,11 +70,26 @@ function chassisKey(input: string | null | undefined): string {
   return maskChassisInput(input ?? '') || (input ?? '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
 }
 
-function typeEntry(type: string | null | undefined): string | null {
+function typeName(type: string | null | undefined): string | null {
   if (!type) return null
   if (type in EXPORT_TYPE_LABELS) return EXPORT_TYPE_LABELS[type as ContainerType]
   if (type in CONTAINER_TYPE_LABELS) return CONTAINER_TYPE_LABELS[type as ContainerType]
   return toCapitalCase(type.replace(/_/g, ' '))
+}
+
+function sizeLabel(type: string | null | undefined): string | null {
+  if (!type) return null
+  if ((EQUIPMENT_TYPES as readonly string[]).includes(type)) {
+    return pickupEquipmentSizeLabel(type as EquipmentType)
+  }
+  return null
+}
+
+function typeEntry(item: LocationExportContainer): string | null {
+  const type = typeName(item.containerType ?? null)
+  if (!type) return null
+  const size = sizeLabel(item.equipmentType ?? null)
+  return size ? `${size} ${type}` : type
 }
 
 function numberedBlock(index: number, lines: string[]): string {
@@ -82,7 +104,7 @@ function comboLines(item: LocationExportContainer): string[] | null {
   const lines = [`CT: ${number}`]
   const chassis = item.chassisNumber?.trim() ? formatExportChassis(item.chassisNumber) : ''
   if (chassis) lines.push(`${toCapitalCase('chassis')}: ${chassis}`)
-  const type = typeEntry(item.containerType ?? null)
+  const type = typeEntry(item)
   if (type) lines.push(type)
   return lines
 }
@@ -95,7 +117,7 @@ function comboSection(containers: readonly LocationExportContainer[]): string | 
     blocks.push(numberedBlock(blocks.length + 1, lines))
   }
   if (!blocks.length) return null
-  return `${toSentenceCase(COMBO_TITLE)}\n\n${blocks.join('\n\n')}`
+  return `${CONTAINER_TITLE}\n\n${blocks.join('\n\n')}`
 }
 
 function bareSection(
@@ -111,12 +133,12 @@ function bareSection(
     blocks.push(numberedBlock(blocks.length + 1, [`${toCapitalCase('chassis')}: ${number}`]))
   }
   if (!blocks.length) return null
-  return `${toSentenceCase(BARE_TITLE)}\n\n${blocks.join('\n')}`
+  return `${BARE_TITLE}\n\n${blocks.join('\n')}`
 }
 
 /**
- * Clipboard text for a location: combos first, then bare chassis.
- * Empty sections are omitted. Combo units are separated by a blank line.
+ * Share text for a location: containers first, then bare chassis.
+ * Empty sections are omitted. Container units are separated by a blank line.
  */
 export function formatLocationExportList(input: {
   locationName: string

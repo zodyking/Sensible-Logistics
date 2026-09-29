@@ -34,14 +34,14 @@ describe('formatExportChassis', () => {
 })
 
 describe('formatLocationExportList', () => {
-  it('matches the yard export layout with combos then bare chassis', () => {
+  it('matches the yard export layout with containers then bare chassis', () => {
     expect(formatLocationExportList({
       locationName: 'NJ Yard',
       containers: [
-        { number: 'BSIU818594', containerType: 'TROPICAL', chassisNumber: 'TRAC 123456' },
-        { number: 'ZCSU842461', containerType: 'ZIM', chassisNumber: 'DCLI 784521' },
-        { number: 'CMAU718500', containerType: 'CMA', chassisNumber: 'FLEXI 459872' },
-        { number: 'KOSU826227', containerType: 'KING_OCEAN', chassisNumber: 'TRAC 337194' },
+        { number: 'BSIU818594', containerType: 'TROPICAL', equipmentType: 'DRY_20', chassisNumber: 'TRAC 123456' },
+        { number: 'ZCSU842461', containerType: 'ZIM', equipmentType: 'DRY_40', chassisNumber: 'DCLI 784521' },
+        { number: 'CMAU718500', containerType: 'CMA', equipmentType: 'HC_40', chassisNumber: 'FLEXI 459872' },
+        { number: 'KOSU826227', containerType: 'KING_OCEAN', equipmentType: 'DRY_40', chassisNumber: 'TRAC 337194' },
       ],
       chassis: [
         { number: 'DCLI 628451' },
@@ -51,25 +51,25 @@ describe('formatLocationExportList', () => {
     })).toBe([
       'NJ Yard',
       '',
-      'Container & chassis combos',
+      'Containers',
       '',
       '1. CT: BSIU818594',
       '   Chassis: TRAC 123456',
-      '   Tropical',
+      '   20ft Tropical',
       '',
       '2. CT: ZCSU842461',
       '   Chassis: DCLI 784521',
-      '   ZIM',
+      '   40ft ZIM',
       '',
       '3. CT: CMAU718500',
       '   Chassis: FLEXI 459872',
-      '   CMA CGM',
+      '   40ft CMA CGM',
       '',
       '4. CT: KOSU826227',
       '   Chassis: TRAC 337194',
-      '   King Ocean',
+      '   40ft King Ocean',
       '',
-      'Bare chassis',
+      'Bare Chassis',
       '',
       '1. Chassis: DCLI 628451',
       '2. Chassis: TRAC 905734',
@@ -81,20 +81,20 @@ describe('formatLocationExportList', () => {
     expect(formatLocationExportList({
       locationName: 'Jersey Yard',
       containers: [
-        { number: 'MSCU4521894', containerType: 'TROPICAL' },
+        { number: 'MSCU4521894', containerType: 'TROPICAL', equipmentType: 'DRY_20' },
       ],
       chassis: [],
     })).toBe([
       'Jersey Yard',
       '',
-      'Container & chassis combos',
+      'Containers',
       '',
       '1. CT: MSCU4521894',
-      '   Tropical',
+      '   20ft Tropical',
     ].join('\n'))
   })
 
-  it('omits the combo section when only bare chassis are on site', () => {
+  it('omits the containers section when only bare chassis are on site', () => {
     expect(formatLocationExportList({
       locationName: 'Jersey Yard',
       containers: [],
@@ -102,7 +102,7 @@ describe('formatLocationExportList', () => {
     })).toBe([
       'Jersey Yard',
       '',
-      'Bare chassis',
+      'Bare Chassis',
       '',
       '1. Chassis: TRAC 905734',
     ].join('\n'))
@@ -112,7 +112,7 @@ describe('formatLocationExportList', () => {
     expect(formatLocationExportList({
       locationName: 'Jersey Yard',
       containers: [
-        { number: 'BSIU818594', containerType: 'TROPICAL', chassisNumber: 'TRAC123456' },
+        { number: 'BSIU818594', containerType: 'TROPICAL', equipmentType: 'DRY_20', chassisNumber: 'TRAC123456' },
       ],
       chassis: [
         { number: 'TRAC 123456' },
@@ -121,13 +121,13 @@ describe('formatLocationExportList', () => {
     })).toBe([
       'Jersey Yard',
       '',
-      'Container & chassis combos',
+      'Containers',
       '',
       '1. CT: BSIU818594',
       '   Chassis: TRAC 123456',
-      '   Tropical',
+      '   20ft Tropical',
       '',
-      'Bare chassis',
+      'Bare Chassis',
       '',
       '1. Chassis: DCLI 628451',
     ].join('\n'))
