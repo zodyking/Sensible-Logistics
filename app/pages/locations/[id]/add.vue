@@ -5,6 +5,7 @@ import {
   PICKUP_EQUIPMENT_SIZES,
   PICKUP_EQUIPMENT_SIZE_LABELS,
   TRIP_KIND_LABELS,
+  pickupEquipmentSize,
   pickupEquipmentSizeLabel,
 } from '#shared/utils/domain'
 import type { ContainerType, EquipmentType, TripKind } from '#shared/utils/domain'
@@ -156,7 +157,7 @@ watch(normalized, async (value) => {
     resolution.value = await resolveNumber(value)
     const found = resolution.value.container
     if (found?.containerType) containerType.value = found.containerType
-    if (found?.equipmentType) equipmentType.value = found.equipmentType
+    if (found?.equipmentType) equipmentType.value = pickupEquipmentSize(found.equipmentType)
     if (found?.sealNumber && !sealNumber.value) sealNumber.value = found.sealNumber
   }
   catch (error) {

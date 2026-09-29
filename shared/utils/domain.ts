@@ -202,7 +202,10 @@ export function countContainersByType(items: Array<{ containerType: ContainerTyp
   return counts
 }
 
-/** Physical equipment size/type — distinct from the business classification. */
+/**
+ * Stored equipment enum. Drivers only pick length (20ft / 40ft); older rows
+ * may still use HC_40, reefer, flat rack, and other body-type values.
+ */
 export const EQUIPMENT_TYPES = [
   'DRY_20',
   'DRY_40',
@@ -216,41 +219,13 @@ export const EQUIPMENT_TYPES = [
 ] as const
 export type EquipmentType = (typeof EQUIPMENT_TYPES)[number]
 
-/**
- * Lengths a driver can pick when classifying a new container.
- * Stored as DRY_20 / DRY_40; older records may still use HC_40, reefer, etc.
- */
+/** Lengths a driver can pick. Stored as DRY_20 / DRY_40. */
 export const PICKUP_EQUIPMENT_SIZES = ['DRY_20', 'DRY_40'] as const
 export type PickupEquipmentSize = (typeof PICKUP_EQUIPMENT_SIZES)[number]
 
 export const PICKUP_EQUIPMENT_SIZE_LABELS: Record<PickupEquipmentSize, string> = {
   DRY_20: '20ft',
   DRY_40: '40ft',
-}
-
-export const EQUIPMENT_TYPE_LABELS: Record<EquipmentType, string> = {
-  DRY_20: `20' Dry`,
-  DRY_40: `40' Dry`,
-  HC_40: `40' High Cube`,
-  HC_45: `45' High Cube`,
-  REEFER: 'Reefer',
-  TANK: 'Tank',
-  OPEN_TOP: 'Open Top',
-  FLAT_RACK: 'Flat Rack',
-  OTHER: 'Other',
-}
-
-/** Compact length labels used on the active-trip card (`40' HC`). */
-export const EQUIPMENT_TYPE_SHORT: Record<EquipmentType, string> = {
-  DRY_20: `20' Dry`,
-  DRY_40: `40' Dry`,
-  HC_40: `40' HC`,
-  HC_45: `45' HC`,
-  REEFER: 'Reefer',
-  TANK: 'Tank',
-  OPEN_TOP: 'OT',
-  FLAT_RACK: 'FR',
-  OTHER: 'Other',
 }
 
 /** Nominal length in feet — drives proportional sizing on the map. */
@@ -266,13 +241,33 @@ export const EQUIPMENT_LENGTH_FT: Record<EquipmentType, number> = {
   OTHER: 40,
 }
 
-const FT_TO_M = 0.3048
-const CONTAINER_WIDTH_FT = 8
+/** Collapse any stored enum onto 20ft or 40ft. Body type is ignored. */
+export function pickupEquipmentSize(type: EquipmentType): PickupEquipmentSize {
+  return EQUIPMENT_LENGTH_FT[type] <= 20 ? 'DRY_20' : 'DRY_40'
+}
 
 export function pickupEquipmentSizeLabel(type: EquipmentType): string {
-  if (type === 'DRY_20' || type === 'DRY_40') return PICKUP_EQUIPMENT_SIZE_LABELS[type]
-  return EQUIPMENT_LENGTH_FT[type] <= 20 ? '20ft' : '40ft'
+  return PICKUP_EQUIPMENT_SIZE_LABELS[pickupEquipmentSize(type)]
 }
+
+/** Length only — never dry van, reefer, flatbed, or other body types. */
+export const EQUIPMENT_TYPE_LABELS: Record<EquipmentType, string> = {
+  DRY_20: '20ft',
+  DRY_40: '40ft',
+  HC_40: '40ft',
+  HC_45: '40ft',
+  REEFER: '40ft',
+  TANK: '20ft',
+  OPEN_TOP: '40ft',
+  FLAT_RACK: '40ft',
+  OTHER: '40ft',
+}
+
+/** Same length labels used on cards, lists, and the yard map. */
+export const EQUIPMENT_TYPE_SHORT: Record<EquipmentType, string> = { ...EQUIPMENT_TYPE_LABELS }
+
+const FT_TO_M = 0.3048
+const CONTAINER_WIDTH_FT = 8
 
 /** ISO footprint in metres for drawing a box on OpenStreetMap. */
 export function equipmentFootprintMeters(type: EquipmentType): { length: number, width: number } {

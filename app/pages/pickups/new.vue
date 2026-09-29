@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ACTIVE_POOL_LABELS, CONTAINER_TYPES, CONTAINER_TYPE_LABELS, EQUIPMENT_TYPE_SHORT, PICKUP_EQUIPMENT_SIZES, PICKUP_EQUIPMENT_SIZE_LABELS, TRIP_KIND_LABELS } from '#shared/utils/domain'
+import { ACTIVE_POOL_LABELS, CONTAINER_TYPES, CONTAINER_TYPE_LABELS, EQUIPMENT_TYPE_SHORT, PICKUP_EQUIPMENT_SIZES, PICKUP_EQUIPMENT_SIZE_LABELS, TRIP_KIND_LABELS, pickupEquipmentSize } from '#shared/utils/domain'
 import type { ContainerType, EquipmentType, TripKind } from '#shared/utils/domain'
 import { PICKUP_STEPS, pickupSteps } from '#shared/utils/pickup-steps'
 import type { PickupStep } from '#shared/utils/pickup-steps'
@@ -245,7 +245,7 @@ async function checkPool() {
     resolution.value = await resolveNumber(normalized.value)
     const found = resolution.value.container
     if (found?.containerType) containerType.value = found.containerType
-    if (found?.equipmentType) equipmentType.value = found.equipmentType
+    if (found?.equipmentType) equipmentType.value = pickupEquipmentSize(found.equipmentType)
     if (resolution.value.outcome === 'CONFLICT' && resolution.value.holder && found?.id) {
       if (promptedDriverHold.value !== found.id) {
         promptedDriverHold.value = found.id
@@ -335,7 +335,7 @@ async function hydrateFromTrip(id: string) {
     pickupKind.value = data.trip.kind === 'BARE_CHASSIS' ? 'BARE_CHASSIS' : 'CONTAINER'
     rawNumber.value = maskContainerInput(data.container?.numberNormalized ?? data.container?.number ?? '')
     if (data.container?.containerType) containerType.value = data.container.containerType
-    if (data.container?.equipmentType) equipmentType.value = data.container.equipmentType
+    if (data.container?.equipmentType) equipmentType.value = pickupEquipmentSize(data.container.equipmentType)
     chassisId.value = data.trip.chassisId
     chassisNumber.value = maskChassisInput(data.chassis?.number ?? '')
     isLoaded.value = Boolean(data.trip.swapPairTripId) || Boolean(data.trip.isLoaded)
@@ -439,7 +439,7 @@ async function selectYardContainer(item: YardContainer) {
   selectedYardId.value = item.id
   rawNumber.value = maskContainerInput(item.numberNormalized || item.number)
   containerType.value = item.containerType
-  equipmentType.value = item.equipmentType
+  equipmentType.value = item.equipmentType ? pickupEquipmentSize(item.equipmentType) : null
   isLoaded.value = swapMode.value ? true : item.isLoaded
   sealNumber.value = item.sealNumber ?? ''
   chassisId.value = item.currentChassisId ?? null

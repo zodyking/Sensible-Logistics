@@ -2,9 +2,9 @@
 import {
   CONTAINER_TYPES,
   CONTAINER_TYPE_LABELS,
-  EQUIPMENT_TYPE_LABELS,
   PICKUP_EQUIPMENT_SIZE_LABELS,
   PICKUP_EQUIPMENT_SIZES,
+  pickupEquipmentSize,
 } from '#shared/utils/domain'
 import type { ContainerType, EquipmentType } from '#shared/utils/domain'
 import {
@@ -51,7 +51,7 @@ onMounted(async () => {
     }>(`/api/containers/${id.value}`)
     form.number = maskContainerInput(data.container.number)
     form.containerType = data.container.containerType
-    form.equipmentType = data.container.equipmentType
+    form.equipmentType = pickupEquipmentSize(data.container.equipmentType)
     form.chassisNumber = data.currentChassis?.number ? maskChassisInput(data.currentChassis.number) : ''
     form.isLoaded = Boolean(data.container.isLoaded)
     form.sealNumber = data.container.sealNumber ?? ''
@@ -67,23 +67,11 @@ onMounted(async () => {
 
 const numberValidation = computed(() => validateContainerNumber(form.number))
 const chassisOk = computed(() => !form.chassisNumber || isCompleteChassisNumber(form.chassisNumber))
-const sizeOptions = computed(() => {
-  const current = form.equipmentType
-  if ((PICKUP_EQUIPMENT_SIZES as readonly string[]).includes(current)) return [...PICKUP_EQUIPMENT_SIZES]
-  return [current, ...PICKUP_EQUIPMENT_SIZES]
-})
 const canSave = computed(() => {
   if (!numberValidation.value.structureValid || !chassisOk.value) return false
   if (form.isLoaded && !form.sealNumber.trim()) return false
   return true
 })
-
-function sizeLabel(type: EquipmentType) {
-  if ((PICKUP_EQUIPMENT_SIZES as readonly string[]).includes(type)) {
-    return PICKUP_EQUIPMENT_SIZE_LABELS[type as (typeof PICKUP_EQUIPMENT_SIZES)[number]]
-  }
-  return EQUIPMENT_TYPE_LABELS[type]
-}
 
 async function save() {
   if (submitting.value || !canSave.value) return
@@ -181,14 +169,14 @@ async function save() {
         <span class="field-label">Size</span>
         <div class="choice-grid cols-2 mb-4">
           <button
-            v-for="type in sizeOptions"
+            v-for="type in PICKUP_EQUIPMENT_SIZES"
             :key="type"
             type="button"
             class="choice-card"
             :aria-pressed="form.equipmentType === type"
             @click="form.equipmentType = type"
           >
-            {{ sizeLabel(type) }}
+            {{ PICKUP_EQUIPMENT_SIZE_LABELS[type] }}
           </button>
         </div>
 

@@ -17,7 +17,7 @@ import {
   normalizeChassisNumber,
   validateContainerNumber,
 } from '#shared/utils/iso6346'
-import { CONTAINER_TYPES, type ContainerType, type EquipmentType } from '#shared/utils/domain'
+import { CONTAINER_TYPES, pickupEquipmentSize, type ContainerType, type EquipmentType } from '#shared/utils/domain'
 import { containerStatusAtLocation } from '#shared/utils/service-life'
 import { LOADED_SEAL_REQUIRED, missingLoadedSeal, sealForLoad } from '#shared/utils/seal'
 import {
@@ -358,6 +358,7 @@ export async function addContainerAtLocation(
     })
   }
   const numberNormalized = validation.normalized
+  const equipmentType = pickupEquipmentSize(input.equipmentType)
 
   return db.transaction(async (tx) => {
     if (await eventExists(tx, auth.companyId, input.eventId)) {
@@ -387,7 +388,7 @@ export async function addContainerAtLocation(
         latitude: asNumber(row.latitude),
         longitude: asNumber(row.longitude),
       })),
-      input.equipmentType,
+      equipmentType,
       input.placement,
     )
     const now = new Date()
@@ -427,7 +428,7 @@ export async function addContainerAtLocation(
           numberNormalized,
           checkDigitValid: validation.checkDigitValid,
           containerType: input.containerType,
-          equipmentType: input.equipmentType,
+          equipmentType,
           isLoaded: input.isLoaded,
           sealNumber,
           containerStatus: onSiteStatus,

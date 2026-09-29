@@ -4,7 +4,7 @@ import { chassis, containers, trips } from '../../database/schema'
 import { recordEvent } from '../../services/events'
 import { LIVE_TRIP_STATUSES } from '../../services/movements'
 import { assertTenant, requireAuth } from '../../utils/session'
-import { CONTAINER_TYPES, EQUIPMENT_TYPES } from '#shared/utils/domain'
+import { CONTAINER_TYPES, EQUIPMENT_TYPES, pickupEquipmentSize } from '#shared/utils/domain'
 import {
   formatContainerNumber,
   isCompleteChassisNumber,
@@ -34,6 +34,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const body = await readValidatedJson(event, schema)
+  const equipmentType = body.equipmentType ? pickupEquipmentSize(body.equipmentType) : undefined
   const db = useDb()
   const [container] = await db.select().from(containers).where(eq(containers.id, id)).limit(1)
   assertTenant(auth, container, 'Container')
@@ -158,7 +159,7 @@ export default defineEventHandler(async (event) => {
         payload: {
           number,
           containerType: body.containerType ?? container!.containerType,
-          equipmentType: body.equipmentType ?? container!.equipmentType,
+          equipmentType: equipmentType ?? container!.equipmentType,
           isLoaded,
           sealNumber,
           chassisId: nextChassisId,
@@ -179,7 +180,7 @@ export default defineEventHandler(async (event) => {
         numberNormalized,
         checkDigitValid,
         containerType: body.containerType ?? container!.containerType,
-        equipmentType: body.equipmentType ?? container!.equipmentType,
+        equipmentType: equipmentType ?? container!.equipmentType,
         updatedAt: now,
       })
       .where(eq(containers.id, id))

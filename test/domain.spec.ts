@@ -27,6 +27,7 @@ import {
   EQUIPMENT_TYPES,
   PICKUP_EQUIPMENT_SIZE_LABELS,
   PICKUP_EQUIPMENT_SIZES,
+  pickupEquipmentSize,
   pickupEquipmentSizeLabel,
   EVENT_GLYPH,
   EVENT_TYPE_LABELS,
@@ -142,10 +143,22 @@ describe('domain vocabulary integrity', () => {
     for (const size of PICKUP_EQUIPMENT_SIZES) {
       expect(EQUIPMENT_TYPES).toContain(size)
     }
+    expect(pickupEquipmentSize('DRY_20')).toBe('DRY_20')
+    expect(pickupEquipmentSize('TANK')).toBe('DRY_20')
+    expect(pickupEquipmentSize('HC_40')).toBe('DRY_40')
+    expect(pickupEquipmentSize('REEFER')).toBe('DRY_40')
+    expect(pickupEquipmentSize('FLAT_RACK')).toBe('DRY_40')
     expect(pickupEquipmentSizeLabel('DRY_20')).toBe('20ft')
     expect(pickupEquipmentSizeLabel('DRY_40')).toBe('40ft')
     expect(pickupEquipmentSizeLabel('HC_40')).toBe('40ft')
     expect(pickupEquipmentSizeLabel('TANK')).toBe('20ft')
+  })
+
+  it('never surfaces a body type in equipment labels', () => {
+    for (const type of EQUIPMENT_TYPES) {
+      expect(EQUIPMENT_TYPE_LABELS[type]).toMatch(/^(20ft|40ft)$/)
+      expect(EQUIPMENT_TYPE_SHORT[type]).toBe(EQUIPMENT_TYPE_LABELS[type])
+    }
   })
 
   it('keeps TRIP_KINDS in lockstep with labels', () => {

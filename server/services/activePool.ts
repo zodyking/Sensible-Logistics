@@ -3,7 +3,7 @@ import type { DbExecutor } from '../utils/db'
 import { containers, drivers, locations, trips, users } from '../database/schema'
 import type { Container } from '../database/schema'
 import { normalizeContainerNumber, validateContainerNumber } from '#shared/utils/iso6346'
-import { resolutionReportsDriverHold } from '#shared/utils/driver-hold'
+import { pickupEquipmentSize } from '#shared/utils/domain'
 
 /**
  * Active container pool resolution (spec 5.3).
@@ -270,7 +270,7 @@ export async function claimContainerForPickup(tx: DbExecutor, input: ClaimInput)
       numberNormalized,
       checkDigitValid: validation.checkDigitValid,
       containerType: input.containerType,
-      equipmentType: input.equipmentType ?? 'DRY_40',
+      equipmentType: pickupEquipmentSize(input.equipmentType ?? 'DRY_40'),
       activePoolState: 'PICKUP_IN_PROGRESS',
       currentDriverId: input.driverId,
       activatedAt: now,

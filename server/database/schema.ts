@@ -540,8 +540,9 @@ export const containers = pgTable('containers', {
   numberNormalized: text('number_normalized').notNull(),
   checkDigitValid: boolean('check_digit_valid').notNull().default(false),
 
-  /** Business classification — distinct from equipment size/type (spec 5.1). */
+  /** Business classification — distinct from equipment length (spec 5.1). */
   containerType: containerTypeEnum('container_type').notNull(),
+  /** Length only (20ft / 40ft). Older body-type enums may still exist. */
   equipmentType: equipmentTypeEnum('equipment_type').notNull().default('DRY_40'),
   isLoaded: boolean('is_loaded').notNull().default(false),
   /**

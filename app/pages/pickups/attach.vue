@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ACTIVE_POOL_LABELS, CONTAINER_TYPES, CONTAINER_TYPE_LABELS, PICKUP_EQUIPMENT_SIZES, PICKUP_EQUIPMENT_SIZE_LABELS } from '#shared/utils/domain'
+import { ACTIVE_POOL_LABELS, CONTAINER_TYPES, CONTAINER_TYPE_LABELS, PICKUP_EQUIPMENT_SIZES, PICKUP_EQUIPMENT_SIZE_LABELS, pickupEquipmentSize } from '#shared/utils/domain'
 import type { ContainerType, EquipmentType } from '#shared/utils/domain'
 import {
   formatChassisNumber,
@@ -119,7 +119,7 @@ async function checkPool() {
     resolution.value = await resolveNumber(normalized.value)
     const found = resolution.value.container
     if (found?.containerType) containerType.value = found.containerType
-    if (found?.equipmentType) equipmentType.value = found.equipmentType
+    if (found?.equipmentType) equipmentType.value = pickupEquipmentSize(found.equipmentType)
     if (resolution.value.outcome === 'CONFLICT' && resolution.value.holder && found?.id) {
       if (promptedDriverHold.value !== found.id) {
         promptedDriverHold.value = found.id
