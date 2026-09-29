@@ -5,7 +5,6 @@ import { formatLocationExportList } from '#shared/utils/location-export'
 import { formatPhoneDisplay, toE164 } from '#shared/utils/phone'
 import { SHIPCSX_CHECK_TIMEOUT_MS } from '#shared/utils/csx-lookup'
 import { shipcsxPublicError } from '#shared/utils/shipcsx-status'
-import { copyTextToClipboard } from '~/utils/share-trip-sms'
 
 const { user } = useUserSession()
 setPageLayout(user.value?.role === 'ADMIN' ? 'admin' : 'default')
@@ -59,16 +58,10 @@ async function cancelRelease(releaseId: string) {
 useHead({ title: () => data.value?.location.name ?? 'Location' })
 
 const menuOpen = ref(false)
+const exportOpen = ref(false)
 const confirmOpen = ref(false)
 const deleting = ref(false)
 const actionError = ref('')
-const copyError = ref('')
-const copyMessage = ref('')
-let copyTimer: ReturnType<typeof setTimeout> | undefined
-
-onBeforeUnmount(() => {
-  if (copyTimer) clearTimeout(copyTimer)
-})
 
 const subtitle = computed(() => {
   const loc = data.value?.location
@@ -84,25 +77,15 @@ function openEdit() {
   navigateTo(`/locations/${locationId.value}/edit`)
 }
 
-async function exportList() {
+const exportText = computed(() => formatLocationExportList({
+  locationName: data.value?.location.name ?? '',
+  containers: data.value?.containers ?? [],
+  chassis: data.value?.chassis ?? [],
+}))
+
+function openExport() {
   menuOpen.value = false
-  copyError.value = ''
-  copyMessage.value = ''
-  const text = formatLocationExportList({
-    locationName: data.value?.location.name ?? '',
-    containers: data.value?.containers ?? [],
-    chassis: data.value?.chassis ?? [],
-  })
-  const ok = await copyTextToClipboard(text)
-  if (!ok) {
-    copyError.value = 'Could not copy the list.'
-    return
-  }
-  copyMessage.value = 'Copied to the clipboard.'
-  if (copyTimer) clearTimeout(copyTimer)
-  copyTimer = setTimeout(() => {
-    if (copyMessage.value === 'Copied to the clipboard.') copyMessage.value = ''
-  }, 2500)
+  exportOpen.value = true
 }
 
 function requestDelete() {
@@ -180,22 +163,6 @@ async function confirmDelete() {
           :size="20"
         />
         <span>{{ subtitle }}</span>
-      </p>
-      <p
-        v-if="copyError"
-        class="banner err"
-        role="alert"
-      >
-        <span aria-hidden="true">✕</span>
-        <span>{{ copyError }}</span>
-      </p>
-      <p
-        v-else-if="copyMessage"
-        class="banner ok"
-        role="status"
-      >
-        <span aria-hidden="true">✓</span>
-        <span>{{ copyMessage }}</span>
       </p>
       <div
         v-if="data.location.mainPhone || data.location.contactPhone"
@@ -398,7 +365,7 @@ async function confirmDelete() {
         <button
           type="button"
           class="menu-row"
-          @click="exportList"
+          @click="openExport"
         >
           Export list
         </button>
@@ -475,6 +442,12 @@ async function confirmDelete() {
           </button>
         </div>
       </BottomSheet>
+
+      <LocationExportSheet
+        :open="exportOpen"
+        :text="exportText"
+        @close="exportOpen = false"
+      />
     </template>
   </section>
 </template>
