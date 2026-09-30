@@ -66,7 +66,10 @@ const confirmOpen = ref(false)
 const deleting = ref(false)
 const actionError = ref('')
 const editTo = computed(() => `/containers/${route.params.id}/edit`)
-const moveTo = computed(() => `/containers/${route.params.id}/move`)
+const moveTo = computed(() => {
+  const path = `/containers/${route.params.id}/move`
+  return `${path}?returnTo=${encodeURIComponent(backTo.value)}`
+})
 const canMove = computed(() => {
   const c = data.value?.container
   if (!c || c.doNotMove) return false

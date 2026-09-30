@@ -370,6 +370,13 @@ async function confirmDelete() {
           Export list
         </button>
         <button
+          type="button"
+          class="menu-row"
+          @click="menuOpen = false; navigateTo(`/locations/${locationId}/audit`)"
+        >
+          Audit
+        </button>
+        <button
           v-if="!data.location.isUncategorized"
           type="button"
           class="menu-row"

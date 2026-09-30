@@ -26,6 +26,7 @@ export async function listOnSiteContainers(
       isLoaded: containers.isLoaded,
       containerStatus: containers.containerStatus,
       sealNumber: containers.sealNumber,
+      doNotMove: containers.doNotMove,
       currentChassisId: containers.currentChassisId,
       chassisNumber: chassis.number,
       x: containerPlacements.x,
@@ -68,8 +69,13 @@ export async function listOnSiteContainers(
   )
 
   const occupancy = await occupancyByContainerIds(db, companyId, mapped.map(item => item.id))
+  const flags = new Map(items.map(item => [item.id, Boolean(item.doNotMove)]))
   return mapped
-    .map(item => ({ ...item, occupancy: occupancy.get(item.id) ?? null }))
+    .map(item => ({
+      ...item,
+      occupancy: occupancy.get(item.id) ?? null,
+      doNotMove: flags.get(item.id) ?? false,
+    }))
     .sort((a, b) => {
       const aDays = a.occupancy?.daysOld
       const bDays = b.occupancy?.daysOld

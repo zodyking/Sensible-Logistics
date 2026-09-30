@@ -26,6 +26,12 @@ const { data: locationList } = await useFetch('/api/locations', {
 })
 
 const originId = computed(() => data.value?.currentLocation?.id ?? null)
+const returnTo = computed(() => {
+  const raw = route.query.returnTo
+  if (typeof raw === 'string' && raw.startsWith('/') && !raw.startsWith('//')) return raw
+  if (originId.value) return `/locations/${originId.value}`
+  return `/containers/${id.value}`
+})
 const destinations = computed(() =>
   (locationList.value?.items ?? []).filter(item => item.id !== originId.value),
 )
@@ -47,7 +53,7 @@ async function save() {
         destinationLocationId: selectedId.value,
       },
     })
-    await navigateTo(`/locations/${selectedId.value}`)
+    await navigateTo(returnTo.value)
   }
   catch (err) {
     errorMessage.value = apiErrorMessage(err, 'Could not move this container.')
