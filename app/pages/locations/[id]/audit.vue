@@ -554,7 +554,7 @@ async function onCardPhoto(cardId: string, dataUrl: string) {
           :disabled="cards.length >= LOCATION_AUDIT_MAX"
           @click="pickingKind = true"
         >
-          New equipment
+          + New equipment
         </button>
         <p class="wiz-hint">
           Up to {{ LOCATION_AUDIT_MAX }}.
