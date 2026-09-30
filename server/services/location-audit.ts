@@ -177,9 +177,7 @@ export async function runLocationAudit(
 
   if (input.action === 'add') {
     const items = (input.items ?? []).slice(0, LOCATION_AUDIT_MAX)
-    const holdBoxes = [...new Set(input.uncategorizedContainerIds ?? [])]
-    const holdChassis = [...new Set(input.uncategorizedChassisIds ?? [])]
-    if (!items.length && !holdBoxes.length && !holdChassis.length) {
+    if (!items.length) {
       throw createError({ statusCode: 422, statusMessage: 'Add at least one container or chassis.' })
     }
 
@@ -196,6 +194,56 @@ export async function runLocationAudit(
         })
       }
     }
+  }
+  else if (input.action === 'move') {
+    const holdBoxes = [...new Set(input.uncategorizedContainerIds ?? [])]
+    const holdChassis = [...new Set(input.uncategorizedChassisIds ?? [])]
+    const ids = [...new Set(input.containerIds ?? [])].slice(0, LOCATION_AUDIT_MAX)
+    const destinationId = input.destinationLocationId
+
+    if (!ids.length && !holdBoxes.length && !holdChassis.length) {
+      throw createError({ statusCode: 422, statusMessage: 'Select at least one container or chassis.' })
+    }
+
+    if (ids.length) {
+      if (!destinationId) {
+        throw createError({ statusCode: 422, statusMessage: 'Pick a destination.' })
+      }
+      if (destinationId === location.id) {
+        throw createError({ statusCode: 422, statusMessage: 'Pick a different location.' })
+      }
+      await loadLocation(db, auth, destinationId)
+
+      for (const containerId of ids) {
+        const [row] = await db.select().from(containers).where(eq(containers.id, containerId)).limit(1)
+        const number = row?.number
+        try {
+          assertTenant(auth, row, 'Container')
+          if (row!.deletedAt) {
+            throw createError({ statusCode: 404, statusMessage: 'Container not found.' })
+          }
+          if (row!.currentLocationId !== location.id) {
+            throw createError({
+              statusCode: 409,
+              statusMessage: 'That container is not at this location.',
+            })
+          }
+          await moveContainerToLocation(db, auth, {
+            eventId: crypto.randomUUID(),
+            containerId,
+            destinationLocationId: destinationId,
+          })
+          succeeded += 1
+        }
+        catch (error) {
+          failed.push({
+            id: containerId,
+            number,
+            message: failureMessage(error, 'Could not move that container.'),
+          })
+        }
+      }
+    }
 
     succeeded += await pullFromUncategorized(
       db,
@@ -204,50 +252,6 @@ export async function runLocationAudit(
       { containerIds: holdBoxes, chassisIds: holdChassis },
       failed,
     )
-  }
-  else if (input.action === 'move') {
-    const destinationId = input.destinationLocationId
-    if (!destinationId) {
-      throw createError({ statusCode: 422, statusMessage: 'Pick a destination.' })
-    }
-    if (destinationId === location.id) {
-      throw createError({ statusCode: 422, statusMessage: 'Pick a different location.' })
-    }
-    await loadLocation(db, auth, destinationId)
-    const ids = [...new Set(input.containerIds ?? [])].slice(0, LOCATION_AUDIT_MAX)
-    if (!ids.length) {
-      throw createError({ statusCode: 422, statusMessage: 'Select at least one container.' })
-    }
-
-    for (const containerId of ids) {
-      const [row] = await db.select().from(containers).where(eq(containers.id, containerId)).limit(1)
-      const number = row?.number
-      try {
-        assertTenant(auth, row, 'Container')
-        if (row!.deletedAt) {
-          throw createError({ statusCode: 404, statusMessage: 'Container not found.' })
-        }
-        if (row!.currentLocationId !== location.id) {
-          throw createError({
-            statusCode: 409,
-            statusMessage: 'That container is not at this location.',
-          })
-        }
-        await moveContainerToLocation(db, auth, {
-          eventId: crypto.randomUUID(),
-          containerId,
-          destinationLocationId: destinationId,
-        })
-        succeeded += 1
-      }
-      catch (error) {
-        failed.push({
-          id: containerId,
-          number,
-          message: failureMessage(error, 'Could not move that container.'),
-        })
-      }
-    }
   }
   else if (input.action === 'check') {
     if (location.isUncategorized) {

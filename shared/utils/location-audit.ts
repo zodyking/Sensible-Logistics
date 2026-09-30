@@ -14,7 +14,7 @@ export const LOCATION_AUDIT_ACTION_LABELS: Record<LocationAuditAction, string> =
 export const LOCATION_AUDIT_ACTION_HINTS: Record<LocationAuditAction, string> = {
   check: 'Tick what is actually on this yard',
   add: 'Boxes and chassis onto this yard, one card at a time',
-  move: 'Send boxes from here to another location',
+  move: 'Bring Uncategorized here, or send boxes away',
   delete: 'Send boxes to Uncategorized, or remove them there',
 }
 
@@ -35,10 +35,17 @@ export type AuditEquipmentStage = (typeof AUDIT_EQUIPMENT_STAGES)[number]
 export type LocationAuditEquipmentKind = Extract<TripKind, 'CONTAINER' | 'BARE_CHASSIS'>
 
 /** One-screen-per-question path for the location audit wizard. */
-export function locationAuditSteps(action: LocationAuditAction | null): LocationAuditStep[] {
+export function locationAuditSteps(
+  action: LocationAuditAction | null,
+  options?: { holdOnly?: boolean },
+): LocationAuditStep[] {
   if (action === 'check') return ['action', 'pick', 'confirm']
   if (action === 'add') return ['action', 'equipment', 'confirm']
-  if (action === 'move') return ['action', 'pick', 'destination', 'confirm']
+  if (action === 'move') {
+    return options?.holdOnly
+      ? ['action', 'pick', 'confirm']
+      : ['action', 'pick', 'destination', 'confirm']
+  }
   if (action === 'delete') return ['action', 'pick', 'confirm']
   return ['action']
 }

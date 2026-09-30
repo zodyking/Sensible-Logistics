@@ -28,13 +28,11 @@ const schema = z.object({
   destinationLocationId: z.string().uuid().optional(),
 }).superRefine((body, ctx) => {
   if (body.action === 'add') {
-    const hasNew = Boolean(body.items?.length)
-    const hasHold = Boolean(body.uncategorizedContainerIds?.length || body.uncategorizedChassisIds?.length)
-    if (!hasNew && !hasHold) {
+    if (!body.items?.length) {
       ctx.addIssue({ code: 'custom', message: 'Add at least one container or chassis.', path: ['items'] })
     }
   }
-  if (body.action === 'move' || body.action === 'delete') {
+  if (body.action === 'delete') {
     if (!body.containerIds?.length) {
       ctx.addIssue({ code: 'custom', message: 'Select at least one container.', path: ['containerIds'] })
     }
@@ -44,8 +42,15 @@ const schema = z.object({
       ctx.addIssue({ code: 'custom', message: 'Uncheck at least one unit that is not here.', path: ['containerIds'] })
     }
   }
-  if (body.action === 'move' && !body.destinationLocationId) {
-    ctx.addIssue({ code: 'custom', message: 'Pick a destination.', path: ['destinationLocationId'] })
+  if (body.action === 'move') {
+    const sending = Boolean(body.containerIds?.length)
+    const pulling = Boolean(body.uncategorizedContainerIds?.length || body.uncategorizedChassisIds?.length)
+    if (!sending && !pulling) {
+      ctx.addIssue({ code: 'custom', message: 'Select at least one container or chassis.', path: ['containerIds'] })
+    }
+    if (sending && !body.destinationLocationId) {
+      ctx.addIssue({ code: 'custom', message: 'Pick a destination.', path: ['destinationLocationId'] })
+    }
   }
 })
 

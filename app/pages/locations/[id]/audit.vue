@@ -53,6 +53,7 @@ const STEP_TITLES: Record<LocationAuditStep, string> = {
 
 const navTitle = computed(() => {
   if (step.value === 'pick' && action.value === 'check') return 'Checklist'
+  if (step.value === 'pick' && action.value === 'move') return 'Move'
   return STEP_TITLES[step.value]
 })
 
@@ -90,17 +91,6 @@ const submitting = ref(false)
 const errorMessage = ref('')
 
 watch(step, scrollWizardToTop)
-
-const STEPS = computed(() => locationAuditSteps(action.value))
-const stepIndex = computed(() => Math.max(0, STEPS.value.indexOf(step.value)))
-
-watch(STEPS, (steps) => {
-  if (steps.includes(step.value)) return
-  const from = LOCATION_AUDIT_STEPS.indexOf(step.value)
-  const following = LOCATION_AUDIT_STEPS.slice(from + 1).find(name => steps.includes(name))
-  const previous = [...LOCATION_AUDIT_STEPS.slice(0, Math.max(0, from))].reverse().find(name => steps.includes(name))
-  step.value = following ?? previous ?? 'action'
-})
 
 function blankCard(): EquipmentCard {
   return { ...createAuditEquipmentDraft(), photo: '', ocrMessage: '' }
@@ -208,6 +198,24 @@ const holdBareChassis = computed(() => (holdData.value?.chassis ?? []).filter(it
   `CH:${maskChassisInput(item.number)}`,
 )))
 const holdSelectedCount = computed(() => holdContainerIds.value.length + holdChassisIds.value.length)
+const holdOnlyMove = computed(() =>
+  action.value === 'move'
+  && holdSelectedCount.value > 0
+  && selectedIds.value.length === 0,
+)
+const pickedHoldBoxes = computed(() => holdBoxes.value.filter(item => holdContainerIds.value.includes(item.id)))
+const pickedHoldChassis = computed(() => holdBareChassis.value.filter(item => holdChassisIds.value.includes(item.id)))
+
+const STEPS = computed(() => locationAuditSteps(action.value, { holdOnly: holdOnlyMove.value }))
+const stepIndex = computed(() => Math.max(0, STEPS.value.indexOf(step.value)))
+
+watch(STEPS, (steps) => {
+  if (steps.includes(step.value)) return
+  const from = LOCATION_AUDIT_STEPS.indexOf(step.value)
+  const following = LOCATION_AUDIT_STEPS.slice(from + 1).find(name => steps.includes(name))
+  const previous = [...LOCATION_AUDIT_STEPS.slice(0, Math.max(0, from))].reverse().find(name => steps.includes(name))
+  step.value = following ?? previous ?? 'action'
+})
 
 function chooseAction(next: LocationAuditAction) {
   if (action.value !== next) {
@@ -287,28 +295,20 @@ function removeCard(id: string) {
 }
 
 function toggleHoldContainer(id: string) {
-  if (step.value === 'action') {
-    action.value = 'add'
-    step.value = 'equipment'
-  }
   if (holdContainerIds.value.includes(id)) {
     holdContainerIds.value = holdContainerIds.value.filter(item => item !== id)
     return
   }
-  if (holdSelectedCount.value + newItems.value.length >= LOCATION_AUDIT_MAX) return
+  if (holdSelectedCount.value >= LOCATION_AUDIT_MAX) return
   holdContainerIds.value = [...holdContainerIds.value, id]
 }
 
 function toggleHoldChassis(id: string) {
-  if (step.value === 'action') {
-    action.value = 'add'
-    step.value = 'equipment'
-  }
   if (holdChassisIds.value.includes(id)) {
     holdChassisIds.value = holdChassisIds.value.filter(item => item !== id)
     return
   }
-  if (holdSelectedCount.value + newItems.value.length >= LOCATION_AUDIT_MAX) return
+  if (holdSelectedCount.value >= LOCATION_AUDIT_MAX) return
   holdChassisIds.value = [...holdChassisIds.value, id]
 }
 
@@ -356,7 +356,7 @@ function cardIssue(card: EquipmentCard, index: number): string {
 const cardsReady = computed(() =>
   !cards.value.some(card => card.stage === 'numbers' || card.stage === 'classify'),
 )
-const addCount = computed(() => newItems.value.length + holdSelectedCount.value)
+const addCount = computed(() => newItems.value.length)
 
 const canAdvance = computed(() => {
   switch (step.value) {
@@ -366,12 +366,16 @@ const canAdvance = computed(() => {
       return cardsReady.value && addCount.value > 0 && !scanningId.value
     case 'pick':
       if (action.value === 'check') return onSiteCount.value > 0
+      if (action.value === 'move') return pickedBoxes.value.length > 0 || holdSelectedCount.value > 0
       return pickedBoxes.value.length > 0
     case 'destination':
       return Boolean(destinationId.value)
     case 'confirm':
       if (action.value === 'add') return addCount.value > 0
-      if (action.value === 'move') return pickedBoxes.value.length > 0 && Boolean(destinationId.value)
+      if (action.value === 'move') {
+        if (pickedBoxes.value.length) return Boolean(destinationId.value)
+        return holdSelectedCount.value > 0
+      }
       if (action.value === 'check') return onSiteCount.value > 0
       return pickedBoxes.value.length > 0
   }
@@ -404,13 +408,14 @@ function locationAddressLine(location: { addressLine1: string | null, city: stri
 const confirmCount = computed(() => {
   if (action.value === 'add') return addCount.value
   if (action.value === 'check') return missingCount.value
+  if (action.value === 'move') return pickedBoxes.value.length + holdSelectedCount.value
   return pickedBoxes.value.length
 })
 
 const confirmVerb = computed(() => {
   if (action.value === 'add') {
-    const boxes = newItems.value.filter(item => item.kind === 'CONTAINER').length + holdContainerIds.value.length
-    const units = newItems.value.filter(item => item.kind === 'BARE_CHASSIS').length + holdChassisIds.value.length
+    const boxes = newItems.value.filter(item => item.kind === 'CONTAINER').length
+    const units = newItems.value.filter(item => item.kind === 'BARE_CHASSIS').length
     const parts: string[] = []
     if (boxes) parts.push(boxes === 1 ? '1 container' : `${boxes} containers`)
     if (units) parts.push(units === 1 ? '1 chassis' : `${units} chassis`)
@@ -422,9 +427,16 @@ const confirmVerb = computed(() => {
       ? 'Move 1 to Uncategorized'
       : `Move ${missingCount.value} to Uncategorized`
   }
-  if (action.value === 'move') return confirmCount.value === 1 ? 'Move 1 container' : `Move ${confirmCount.value} containers`
-  if (isUncategorizedYard.value) {
-    return confirmCount.value === 1 ? 'Delete 1 container' : `Delete ${confirmCount.value} containers`
+  if (action.value === 'move') {
+    const sending = pickedBoxes.value.length
+    const pulling = holdSelectedCount.value
+    if (!sending && pulling) {
+      return pulling === 1 ? 'Move 1 onto this yard' : `Move ${pulling} onto this yard`
+    }
+    if (sending && pulling) {
+      return `Move ${sending + pulling} units`
+    }
+    return sending === 1 ? 'Move 1 container' : `Move ${sending} containers`
   }
   return confirmCount.value === 1 ? 'Delete 1 container' : `Delete ${confirmCount.value} containers`
 })
@@ -452,14 +464,14 @@ async function confirm() {
         ? {
             action: 'add',
             items: newItems.value,
-            uncategorizedContainerIds: holdContainerIds.value,
-            uncategorizedChassisIds: holdChassisIds.value,
           }
         : action.value === 'move'
           ? {
               action: 'move',
               containerIds: selectedIds.value,
-              destinationLocationId: destinationId.value,
+              destinationLocationId: destinationId.value ?? undefined,
+              uncategorizedContainerIds: holdContainerIds.value,
+              uncategorizedChassisIds: holdChassisIds.value,
             }
           : action.value === 'check'
             ? {
@@ -489,13 +501,13 @@ async function confirm() {
           return failed.has(markingKey(raw))
         })
         if (!cards.value.length) cards.value = [blankCard()]
-        holdContainerIds.value = holdContainerIds.value.filter(id => failed.has(markingKey(
-          holdBoxes.value.find(item => item.id === id)?.number,
-        )))
-        holdChassisIds.value = holdChassisIds.value.filter(id => failed.has(markingKey(
-          holdBareChassis.value.find(item => item.id === id)?.number,
-        )))
         step.value = 'equipment'
+      }
+      else if (action.value === 'move') {
+        const failedIds = new Set(result.failed.map(item => item.id).filter((id): id is string => Boolean(id)))
+        selectedIds.value = selectedIds.value.filter(id => failedIds.has(id))
+        holdContainerIds.value = holdContainerIds.value.filter(id => failedIds.has(id))
+        holdChassisIds.value = holdChassisIds.value.filter(id => failedIds.has(id))
       }
       else {
         selectedIds.value = result.failed.map(item => item.id).filter((id): id is string => Boolean(id))
@@ -657,86 +669,150 @@ async function onCardPhoto(cardId: string, dataUrl: string) {
     </template>
 
     <template v-else-if="step === 'pick'">
-      <span class="wiz-label">{{
-        action === 'check'
-          ? 'On this yard'
-          : (action === 'delete' ? 'Delete from this yard' : 'Move from this yard')
-      }}</span>
-      <div
-        v-if="action === 'check' ? onSiteCount : onSite.length"
-        class="wiz-group"
-      >
-        <button
-          v-for="item in onSite"
-          :key="item.id"
-          type="button"
-          class="wiz-pick"
-          :aria-pressed="selectedIds.includes(item.id)"
-          :disabled="action === 'move' && item.doNotMove"
-          @click="toggleBox(item.id)"
+      <template v-if="action !== 'move' || onSite.length">
+        <span class="wiz-label">{{
+          action === 'check'
+            ? 'On this yard'
+            : (action === 'delete' ? 'Delete from this yard' : 'Move from this yard')
+        }}</span>
+        <div
+          v-if="action === 'check' ? onSiteCount : onSite.length"
+          class="wiz-group"
         >
-          <span class="wiz-pick-main">
-            <b class="font-mono">{{ formatContainerNumber(item.number) || item.number }}</b>
-            <small>
-              {{ CONTAINER_TYPE_LABELS[item.containerType] }}
-              · {{ pickupEquipmentSizeLabel(item.equipmentType) }}
-              · {{ item.isLoaded ? 'Loaded' : 'Empty' }}
-              <template v-if="item.doNotMove"> · Do not move</template>
-            </small>
-          </span>
-          <span
-            v-if="selectedIds.includes(item.id)"
-            class="wiz-check"
-            aria-hidden="true"
-          >✓</span>
-          <span
-            v-else-if="action === 'check'"
-            class="audit-eq-add-tag"
-          >Out</span>
-          <span
-            v-else
-            class="wiz-chev"
-            aria-hidden="true"
-          >›</span>
-        </button>
-        <template v-if="action === 'check'">
           <button
-            v-for="item in onSiteChassis"
+            v-for="item in onSite"
             :key="item.id"
             type="button"
             class="wiz-pick"
-            :aria-pressed="selectedChassisIds.includes(item.id)"
-            @click="toggleChassis(item.id)"
+            :aria-pressed="selectedIds.includes(item.id)"
+            :disabled="action === 'move' && item.doNotMove"
+            @click="toggleBox(item.id)"
           >
             <span class="wiz-pick-main">
-              <b class="font-mono">{{ formatChassisNumber(item.number) || item.number }}</b>
-              <small>Bare chassis</small>
+              <b class="font-mono">{{ formatContainerNumber(item.number) || item.number }}</b>
+              <small>
+                {{ CONTAINER_TYPE_LABELS[item.containerType] }}
+                · {{ pickupEquipmentSizeLabel(item.equipmentType) }}
+                · {{ item.isLoaded ? 'Loaded' : 'Empty' }}
+                <template v-if="item.doNotMove"> · Do not move</template>
+              </small>
             </span>
             <span
-              v-if="selectedChassisIds.includes(item.id)"
+              v-if="selectedIds.includes(item.id)"
+              class="wiz-check"
+              aria-hidden="true"
+            >✓</span>
+            <span
+              v-else-if="action === 'check'"
+              class="audit-eq-add-tag"
+            >Out</span>
+            <span
+              v-else
+              class="wiz-chev"
+              aria-hidden="true"
+            >›</span>
+          </button>
+          <template v-if="action === 'check'">
+            <button
+              v-for="item in onSiteChassis"
+              :key="item.id"
+              type="button"
+              class="wiz-pick"
+              :aria-pressed="selectedChassisIds.includes(item.id)"
+              @click="toggleChassis(item.id)"
+            >
+              <span class="wiz-pick-main">
+                <b class="font-mono">{{ formatChassisNumber(item.number) || item.number }}</b>
+                <small>Bare chassis</small>
+              </span>
+              <span
+                v-if="selectedChassisIds.includes(item.id)"
+                class="wiz-check"
+                aria-hidden="true"
+              >✓</span>
+              <span
+                v-else
+                class="audit-eq-add-tag"
+              >Out</span>
+            </button>
+          </template>
+        </div>
+        <EmptyState
+          v-else
+          glyph="▣"
+          title="No equipment on site"
+          description="Drop off from a trip or add equipment here first."
+        />
+        <p
+          v-if="action === 'check' && onSiteCount"
+          class="wiz-hint"
+        >
+          Checked stay. Unchecked move to Uncategorized.
+          <span v-if="missingCount">{{ missingCount }} out.</span>
+        </p>
+      </template>
+      <template v-if="action === 'move' && (holdBoxes.length || holdBareChassis.length)">
+        <span class="wiz-label">Uncategorized</span>
+        <div class="wiz-group">
+          <button
+            v-for="item in holdBoxes"
+            :key="item.id"
+            type="button"
+            class="wiz-pick"
+            :aria-pressed="holdContainerIds.includes(item.id)"
+            @click="toggleHoldContainer(item.id)"
+          >
+            <span class="wiz-pick-main">
+              <b class="font-mono">{{ formatContainerNumber(item.number) || item.number }}</b>
+              <small>
+                {{ CONTAINER_TYPE_LABELS[item.containerType] }}
+                · {{ pickupEquipmentSizeLabel(item.equipmentType) }}
+                <template v-if="item.isLoaded"> · Loaded</template>
+              </small>
+            </span>
+            <span
+              v-if="holdContainerIds.includes(item.id)"
               class="wiz-check"
               aria-hidden="true"
             >✓</span>
             <span
               v-else
               class="audit-eq-add-tag"
-            >Out</span>
+            >Move</span>
           </button>
-        </template>
-      </div>
+          <button
+            v-for="item in holdBareChassis"
+            :key="item.id"
+            type="button"
+            class="wiz-pick"
+            :aria-pressed="holdChassisIds.includes(item.id)"
+            @click="toggleHoldChassis(item.id)"
+          >
+            <span class="wiz-pick-main">
+              <b class="font-mono">{{ formatChassisNumber(item.number) || item.number }}</b>
+              <small>Bare chassis</small>
+            </span>
+            <span
+              v-if="holdChassisIds.includes(item.id)"
+              class="wiz-check"
+              aria-hidden="true"
+            >✓</span>
+            <span
+              v-else
+              class="audit-eq-add-tag"
+            >Move</span>
+          </button>
+        </div>
+        <p class="wiz-hint">
+          Holding site. Tap to bring onto this yard.
+        </p>
+      </template>
       <EmptyState
-        v-else
+        v-if="action === 'move' && !onSite.length && !holdBoxes.length && !holdBareChassis.length"
         glyph="▣"
-        title="No equipment on site"
-        description="Drop off from a trip or add equipment here first."
+        title="No equipment to move"
+        description="Nothing on this yard or in Uncategorized."
       />
-      <p
-        v-if="action === 'check' && onSiteCount"
-        class="wiz-hint"
-      >
-        Checked stay. Unchecked move to Uncategorized.
-        <span v-if="missingCount">{{ missingCount }} out.</span>
-      </p>
     </template>
 
     <template v-else-if="step === 'destination'">
@@ -786,7 +862,9 @@ async function onCardPhoto(cardId: string, dataUrl: string) {
     </template>
 
     <template v-else>
-      <span class="wiz-label">{{ action === 'delete' ? 'Remove' : (action === 'check' ? 'Count' : 'On site') }}</span>
+      <span class="wiz-label">{{
+        action === 'delete' ? 'Remove' : (action === 'check' ? 'Count' : (action === 'move' ? 'Move' : 'On site'))
+      }}</span>
       <div class="wiz-group">
         <div
           v-if="action === 'check'"
@@ -801,14 +879,23 @@ async function onCardPhoto(cardId: string, dataUrl: string) {
         </div>
         <div class="wiz-row">
           <span class="wiz-row-label">{{ action === 'move' ? 'From' : 'Where' }}</span>
-          <span class="flex-1 text-[var(--color-ink-700)]">{{ locationData?.location.name }}</span>
+          <span class="flex-1 text-[var(--color-ink-700)]">{{
+            action === 'move' && holdOnlyMove ? 'Uncategorized' : locationData?.location.name
+          }}</span>
         </div>
         <div
-          v-if="action === 'move'"
+          v-if="action === 'move' && pickedBoxes.length"
           class="wiz-row"
         >
           <span class="wiz-row-label">To</span>
           <span class="flex-1 text-[var(--color-ink-700)]">{{ destination?.name ?? '—' }}</span>
+        </div>
+        <div
+          v-else-if="action === 'move' && holdOnlyMove"
+          class="wiz-row"
+        >
+          <span class="wiz-row-label">To</span>
+          <span class="flex-1 text-[var(--color-ink-700)]">{{ locationData?.location.name }}</span>
         </div>
         <div
           v-else-if="action === 'check' && missingCount"
@@ -816,6 +903,15 @@ async function onCardPhoto(cardId: string, dataUrl: string) {
         >
           <span class="wiz-row-label">To</span>
           <span class="flex-1 text-[var(--color-ink-700)]">Uncategorized</span>
+        </div>
+        <div
+          v-if="action === 'move' && pickedBoxes.length && holdSelectedCount"
+          class="wiz-row"
+        >
+          <span class="wiz-row-label">Also</span>
+          <span class="flex-1 text-[var(--color-ink-700)]">
+            Uncategorized → {{ locationData?.location.name }}
+          </span>
         </div>
       </div>
       <div
@@ -850,26 +946,6 @@ async function onCardPhoto(cardId: string, dataUrl: string) {
           </small>
         </div>
         <div
-          v-for="item in holdBoxes.filter(box => holdContainerIds.includes(box.id)).slice(0, 8)"
-          :key="`hold-ct-${item.id}`"
-          class="wiz-row audit-eq-confirm-row"
-        >
-          <span class="mono">{{ formatContainerNumber(item.number) || item.number }}</span>
-          <small class="audit-eq-confirm-meta">
-            Uncategorized
-            · {{ CONTAINER_TYPE_LABELS[item.containerType] }}
-            · {{ pickupEquipmentSizeLabel(item.equipmentType) }}
-          </small>
-        </div>
-        <div
-          v-for="item in holdBareChassis.filter(unit => holdChassisIds.includes(unit.id)).slice(0, 8)"
-          :key="`hold-ch-${item.id}`"
-          class="wiz-row audit-eq-confirm-row"
-        >
-          <span class="mono">{{ formatChassisNumber(item.number) }}</span>
-          <small class="audit-eq-confirm-meta">Uncategorized · Bare chassis</small>
-        </div>
-        <div
           v-if="addCount > 8"
           class="wiz-row"
         >
@@ -899,6 +975,46 @@ async function onCardPhoto(cardId: string, dataUrl: string) {
           class="wiz-row"
         >
           <span class="flex-1 text-[var(--color-ink-500)]">And {{ missingCount - 8 }} more</span>
+        </div>
+      </div>
+      <div
+        v-else-if="action === 'move' && confirmCount"
+        class="wiz-group mt-3"
+      >
+        <div
+          v-for="item in pickedBoxes.slice(0, 8)"
+          :key="item.id"
+          class="wiz-row audit-eq-confirm-row"
+        >
+          <span class="mono">{{ formatContainerNumber(item.number) || item.number }}</span>
+          <small
+            v-if="destination"
+            class="audit-eq-confirm-meta"
+          >
+            To {{ destination.name }}
+          </small>
+        </div>
+        <div
+          v-for="item in pickedHoldBoxes.slice(0, Math.max(0, 8 - pickedBoxes.length))"
+          :key="`hold-ct-${item.id}`"
+          class="wiz-row audit-eq-confirm-row"
+        >
+          <span class="mono">{{ formatContainerNumber(item.number) || item.number }}</span>
+          <small class="audit-eq-confirm-meta">Uncategorized</small>
+        </div>
+        <div
+          v-for="item in pickedHoldChassis.slice(0, Math.max(0, 8 - pickedBoxes.length - pickedHoldBoxes.length))"
+          :key="`hold-ch-${item.id}`"
+          class="wiz-row audit-eq-confirm-row"
+        >
+          <span class="mono">{{ formatChassisNumber(item.number) || item.number }}</span>
+          <small class="audit-eq-confirm-meta">Uncategorized · Bare chassis</small>
+        </div>
+        <div
+          v-if="confirmCount > 8"
+          class="wiz-row"
+        >
+          <span class="flex-1 text-[var(--color-ink-500)]">And {{ confirmCount - 8 }} more</span>
         </div>
       </div>
       <div
@@ -945,64 +1061,15 @@ async function onCardPhoto(cardId: string, dataUrl: string) {
         v-else-if="action === 'move'"
         class="wiz-hint"
       >
-        Corrections only. A chassis on a box moves with it.
-      </p>
-    </template>
-
-    <template v-if="(step === 'action' || step === 'equipment') && !scanningId && (holdBoxes.length || holdBareChassis.length)">
-      <span class="wiz-label">Uncategorized</span>
-      <div class="wiz-group">
-        <button
-          v-for="item in holdBoxes"
-          :key="item.id"
-          type="button"
-          class="wiz-pick"
-          :aria-pressed="holdContainerIds.includes(item.id)"
-          @click="toggleHoldContainer(item.id)"
-        >
-          <span class="wiz-pick-main">
-            <b class="font-mono">{{ formatContainerNumber(item.number) || item.number }}</b>
-            <small>
-              {{ CONTAINER_TYPE_LABELS[item.containerType] }}
-              · {{ pickupEquipmentSizeLabel(item.equipmentType) }}
-              <template v-if="item.isLoaded"> · Loaded</template>
-            </small>
-          </span>
-          <span
-            v-if="holdContainerIds.includes(item.id)"
-            class="wiz-check"
-            aria-hidden="true"
-          >✓</span>
-          <span
-            v-else
-            class="audit-eq-add-tag"
-          >Add</span>
-        </button>
-        <button
-          v-for="item in holdBareChassis"
-          :key="item.id"
-          type="button"
-          class="wiz-pick"
-          :aria-pressed="holdChassisIds.includes(item.id)"
-          @click="toggleHoldChassis(item.id)"
-        >
-          <span class="wiz-pick-main">
-            <b class="font-mono">{{ formatChassisNumber(item.number) || item.number }}</b>
-            <small>Bare chassis</small>
-          </span>
-          <span
-            v-if="holdChassisIds.includes(item.id)"
-            class="wiz-check"
-            aria-hidden="true"
-          >✓</span>
-          <span
-            v-else
-            class="audit-eq-add-tag"
-          >Add</span>
-        </button>
-      </div>
-      <p class="wiz-hint">
-        Holding site. Tap to add onto this yard.
+        <template v-if="holdOnlyMove">
+          These come from Uncategorized onto this yard.
+        </template>
+        <template v-else-if="holdSelectedCount">
+          On-site boxes go to {{ destination?.name }}. Uncategorized units come onto this yard.
+        </template>
+        <template v-else>
+          Corrections only. A chassis on a box moves with it.
+        </template>
       </p>
     </template>
 
