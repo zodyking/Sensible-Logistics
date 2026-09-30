@@ -19,11 +19,12 @@ const addItemSchema = z.discriminatedUnion('kind', [
 ])
 
 const schema = z.object({
-  action: z.enum(['add', 'move', 'delete']),
+  action: z.enum(['add', 'move', 'delete', 'check']),
   items: z.array(addItemSchema).max(LOCATION_AUDIT_MAX).optional(),
   uncategorizedContainerIds: z.array(z.string().uuid()).max(LOCATION_AUDIT_MAX).optional(),
   uncategorizedChassisIds: z.array(z.string().uuid()).max(LOCATION_AUDIT_MAX).optional(),
-  containerIds: z.array(z.string().uuid()).max(LOCATION_AUDIT_MAX).optional(),
+  containerIds: z.array(z.string().uuid()).max(200).optional(),
+  chassisIds: z.array(z.string().uuid()).max(200).optional(),
   destinationLocationId: z.string().uuid().optional(),
 }).superRefine((body, ctx) => {
   if (body.action === 'add') {
@@ -36,6 +37,11 @@ const schema = z.object({
   if (body.action === 'move' || body.action === 'delete') {
     if (!body.containerIds?.length) {
       ctx.addIssue({ code: 'custom', message: 'Select at least one container.', path: ['containerIds'] })
+    }
+  }
+  if (body.action === 'check') {
+    if (!body.containerIds?.length && !body.chassisIds?.length) {
+      ctx.addIssue({ code: 'custom', message: 'Uncheck at least one unit that is not here.', path: ['containerIds'] })
     }
   }
   if (body.action === 'move' && !body.destinationLocationId) {

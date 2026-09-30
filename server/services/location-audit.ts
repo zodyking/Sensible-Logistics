@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm'
 import { chassis, containers, locations } from '../database/schema'
 import { addChassisAtLocation, addContainerAtLocation, moveContainerToLocation } from './placements'
 import { retireContainer } from './container-delete'
+import { retireChassis } from './chassis-delete'
 import { ensureUncategorizedLocation } from './locations'
 import type { Database } from '../utils/db'
 import type { AuthContext } from '../utils/session'
@@ -10,7 +11,7 @@ import { LOCATION_AUDIT_MAX } from '#shared/utils/location-audit'
 import type { LocationAuditAddItem } from '#shared/utils/location-audit'
 import { isCompleteChassisNumber, validateContainerNumber } from '#shared/utils/iso6346'
 
-export type LocationAuditAction = 'add' | 'move' | 'delete'
+export type LocationAuditAction = 'add' | 'move' | 'delete' | 'check'
 
 export type LocationAuditFailure = {
   id?: string
@@ -166,6 +167,7 @@ export async function runLocationAudit(
     uncategorizedContainerIds?: string[]
     uncategorizedChassisIds?: string[]
     containerIds?: string[]
+    chassisIds?: string[]
     destinationLocationId?: string
   },
 ): Promise<LocationAuditResult> {
@@ -243,6 +245,62 @@ export async function runLocationAudit(
           id: containerId,
           number,
           message: failureMessage(error, 'Could not move that container.'),
+        })
+      }
+    }
+  }
+  else if (input.action === 'check') {
+    if (location.isUncategorized) {
+      throw createError({ statusCode: 422, statusMessage: 'Checklist is for yards with live inventory.' })
+    }
+    const boxIds = [...new Set(input.containerIds ?? [])]
+    const unitIds = [...new Set(input.chassisIds ?? [])]
+    if (!boxIds.length && !unitIds.length) {
+      throw createError({ statusCode: 422, statusMessage: 'Uncheck at least one unit that is not here.' })
+    }
+
+    for (const containerId of boxIds) {
+      const [row] = await db.select().from(containers).where(eq(containers.id, containerId)).limit(1)
+      const number = row?.number
+      try {
+        assertTenant(auth, row, 'Container')
+        if (row!.currentLocationId !== location.id) {
+          throw createError({
+            statusCode: 409,
+            statusMessage: 'That container is not at this location.',
+          })
+        }
+        await retireContainer(db, auth, containerId)
+        succeeded += 1
+      }
+      catch (error) {
+        failed.push({
+          id: containerId,
+          number,
+          message: failureMessage(error, 'Could not move that container.'),
+        })
+      }
+    }
+
+    for (const chassisId of unitIds) {
+      const [row] = await db.select().from(chassis).where(eq(chassis.id, chassisId)).limit(1)
+      const number = row?.number
+      try {
+        assertTenant(auth, row, 'Chassis')
+        if (row!.currentLocationId !== location.id) {
+          throw createError({
+            statusCode: 409,
+            statusMessage: 'That chassis is not at this location.',
+          })
+        }
+        await retireChassis(db, auth, chassisId)
+        succeeded += 1
+      }
+      catch (error) {
+        failed.push({
+          id: chassisId,
+          number,
+          message: failureMessage(error, 'Could not move that chassis.'),
         })
       }
     }

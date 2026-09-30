@@ -1,16 +1,18 @@
 import type { ContainerType, PickupEquipmentSize, TripKind } from './domain'
 import { isCompleteChassisNumber, maskChassisInput, validateContainerNumber } from './iso6346'
 
-export const LOCATION_AUDIT_ACTIONS = ['add', 'move', 'delete'] as const
+export const LOCATION_AUDIT_ACTIONS = ['check', 'add', 'move', 'delete'] as const
 export type LocationAuditAction = (typeof LOCATION_AUDIT_ACTIONS)[number]
 
 export const LOCATION_AUDIT_ACTION_LABELS: Record<LocationAuditAction, string> = {
+  check: 'Checklist',
   add: 'Add equipment',
   move: 'Move',
   delete: 'Delete',
 }
 
 export const LOCATION_AUDIT_ACTION_HINTS: Record<LocationAuditAction, string> = {
+  check: 'Tick what is actually on this yard',
   add: 'Boxes and chassis onto this yard, one card at a time',
   move: 'Send boxes from here to another location',
   delete: 'Send boxes to Uncategorized, or remove them there',
@@ -34,6 +36,7 @@ export type LocationAuditEquipmentKind = Extract<TripKind, 'CONTAINER' | 'BARE_C
 
 /** One-screen-per-question path for the location audit wizard. */
 export function locationAuditSteps(action: LocationAuditAction | null): LocationAuditStep[] {
+  if (action === 'check') return ['action', 'pick', 'confirm']
   if (action === 'add') return ['action', 'equipment', 'confirm']
   if (action === 'move') return ['action', 'pick', 'destination', 'confirm']
   if (action === 'delete') return ['action', 'pick', 'confirm']
