@@ -205,7 +205,12 @@ const timeline = computed(() => visibleTimelineEntries(data.value?.timeline ?? [
           <span>{{ actionError }}</span>
         </p>
         <p class="text-sm text-[var(--color-ink-700)]">
-          This chassis will be removed from the company pool. Trip history stays. This cannot be undone.
+          <template v-if="data.currentLocation?.isUncategorized">
+            This chassis will be removed from the company pool. Trip history stays. This cannot be undone.
+          </template>
+          <template v-else>
+            This chassis will move to Uncategorized. Trip history stays.
+          </template>
         </p>
         <div class="sheet-actions">
           <button

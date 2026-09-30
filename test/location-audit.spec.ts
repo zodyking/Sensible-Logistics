@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   LOCATION_AUDIT_MAX,
+  auditCardBackStage,
+  auditCardNextStage,
+  auditCardNumbersReady,
+  auditCardTitle,
   auditEquipmentIdentityKey,
   auditEquipmentItemFromDraft,
   createAuditEquipmentDraft,
@@ -35,10 +39,36 @@ describe('locationAuditSteps', () => {
 })
 
 describe('audit equipment cards', () => {
-  it('starts a container card empty and not ready', () => {
+  it('starts by asking kind, with no step marker', () => {
     const card = createAuditEquipmentDraft()
-    expect(card.kind).toBe('CONTAINER')
+    expect(card.stage).toBe('kind')
+    expect(card.kind).toBeNull()
+    expect(auditCardTitle(card)).toBe('Equipment')
+    expect(auditCardBackStage(card)).toBeNull()
     expect(auditEquipmentItemFromDraft(card)).toBeNull()
+  })
+
+  it('advances kind to numbers, then a box to type and size', () => {
+    const started = draft({ kind: 'CONTAINER', stage: 'kind' })
+    expect(auditCardNextStage(started)).toBe('numbers')
+    const numbered = draft({
+      kind: 'CONTAINER',
+      stage: 'numbers',
+      containerNumber: 'MSCU4521894',
+    })
+    expect(auditCardNumbersReady(numbered)).toBe(true)
+    expect(auditCardNextStage(numbered)).toBe('classify')
+    expect(auditCardBackStage({ ...numbered, stage: 'classify' })).toBe('numbers')
+  })
+
+  it('finishes a bare chassis after the plate, skipping type', () => {
+    const card = draft({
+      kind: 'BARE_CHASSIS',
+      stage: 'numbers',
+      chassisNumber: 'AIMZ481345',
+    })
+    expect(auditCardNextStage(card)).toBe('done')
+    expect(auditCardBackStage({ ...card, stage: 'done' })).toBe('numbers')
   })
 
   it('accepts a box with type, size, and an optional chassis', () => {

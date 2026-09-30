@@ -29,7 +29,6 @@ import {
 import type {
   LocationAuditAction,
   LocationAuditEquipmentDraft,
-  LocationAuditEquipmentKind,
   LocationAuditStep,
 } from '#shared/utils/location-audit'
 import { driverOcrMessage } from '#shared/utils/ocr-parse'
@@ -74,9 +73,10 @@ type EquipmentCard = LocationAuditEquipmentDraft & {
 
 const action = ref<LocationAuditAction | null>(null)
 const cards = ref<EquipmentCard[]>([blankCard()])
-const pickingKind = ref(false)
 const scanningId = ref<string | null>(null)
 const selectedIds = ref<string[]>([])
+const holdContainerIds = ref<string[]>([])
+const holdChassisIds = ref<string[]>([])
 const destinationId = ref<string | null>(null)
 const destinationSearch = ref('')
 const step = ref<LocationAuditStep>('action')
@@ -96,8 +96,8 @@ watch(STEPS, (steps) => {
   step.value = following ?? previous ?? 'action'
 })
 
-function blankCard(kind: LocationAuditEquipmentKind = 'CONTAINER'): EquipmentCard {
-  return { ...createAuditEquipmentDraft(kind), photo: '', ocrMessage: '' }
+function blankCard(): EquipmentCard {
+  return { ...createAuditEquipmentDraft(), photo: '', ocrMessage: '' }
 }
 
 const onSite = computed<OnSiteBox[]>(() => (locationData.value?.containers ?? []) as OnSiteBox[])
@@ -135,6 +135,10 @@ const { data: locationList } = await useFetch('/api/locations', {
   })),
 })
 
+const { data: holdSites } = await useFetch('/api/locations', {
+  query: { includeUncategorized: '1', lite: '1', limit: 100 },
+})
+
 type DestLocation = {
   id: string
   name: string
@@ -151,12 +155,45 @@ const destinations = computed(() => {
 
 const destination = computed(() => destinations.value.find(item => item.id === destinationId.value) ?? null)
 
+const isUncategorizedYard = computed(() => Boolean(locationData.value?.location.isUncategorized))
+
+const holdLocation = computed(() =>
+  ((holdSites.value?.items ?? []) as DestLocation[]).find(item => item.isUncategorized) ?? null,
+)
+
+const holdFetchId = computed(() => {
+  const id = holdLocation.value?.id
+  if (!id || id === locationId.value) return ''
+  return id
+})
+
+const { data: holdData, refresh: refreshHold } = await useAsyncData(
+  () => `audit-hold:${holdFetchId.value || 'none'}`,
+  async () => {
+    if (!holdFetchId.value) return null
+    return await $fetch<{
+      containers: OnSiteBox[]
+      chassis: OnSiteChassis[]
+    }>(`/api/locations/${holdFetchId.value}`)
+  },
+  { watch: [holdFetchId] },
+)
+
+const holdBoxes = computed(() => (holdData.value?.containers ?? []).filter(item => !onSiteKeys.value.has(
+  `CT:${(item.numberNormalized || item.number).toUpperCase().replace(/[^A-Z0-9]/g, '')}`,
+)))
+const holdBareChassis = computed(() => (holdData.value?.chassis ?? []).filter(item => !onSiteKeys.value.has(
+  `CH:${maskChassisInput(item.number)}`,
+)))
+const holdSelectedCount = computed(() => holdContainerIds.value.length + holdChassisIds.value.length)
+
 function chooseAction(next: LocationAuditAction) {
   if (action.value !== next) {
     cards.value = [blankCard()]
-    pickingKind.value = false
     scanningId.value = null
     selectedIds.value = []
+    holdContainerIds.value = []
+    holdChassisIds.value = []
     destinationId.value = null
     destinationSearch.value = ''
   }
@@ -189,15 +226,45 @@ function pickDestination(id: string) {
   void goNext()
 }
 
-function addEquipment(kind: LocationAuditEquipmentKind) {
-  if (cards.value.length >= LOCATION_AUDIT_MAX) return
-  cards.value = [...cards.value, blankCard(kind)]
-  pickingKind.value = false
+const showNewEquipment = computed(() => {
+  const busy = cards.value.some(card => card.stage === 'numbers' || card.stage === 'classify' || card.stage === 'kind')
+  return !busy
+})
+
+function addEquipment() {
+  if (cards.value.length >= LOCATION_AUDIT_MAX || !showNewEquipment.value) return
+  cards.value = [...cards.value, blankCard()]
 }
 
 function removeCard(id: string) {
   cards.value = cards.value.filter(card => card.id !== id)
-  if (!cards.value.length) pickingKind.value = true
+  if (!cards.value.length) cards.value = [blankCard()]
+}
+
+function toggleHoldContainer(id: string) {
+  if (step.value === 'action') {
+    action.value = 'add'
+    step.value = 'equipment'
+  }
+  if (holdContainerIds.value.includes(id)) {
+    holdContainerIds.value = holdContainerIds.value.filter(item => item !== id)
+    return
+  }
+  if (holdSelectedCount.value + newItems.value.length >= LOCATION_AUDIT_MAX) return
+  holdContainerIds.value = [...holdContainerIds.value, id]
+}
+
+function toggleHoldChassis(id: string) {
+  if (step.value === 'action') {
+    action.value = 'add'
+    step.value = 'equipment'
+  }
+  if (holdChassisIds.value.includes(id)) {
+    holdChassisIds.value = holdChassisIds.value.filter(item => item !== id)
+    return
+  }
+  if (holdSelectedCount.value + newItems.value.length >= LOCATION_AUDIT_MAX) return
+  holdChassisIds.value = [...holdChassisIds.value, id]
 }
 
 function patchCard(index: number, next: LocationAuditEquipmentDraft) {
@@ -242,22 +309,22 @@ function cardIssue(card: EquipmentCard, index: number): string {
 }
 
 const cardsReady = computed(() =>
-  cards.value.length > 0
-  && cards.value.every((card, index) => Boolean(auditEquipmentItemFromDraft(card)) && !cardIssue(card, index)),
+  !cards.value.some(card => card.stage === 'numbers' || card.stage === 'classify'),
 )
+const addCount = computed(() => newItems.value.length + holdSelectedCount.value)
 
 const canAdvance = computed(() => {
   switch (step.value) {
     case 'action':
       return Boolean(action.value)
     case 'equipment':
-      return cardsReady.value && newItems.value.length > 0 && !scanningId.value
+      return cardsReady.value && addCount.value > 0 && !scanningId.value
     case 'pick':
       return pickedBoxes.value.length > 0
     case 'destination':
       return Boolean(destinationId.value)
     case 'confirm':
-      if (action.value === 'add') return newItems.value.length > 0
+      if (action.value === 'add') return addCount.value > 0
       if (action.value === 'move') return pickedBoxes.value.length > 0 && Boolean(destinationId.value)
       return pickedBoxes.value.length > 0
   }
@@ -288,19 +355,22 @@ function locationAddressLine(location: { addressLine1: string | null, city: stri
 }
 
 const confirmCount = computed(() =>
-  action.value === 'add' ? newItems.value.length : pickedBoxes.value.length,
+  action.value === 'add' ? addCount.value : pickedBoxes.value.length,
 )
 
 const confirmVerb = computed(() => {
   if (action.value === 'add') {
-    const boxes = newItems.value.filter(item => item.kind === 'CONTAINER').length
-    const chassis = newItems.value.filter(item => item.kind === 'BARE_CHASSIS').length
+    const boxes = newItems.value.filter(item => item.kind === 'CONTAINER').length + holdContainerIds.value.length
+    const units = newItems.value.filter(item => item.kind === 'BARE_CHASSIS').length + holdChassisIds.value.length
     const parts: string[] = []
     if (boxes) parts.push(boxes === 1 ? '1 container' : `${boxes} containers`)
-    if (chassis) parts.push(chassis === 1 ? '1 chassis' : `${chassis} chassis`)
+    if (units) parts.push(units === 1 ? '1 chassis' : `${units} chassis`)
     return parts.length ? `Add ${parts.join(' and ')}` : 'Add equipment'
   }
   if (action.value === 'move') return confirmCount.value === 1 ? 'Move 1 container' : `Move ${confirmCount.value} containers`
+  if (isUncategorizedYard.value) {
+    return confirmCount.value === 1 ? 'Delete 1 container' : `Delete ${confirmCount.value} containers`
+  }
   return confirmCount.value === 1 ? 'Delete 1 container' : `Delete ${confirmCount.value} containers`
 })
 
@@ -323,6 +393,8 @@ async function confirm() {
         ? {
             action: 'add',
             items: newItems.value,
+            uncategorizedContainerIds: holdContainerIds.value,
+            uncategorizedChassisIds: holdChassisIds.value,
           }
         : action.value === 'move'
           ? {
@@ -336,6 +408,7 @@ async function confirm() {
             },
     }))
     await refresh()
+    await refreshHold()
     if (result.failed.length) {
       const first = result.failed[0]
       const who = first?.number ? `${first.number}: ` : ''
@@ -346,11 +419,17 @@ async function confirm() {
         const failed = new Set(result.failed.map(item => markingKey(item.number)))
         cards.value = cards.value.filter((card) => {
           const item = auditEquipmentItemFromDraft(card)
-          if (!item) return true
+          if (!item) return card.stage !== 'done'
           const raw = item.kind === 'BARE_CHASSIS' ? item.chassisNumber : item.containerNumber
           return failed.has(markingKey(raw))
         })
         if (!cards.value.length) cards.value = [blankCard()]
+        holdContainerIds.value = holdContainerIds.value.filter(id => failed.has(markingKey(
+          holdBoxes.value.find(item => item.id === id)?.number,
+        )))
+        holdChassisIds.value = holdChassisIds.value.filter(id => failed.has(markingKey(
+          holdBareChassis.value.find(item => item.id === id)?.number,
+        )))
         step.value = 'equipment'
       }
       else {
@@ -471,7 +550,7 @@ async function onCardPhoto(cardId: string, dataUrl: string) {
         </button>
       </div>
       <p class="wiz-hint">
-        Built for a fast yard count. Each card can be a box, a box on a chassis, or a bare chassis.
+        Built for a fast yard count. Each card asks kind, then numbers, then type.
       </p>
     </template>
 
@@ -487,8 +566,7 @@ async function onCardPhoto(cardId: string, dataUrl: string) {
             v-for="(card, index) in cards"
             :key="card.id"
             :model-value="card"
-            :index="index"
-            :can-remove="cards.length > 1"
+            :can-remove="cards.length > 1 || card.stage !== 'kind'"
             :issue="cardIssue(card, index)"
             :photo="card.photo"
             :ocr-message="card.ocrMessage"
@@ -497,68 +575,18 @@ async function onCardPhoto(cardId: string, dataUrl: string) {
             @photo="onCardPhoto(card.id, $event)"
           />
         </div>
-
-        <div
-          v-if="pickingKind"
-          class="wiz-group mt-4"
-        >
-          <button
-            type="button"
-            class="wiz-pick"
-            :disabled="cards.length >= LOCATION_AUDIT_MAX"
-            @click="addEquipment('CONTAINER')"
-          >
-            <span class="wiz-pick-ico">
-              <EquipmentIcon name="container" />
-            </span>
-            <span class="wiz-pick-main">
-              <b>Container</b>
-              <small>Box and chassis</small>
-            </span>
-            <span
-              class="wiz-chev"
-              aria-hidden="true"
-            >›</span>
-          </button>
-          <button
-            type="button"
-            class="wiz-pick"
-            :disabled="cards.length >= LOCATION_AUDIT_MAX"
-            @click="addEquipment('BARE_CHASSIS')"
-          >
-            <span class="wiz-pick-ico">
-              <EquipmentIcon name="chassis" />
-            </span>
-            <span class="wiz-pick-main">
-              <b>Bare chassis</b>
-              <small>Chassis only</small>
-            </span>
-            <span
-              class="wiz-chev"
-              aria-hidden="true"
-            >›</span>
-          </button>
-        </div>
         <button
-          v-if="pickingKind && cards.length"
-          type="button"
-          class="wiz-text-btn"
-          @click="pickingKind = false"
-        >
-          Cancel
-        </button>
-        <button
-          v-else-if="!pickingKind"
+          v-if="showNewEquipment"
           type="button"
           class="audit-eq-new"
           :disabled="cards.length >= LOCATION_AUDIT_MAX"
-          @click="pickingKind = true"
+          @click="addEquipment"
         >
           + New equipment
         </button>
         <p class="wiz-hint">
           Up to {{ LOCATION_AUDIT_MAX }}.
-          <span v-if="newItems.length">{{ newItems.length }} ready.</span>
+          <span v-if="addCount">{{ addCount }} ready.</span>
         </p>
       </template>
     </template>
@@ -673,7 +701,7 @@ async function onCardPhoto(cardId: string, dataUrl: string) {
         </div>
       </div>
       <div
-        v-if="action === 'add' && newItems.length"
+        v-if="action === 'add' && addCount"
         class="wiz-group mt-3"
       >
         <div
@@ -704,10 +732,30 @@ async function onCardPhoto(cardId: string, dataUrl: string) {
           </small>
         </div>
         <div
-          v-if="newItems.length > 8"
+          v-for="item in holdBoxes.filter(box => holdContainerIds.includes(box.id)).slice(0, 8)"
+          :key="`hold-ct-${item.id}`"
+          class="wiz-row audit-eq-confirm-row"
+        >
+          <span class="mono">{{ formatContainerNumber(item.number) || item.number }}</span>
+          <small class="audit-eq-confirm-meta">
+            Uncategorized
+            · {{ CONTAINER_TYPE_LABELS[item.containerType] }}
+            · {{ pickupEquipmentSizeLabel(item.equipmentType) }}
+          </small>
+        </div>
+        <div
+          v-for="item in holdBareChassis.filter(unit => holdChassisIds.includes(unit.id)).slice(0, 8)"
+          :key="`hold-ch-${item.id}`"
+          class="wiz-row audit-eq-confirm-row"
+        >
+          <span class="mono">{{ formatChassisNumber(item.number) }}</span>
+          <small class="audit-eq-confirm-meta">Uncategorized · Bare chassis</small>
+        </div>
+        <div
+          v-if="addCount > 8"
           class="wiz-row"
         >
-          <span class="flex-1 text-[var(--color-ink-500)]">And {{ newItems.length - 8 }} more</span>
+          <span class="flex-1 text-[var(--color-ink-500)]">And {{ addCount - 8 }} more</span>
         </div>
       </div>
       <div
@@ -732,13 +780,75 @@ async function onCardPhoto(cardId: string, dataUrl: string) {
         v-if="action === 'delete'"
         class="wiz-hint"
       >
-        Trip history stays. This cannot be undone.
+        <template v-if="isUncategorizedYard">
+          Trip history stays. This permanently removes them from the company pool.
+        </template>
+        <template v-else>
+          These will move to Uncategorized. Trip history stays.
+        </template>
       </p>
       <p
         v-else-if="action === 'move'"
         class="wiz-hint"
       >
         Corrections only. A chassis on a box moves with it.
+      </p>
+    </template>
+
+    <template v-if="(step === 'action' || step === 'equipment') && !scanningId && (holdBoxes.length || holdBareChassis.length)">
+      <span class="wiz-label">Uncategorized</span>
+      <div class="wiz-group">
+        <button
+          v-for="item in holdBoxes"
+          :key="item.id"
+          type="button"
+          class="wiz-pick"
+          :aria-pressed="holdContainerIds.includes(item.id)"
+          @click="toggleHoldContainer(item.id)"
+        >
+          <span class="wiz-pick-main">
+            <b class="font-mono">{{ formatContainerNumber(item.number) || item.number }}</b>
+            <small>
+              {{ CONTAINER_TYPE_LABELS[item.containerType] }}
+              · {{ pickupEquipmentSizeLabel(item.equipmentType) }}
+              <template v-if="item.isLoaded"> · Loaded</template>
+            </small>
+          </span>
+          <span
+            v-if="holdContainerIds.includes(item.id)"
+            class="wiz-check"
+            aria-hidden="true"
+          >✓</span>
+          <span
+            v-else
+            class="audit-eq-add-tag"
+          >Add</span>
+        </button>
+        <button
+          v-for="item in holdBareChassis"
+          :key="item.id"
+          type="button"
+          class="wiz-pick"
+          :aria-pressed="holdChassisIds.includes(item.id)"
+          @click="toggleHoldChassis(item.id)"
+        >
+          <span class="wiz-pick-main">
+            <b class="font-mono">{{ formatChassisNumber(item.number) || item.number }}</b>
+            <small>Bare chassis</small>
+          </span>
+          <span
+            v-if="holdChassisIds.includes(item.id)"
+            class="wiz-check"
+            aria-hidden="true"
+          >✓</span>
+          <span
+            v-else
+            class="audit-eq-add-tag"
+          >Add</span>
+        </button>
+      </div>
+      <p class="wiz-hint">
+        Holding site. Tap to add onto this yard.
       </p>
     </template>
 

@@ -21,11 +21,17 @@ const addItemSchema = z.discriminatedUnion('kind', [
 const schema = z.object({
   action: z.enum(['add', 'move', 'delete']),
   items: z.array(addItemSchema).max(LOCATION_AUDIT_MAX).optional(),
+  uncategorizedContainerIds: z.array(z.string().uuid()).max(LOCATION_AUDIT_MAX).optional(),
+  uncategorizedChassisIds: z.array(z.string().uuid()).max(LOCATION_AUDIT_MAX).optional(),
   containerIds: z.array(z.string().uuid()).max(LOCATION_AUDIT_MAX).optional(),
   destinationLocationId: z.string().uuid().optional(),
 }).superRefine((body, ctx) => {
-  if (body.action === 'add' && !body.items?.length) {
-    ctx.addIssue({ code: 'custom', message: 'Add at least one container or chassis.', path: ['items'] })
+  if (body.action === 'add') {
+    const hasNew = Boolean(body.items?.length)
+    const hasHold = Boolean(body.uncategorizedContainerIds?.length || body.uncategorizedChassisIds?.length)
+    if (!hasNew && !hasHold) {
+      ctx.addIssue({ code: 'custom', message: 'Add at least one container or chassis.', path: ['items'] })
+    }
   }
   if (body.action === 'move' || body.action === 'delete') {
     if (!body.containerIds?.length) {

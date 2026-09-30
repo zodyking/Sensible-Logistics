@@ -1,7 +1,8 @@
 import { eq } from 'drizzle-orm'
-import { containers, locations } from '../database/schema'
+import { chassis, containers, locations } from '../database/schema'
 import { addChassisAtLocation, addContainerAtLocation, moveContainerToLocation } from './placements'
-import { softDeleteContainer } from './container-delete'
+import { retireContainer } from './container-delete'
+import { ensureUncategorizedLocation } from './locations'
 import type { Database } from '../utils/db'
 import type { AuthContext } from '../utils/session'
 import { assertTenant } from '../utils/session'
@@ -73,6 +74,88 @@ async function addAuditItem(
   })
 }
 
+async function pullFromUncategorized(
+  db: Database,
+  auth: AuthContext,
+  destinationId: string,
+  input: {
+    containerIds?: string[]
+    chassisIds?: string[]
+  },
+  failed: LocationAuditFailure[],
+): Promise<number> {
+  const hold = await ensureUncategorizedLocation(db, auth.companyId)
+  if (hold.id === destinationId) {
+    throw createError({ statusCode: 422, statusMessage: 'That equipment is already in Uncategorized.' })
+  }
+
+  let succeeded = 0
+  const containerIds = [...new Set(input.containerIds ?? [])]
+  const chassisIds = [...new Set(input.chassisIds ?? [])]
+
+  for (const containerId of containerIds) {
+    const [row] = await db.select().from(containers).where(eq(containers.id, containerId)).limit(1)
+    const number = row?.number
+    try {
+      assertTenant(auth, row, 'Container')
+      if (row!.deletedAt) {
+        throw createError({ statusCode: 404, statusMessage: 'Container not found.' })
+      }
+      if (row!.currentLocationId !== hold.id) {
+        throw createError({
+          statusCode: 409,
+          statusMessage: 'That container is not in Uncategorized.',
+        })
+      }
+      await moveContainerToLocation(db, auth, {
+        eventId: crypto.randomUUID(),
+        containerId,
+        destinationLocationId: destinationId,
+      })
+      succeeded += 1
+    }
+    catch (error) {
+      failed.push({
+        id: containerId,
+        number,
+        message: failureMessage(error, 'Could not add that container.'),
+      })
+    }
+  }
+
+  for (const chassisId of chassisIds) {
+    const [row] = await db.select().from(chassis).where(eq(chassis.id, chassisId)).limit(1)
+    const number = row?.number
+    try {
+      assertTenant(auth, row, 'Chassis')
+      if (row!.deletedAt) {
+        throw createError({ statusCode: 404, statusMessage: 'Chassis not found.' })
+      }
+      if (row!.currentLocationId !== hold.id) {
+        throw createError({
+          statusCode: 409,
+          statusMessage: 'That chassis is not in Uncategorized.',
+        })
+      }
+      await addChassisAtLocation(db, auth, {
+        eventId: crypto.randomUUID(),
+        locationId: destinationId,
+        chassisNumber: row!.number,
+      })
+      succeeded += 1
+    }
+    catch (error) {
+      failed.push({
+        id: chassisId,
+        number,
+        message: failureMessage(error, 'Could not add that chassis.'),
+      })
+    }
+  }
+
+  return succeeded
+}
+
 export async function runLocationAudit(
   db: Database,
   auth: AuthContext,
@@ -80,6 +163,8 @@ export async function runLocationAudit(
     locationId: string
     action: LocationAuditAction
     items?: LocationAuditAddItem[]
+    uncategorizedContainerIds?: string[]
+    uncategorizedChassisIds?: string[]
     containerIds?: string[]
     destinationLocationId?: string
   },
@@ -90,7 +175,9 @@ export async function runLocationAudit(
 
   if (input.action === 'add') {
     const items = (input.items ?? []).slice(0, LOCATION_AUDIT_MAX)
-    if (!items.length) {
+    const holdBoxes = [...new Set(input.uncategorizedContainerIds ?? [])]
+    const holdChassis = [...new Set(input.uncategorizedChassisIds ?? [])]
+    if (!items.length && !holdBoxes.length && !holdChassis.length) {
       throw createError({ statusCode: 422, statusMessage: 'Add at least one container or chassis.' })
     }
 
@@ -107,6 +194,14 @@ export async function runLocationAudit(
         })
       }
     }
+
+    succeeded += await pullFromUncategorized(
+      db,
+      auth,
+      location.id,
+      { containerIds: holdBoxes, chassisIds: holdChassis },
+      failed,
+    )
   }
   else if (input.action === 'move') {
     const destinationId = input.destinationLocationId
@@ -169,7 +264,7 @@ export async function runLocationAudit(
             statusMessage: 'That container is not at this location.',
           })
         }
-        await softDeleteContainer(db, auth, containerId)
+        await retireContainer(db, auth, containerId)
         succeeded += 1
       }
       catch (error) {
