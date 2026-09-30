@@ -51,6 +51,11 @@ const STEP_TITLES: Record<LocationAuditStep, string> = {
   confirm: 'Confirm',
 }
 
+const navTitle = computed(() => {
+  if (step.value === 'pick' && action.value === 'check') return 'Checklist'
+  return STEP_TITLES[step.value]
+})
+
 type OnSiteBox = {
   id: string
   number: string
@@ -75,6 +80,7 @@ const action = ref<LocationAuditAction | null>(null)
 const cards = ref<EquipmentCard[]>([blankCard()])
 const scanningId = ref<string | null>(null)
 const selectedIds = ref<string[]>([])
+const selectedChassisIds = ref<string[]>([])
 const holdContainerIds = ref<string[]>([])
 const holdChassisIds = ref<string[]>([])
 const destinationId = ref<string | null>(null)
@@ -121,10 +127,26 @@ const newItems = computed(() =>
 
 const movable = computed(() => onSite.value.filter(item => !item.doNotMove))
 const pickedBoxes = computed(() => onSite.value.filter(item => selectedIds.value.includes(item.id)))
+const pickedChassis = computed(() => onSiteChassis.value.filter(item => selectedChassisIds.value.includes(item.id)))
+const missingBoxes = computed(() => onSite.value.filter(item => !selectedIds.value.includes(item.id)))
+const missingChassis = computed(() => onSiteChassis.value.filter(item => !selectedChassisIds.value.includes(item.id)))
+const missingCount = computed(() => missingBoxes.value.length + missingChassis.value.length)
+const onSiteCount = computed(() => onSite.value.length + onSiteChassis.value.length)
 const allPicked = computed(() => {
+  if (action.value === 'check') {
+    return onSiteCount.value > 0
+      && onSite.value.every(item => selectedIds.value.includes(item.id))
+      && onSiteChassis.value.every(item => selectedChassisIds.value.includes(item.id))
+  }
   const pool = action.value === 'move' ? movable.value : onSite.value
   return pool.length > 0 && pool.every(item => selectedIds.value.includes(item.id))
 })
+
+const auditActions = computed(() =>
+  isUncategorizedYard.value
+    ? LOCATION_AUDIT_ACTIONS.filter(item => item !== 'check')
+    : LOCATION_AUDIT_ACTIONS,
+)
 
 const { data: locationList } = await useFetch('/api/locations', {
   query: computed(() => ({
@@ -192,12 +214,17 @@ function chooseAction(next: LocationAuditAction) {
     cards.value = [blankCard()]
     scanningId.value = null
     selectedIds.value = []
+    selectedChassisIds.value = []
     holdContainerIds.value = []
     holdChassisIds.value = []
     destinationId.value = null
     destinationSearch.value = ''
   }
   action.value = next
+  if (next === 'check') {
+    selectedIds.value = onSite.value.map(item => item.id)
+    selectedChassisIds.value = onSiteChassis.value.map(item => item.id)
+  }
   void goNext()
 }
 
@@ -208,11 +235,29 @@ function toggleBox(id: string) {
     selectedIds.value = selectedIds.value.filter(item => item !== id)
     return
   }
-  if (selectedIds.value.length >= LOCATION_AUDIT_MAX) return
+  if (action.value !== 'check' && selectedIds.value.length >= LOCATION_AUDIT_MAX) return
   selectedIds.value = [...selectedIds.value, id]
 }
 
+function toggleChassis(id: string) {
+  if (selectedChassisIds.value.includes(id)) {
+    selectedChassisIds.value = selectedChassisIds.value.filter(item => item !== id)
+    return
+  }
+  selectedChassisIds.value = [...selectedChassisIds.value, id]
+}
+
 function toggleAll() {
+  if (action.value === 'check') {
+    if (allPicked.value) {
+      selectedIds.value = []
+      selectedChassisIds.value = []
+      return
+    }
+    selectedIds.value = onSite.value.map(item => item.id)
+    selectedChassisIds.value = onSiteChassis.value.map(item => item.id)
+    return
+  }
   if (action.value === 'move') {
     selectedIds.value = allPicked.value ? [] : movable.value.slice(0, LOCATION_AUDIT_MAX).map(item => item.id)
     return
@@ -320,12 +365,14 @@ const canAdvance = computed(() => {
     case 'equipment':
       return cardsReady.value && addCount.value > 0 && !scanningId.value
     case 'pick':
+      if (action.value === 'check') return onSiteCount.value > 0
       return pickedBoxes.value.length > 0
     case 'destination':
       return Boolean(destinationId.value)
     case 'confirm':
       if (action.value === 'add') return addCount.value > 0
       if (action.value === 'move') return pickedBoxes.value.length > 0 && Boolean(destinationId.value)
+      if (action.value === 'check') return onSiteCount.value > 0
       return pickedBoxes.value.length > 0
   }
   return false
@@ -354,9 +401,11 @@ function locationAddressLine(location: { addressLine1: string | null, city: stri
   return [location.addressLine1, location.city].filter(Boolean).join(' · ') || '—'
 }
 
-const confirmCount = computed(() =>
-  action.value === 'add' ? addCount.value : pickedBoxes.value.length,
-)
+const confirmCount = computed(() => {
+  if (action.value === 'add') return addCount.value
+  if (action.value === 'check') return missingCount.value
+  return pickedBoxes.value.length
+})
 
 const confirmVerb = computed(() => {
   if (action.value === 'add') {
@@ -366,6 +415,12 @@ const confirmVerb = computed(() => {
     if (boxes) parts.push(boxes === 1 ? '1 container' : `${boxes} containers`)
     if (units) parts.push(units === 1 ? '1 chassis' : `${units} chassis`)
     return parts.length ? `Add ${parts.join(' and ')}` : 'Add equipment'
+  }
+  if (action.value === 'check') {
+    if (!missingCount.value) return 'All present'
+    return missingCount.value === 1
+      ? 'Move 1 to Uncategorized'
+      : `Move ${missingCount.value} to Uncategorized`
   }
   if (action.value === 'move') return confirmCount.value === 1 ? 'Move 1 container' : `Move ${confirmCount.value} containers`
   if (isUncategorizedYard.value) {
@@ -383,6 +438,10 @@ async function confirm() {
   errorMessage.value = ''
   submitting.value = true
   try {
+    if (action.value === 'check' && !missingCount.value) {
+      await navigateTo(`/locations/${locationId.value}`)
+      return
+    }
     const { withLoader } = useBrandLoader()
     const result = await withLoader(() => $fetch<{
       succeeded: number
@@ -402,10 +461,16 @@ async function confirm() {
               containerIds: selectedIds.value,
               destinationLocationId: destinationId.value,
             }
-          : {
-              action: 'delete',
-              containerIds: selectedIds.value,
-            },
+          : action.value === 'check'
+            ? {
+                action: 'check',
+                containerIds: missingBoxes.value.map(item => item.id),
+                chassisIds: missingChassis.value.map(item => item.id),
+              }
+            : {
+                action: 'delete',
+                containerIds: selectedIds.value,
+              },
     }))
     await refresh()
     await refreshHold()
@@ -500,13 +565,13 @@ async function onCardPhoto(cardId: string, dataUrl: string) {
 <template>
   <section :class="user?.role === 'ADMIN' ? '' : 'd-page'">
     <WizardNav
-      :title="STEP_TITLES[step]"
+      :title="navTitle"
       :back-label="stepIndex > 0 ? 'Back' : (locationData?.location.name ?? 'Location')"
       :back-to="stepIndex > 0 ? undefined : `/locations/${locationId}`"
       @back="back"
     >
       <template
-        v-if="step === 'pick' && onSite.length"
+        v-if="step === 'pick' && (action === 'check' ? onSiteCount : onSite.length)"
         #end
       >
         <button
@@ -532,7 +597,7 @@ async function onCardPhoto(cardId: string, dataUrl: string) {
       <span class="wiz-label">Audit</span>
       <div class="wiz-group">
         <button
-          v-for="item in LOCATION_AUDIT_ACTIONS"
+          v-for="item in auditActions"
           :key="item"
           type="button"
           class="wiz-pick"
@@ -592,9 +657,13 @@ async function onCardPhoto(cardId: string, dataUrl: string) {
     </template>
 
     <template v-else-if="step === 'pick'">
-      <span class="wiz-label">{{ action === 'delete' ? 'Delete from this yard' : 'Move from this yard' }}</span>
+      <span class="wiz-label">{{
+        action === 'check'
+          ? 'On this yard'
+          : (action === 'delete' ? 'Delete from this yard' : 'Move from this yard')
+      }}</span>
       <div
-        v-if="onSite.length"
+        v-if="action === 'check' ? onSiteCount : onSite.length"
         class="wiz-group"
       >
         <button
@@ -621,18 +690,53 @@ async function onCardPhoto(cardId: string, dataUrl: string) {
             aria-hidden="true"
           >✓</span>
           <span
+            v-else-if="action === 'check'"
+            class="audit-eq-add-tag"
+          >Out</span>
+          <span
             v-else
             class="wiz-chev"
             aria-hidden="true"
           >›</span>
         </button>
+        <template v-if="action === 'check'">
+          <button
+            v-for="item in onSiteChassis"
+            :key="item.id"
+            type="button"
+            class="wiz-pick"
+            :aria-pressed="selectedChassisIds.includes(item.id)"
+            @click="toggleChassis(item.id)"
+          >
+            <span class="wiz-pick-main">
+              <b class="font-mono">{{ formatChassisNumber(item.number) || item.number }}</b>
+              <small>Bare chassis</small>
+            </span>
+            <span
+              v-if="selectedChassisIds.includes(item.id)"
+              class="wiz-check"
+              aria-hidden="true"
+            >✓</span>
+            <span
+              v-else
+              class="audit-eq-add-tag"
+            >Out</span>
+          </button>
+        </template>
       </div>
       <EmptyState
         v-else
         glyph="▣"
-        title="No containers on site"
+        title="No equipment on site"
         description="Drop off from a trip or add equipment here first."
       />
+      <p
+        v-if="action === 'check' && onSiteCount"
+        class="wiz-hint"
+      >
+        Checked stay. Unchecked move to Uncategorized.
+        <span v-if="missingCount">{{ missingCount }} out.</span>
+      </p>
     </template>
 
     <template v-else-if="step === 'destination'">
@@ -682,11 +786,18 @@ async function onCardPhoto(cardId: string, dataUrl: string) {
     </template>
 
     <template v-else>
-      <span class="wiz-label">{{ action === 'delete' ? 'Remove' : 'On site' }}</span>
+      <span class="wiz-label">{{ action === 'delete' ? 'Remove' : (action === 'check' ? 'Count' : 'On site') }}</span>
       <div class="wiz-group">
+        <div
+          v-if="action === 'check'"
+          class="wiz-row"
+        >
+          <span class="wiz-row-label">Stay</span>
+          <span class="flex-1 text-[var(--color-ink-700)]">{{ pickedBoxes.length + pickedChassis.length }}</span>
+        </div>
         <div class="wiz-row">
-          <span class="wiz-row-label">Units</span>
-          <span class="flex-1 text-[var(--color-ink-700)]">{{ confirmCount }}</span>
+          <span class="wiz-row-label">{{ action === 'check' ? 'Out' : 'Units' }}</span>
+          <span class="flex-1 text-[var(--color-ink-700)]">{{ action === 'check' ? missingCount : confirmCount }}</span>
         </div>
         <div class="wiz-row">
           <span class="wiz-row-label">{{ action === 'move' ? 'From' : 'Where' }}</span>
@@ -698,6 +809,13 @@ async function onCardPhoto(cardId: string, dataUrl: string) {
         >
           <span class="wiz-row-label">To</span>
           <span class="flex-1 text-[var(--color-ink-700)]">{{ destination?.name ?? '—' }}</span>
+        </div>
+        <div
+          v-else-if="action === 'check' && missingCount"
+          class="wiz-row"
+        >
+          <span class="wiz-row-label">To</span>
+          <span class="flex-1 text-[var(--color-ink-700)]">Uncategorized</span>
         </div>
       </div>
       <div
@@ -759,6 +877,31 @@ async function onCardPhoto(cardId: string, dataUrl: string) {
         </div>
       </div>
       <div
+        v-else-if="action === 'check' && missingCount"
+        class="wiz-group mt-3"
+      >
+        <div
+          v-for="item in missingBoxes.slice(0, 8)"
+          :key="item.id"
+          class="wiz-row"
+        >
+          <span class="mono flex-1">{{ formatContainerNumber(item.number) || item.number }}</span>
+        </div>
+        <div
+          v-for="item in missingChassis.slice(0, 8)"
+          :key="item.id"
+          class="wiz-row"
+        >
+          <span class="mono flex-1">{{ formatChassisNumber(item.number) || item.number }}</span>
+        </div>
+        <div
+          v-if="missingCount > 8"
+          class="wiz-row"
+        >
+          <span class="flex-1 text-[var(--color-ink-500)]">And {{ missingCount - 8 }} more</span>
+        </div>
+      </div>
+      <div
         v-else-if="pickedBoxes.length"
         class="wiz-group mt-3"
       >
@@ -785,6 +928,17 @@ async function onCardPhoto(cardId: string, dataUrl: string) {
         </template>
         <template v-else>
           These will move to Uncategorized. Trip history stays.
+        </template>
+      </p>
+      <p
+        v-else-if="action === 'check'"
+        class="wiz-hint"
+      >
+        <template v-if="missingCount">
+          Unchecked units move to Uncategorized. Checked stay on this yard.
+        </template>
+        <template v-else>
+          Everything on the list stays here.
         </template>
       </p>
       <p

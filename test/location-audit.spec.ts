@@ -25,6 +25,10 @@ describe('locationAuditSteps', () => {
     expect(locationAuditSteps(null)).toEqual(['action'])
   })
 
+  it('checks on-site equipment, then confirm', () => {
+    expect(locationAuditSteps('check')).toEqual(['action', 'pick', 'confirm'])
+  })
+
   it('adds equipment with repeating cards, then confirm', () => {
     expect(locationAuditSteps('add')).toEqual(['action', 'equipment', 'confirm'])
   })
