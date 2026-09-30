@@ -1,13 +1,13 @@
 import { eq } from 'drizzle-orm'
 import { containers, locations } from '../database/schema'
-import { addContainerAtLocation, moveContainerToLocation } from './placements'
+import { addChassisAtLocation, addContainerAtLocation, moveContainerToLocation } from './placements'
 import { softDeleteContainer } from './container-delete'
 import type { Database } from '../utils/db'
 import type { AuthContext } from '../utils/session'
 import { assertTenant } from '../utils/session'
 import { LOCATION_AUDIT_MAX } from '#shared/utils/location-audit'
-import type { ContainerType, EquipmentType } from '#shared/utils/domain'
-import { formatContainerNumber, validateContainerNumber } from '#shared/utils/iso6346'
+import type { LocationAuditAddItem } from '#shared/utils/location-audit'
+import { isCompleteChassisNumber, validateContainerNumber } from '#shared/utils/iso6346'
 
 export type LocationAuditAction = 'add' | 'move' | 'delete'
 
@@ -40,15 +40,46 @@ async function loadLocation(db: Database, auth: AuthContext, locationId: string)
   return location!
 }
 
+async function addAuditItem(
+  db: Database,
+  auth: AuthContext,
+  locationId: string,
+  item: LocationAuditAddItem,
+): Promise<void> {
+  if (item.kind === 'BARE_CHASSIS') {
+    if (!isCompleteChassisNumber(item.chassisNumber)) {
+      throw createError({ statusCode: 422, statusMessage: 'A chassis number is four letters then six digits.' })
+    }
+    await addChassisAtLocation(db, auth, {
+      eventId: crypto.randomUUID(),
+      locationId,
+      chassisNumber: item.chassisNumber,
+    })
+    return
+  }
+
+  const validation = validateContainerNumber(item.containerNumber)
+  if (!validation.structureValid || !validation.normalized) {
+    throw createError({ statusCode: 422, statusMessage: 'Not a container number.' })
+  }
+  await addContainerAtLocation(db, auth, {
+    eventId: crypto.randomUUID(),
+    locationId,
+    containerNumber: validation.normalized,
+    containerType: item.containerType,
+    equipmentType: item.equipmentType,
+    isLoaded: false,
+    chassisNumber: item.chassisNumber?.trim() || null,
+  })
+}
+
 export async function runLocationAudit(
   db: Database,
   auth: AuthContext,
   input: {
     locationId: string
     action: LocationAuditAction
-    containerNumbers?: string[]
-    containerType?: ContainerType
-    equipmentType?: EquipmentType
+    items?: LocationAuditAddItem[]
     containerIds?: string[]
     destinationLocationId?: string
   },
@@ -58,38 +89,21 @@ export async function runLocationAudit(
   let succeeded = 0
 
   if (input.action === 'add') {
-    const type = input.containerType
-    const equipmentType = input.equipmentType
-    if (!type || !equipmentType) {
-      throw createError({ statusCode: 422, statusMessage: 'Choose container type and size.' })
-    }
-    const numbers = [...new Set((input.containerNumbers ?? []).map(value => value.trim()).filter(Boolean))]
-      .slice(0, LOCATION_AUDIT_MAX)
-    if (!numbers.length) {
-      throw createError({ statusCode: 422, statusMessage: 'Paste at least one container number.' })
+    const items = (input.items ?? []).slice(0, LOCATION_AUDIT_MAX)
+    if (!items.length) {
+      throw createError({ statusCode: 422, statusMessage: 'Add at least one container or chassis.' })
     }
 
-    for (const raw of numbers) {
-      const validation = validateContainerNumber(raw)
-      if (!validation.structureValid || !validation.normalized) {
-        failed.push({ number: raw, message: 'Not a container number.' })
-        continue
-      }
+    for (const item of items) {
+      const fallbackNumber = item.kind === 'BARE_CHASSIS' ? item.chassisNumber : item.containerNumber
       try {
-        await addContainerAtLocation(db, auth, {
-          eventId: crypto.randomUUID(),
-          locationId: location.id,
-          containerNumber: validation.normalized,
-          containerType: type,
-          equipmentType,
-          isLoaded: false,
-        })
+        await addAuditItem(db, auth, location.id, item)
         succeeded += 1
       }
       catch (error) {
         failed.push({
-          number: formatContainerNumber(validation.normalized) || validation.normalized,
-          message: failureMessage(error, 'Could not add that container.'),
+          number: fallbackNumber,
+          message: failureMessage(error, 'Could not add that equipment.'),
         })
       }
     }
