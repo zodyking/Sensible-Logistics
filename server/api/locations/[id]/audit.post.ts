@@ -4,23 +4,33 @@ import { requireAuth } from '../../../utils/session'
 import { CONTAINER_TYPES, PICKUP_EQUIPMENT_SIZES } from '#shared/utils/domain'
 import { LOCATION_AUDIT_MAX } from '#shared/utils/location-audit'
 
+const addItemSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('CONTAINER'),
+    containerNumber: z.string().trim().min(1).max(40),
+    chassisNumber: z.string().trim().max(40).optional().nullable(),
+    containerType: z.enum(CONTAINER_TYPES),
+    equipmentType: z.enum(PICKUP_EQUIPMENT_SIZES),
+  }),
+  z.object({
+    kind: z.literal('BARE_CHASSIS'),
+    chassisNumber: z.string().trim().min(1).max(40),
+  }),
+])
+
 const schema = z.object({
   action: z.enum(['add', 'move', 'delete']),
-  containerNumbers: z.array(z.string().trim().min(1).max(40)).max(LOCATION_AUDIT_MAX).optional(),
-  containerType: z.enum(CONTAINER_TYPES).optional(),
-  equipmentType: z.enum(PICKUP_EQUIPMENT_SIZES).optional(),
+  items: z.array(addItemSchema).max(LOCATION_AUDIT_MAX).optional(),
+  uncategorizedContainerIds: z.array(z.string().uuid()).max(LOCATION_AUDIT_MAX).optional(),
+  uncategorizedChassisIds: z.array(z.string().uuid()).max(LOCATION_AUDIT_MAX).optional(),
   containerIds: z.array(z.string().uuid()).max(LOCATION_AUDIT_MAX).optional(),
   destinationLocationId: z.string().uuid().optional(),
 }).superRefine((body, ctx) => {
   if (body.action === 'add') {
-    if (!body.containerNumbers?.length) {
-      ctx.addIssue({ code: 'custom', message: 'Paste at least one container number.', path: ['containerNumbers'] })
-    }
-    if (!body.containerType) {
-      ctx.addIssue({ code: 'custom', message: 'Select a container type.', path: ['containerType'] })
-    }
-    if (!body.equipmentType) {
-      ctx.addIssue({ code: 'custom', message: 'Select a container size.', path: ['equipmentType'] })
+    const hasNew = Boolean(body.items?.length)
+    const hasHold = Boolean(body.uncategorizedContainerIds?.length || body.uncategorizedChassisIds?.length)
+    if (!hasNew && !hasHold) {
+      ctx.addIssue({ code: 'custom', message: 'Add at least one container or chassis.', path: ['items'] })
     }
   }
   if (body.action === 'move' || body.action === 'delete') {
@@ -33,7 +43,7 @@ const schema = z.object({
   }
 })
 
-/** Bulk add, move, or delete containers at this location for a yard audit. */
+/** Bulk add, move, or delete equipment at this location for a yard audit. */
 export default defineEventHandler(async (event) => {
   const auth = await requireAuth(event)
   const locationId = getRouterParam(event, 'id')

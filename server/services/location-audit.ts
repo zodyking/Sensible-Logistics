@@ -1,13 +1,14 @@
 import { eq } from 'drizzle-orm'
-import { containers, locations } from '../database/schema'
-import { addContainerAtLocation, moveContainerToLocation } from './placements'
-import { softDeleteContainer } from './container-delete'
+import { chassis, containers, locations } from '../database/schema'
+import { addChassisAtLocation, addContainerAtLocation, moveContainerToLocation } from './placements'
+import { retireContainer } from './container-delete'
+import { ensureUncategorizedLocation } from './locations'
 import type { Database } from '../utils/db'
 import type { AuthContext } from '../utils/session'
 import { assertTenant } from '../utils/session'
 import { LOCATION_AUDIT_MAX } from '#shared/utils/location-audit'
-import type { ContainerType, EquipmentType } from '#shared/utils/domain'
-import { formatContainerNumber, validateContainerNumber } from '#shared/utils/iso6346'
+import type { LocationAuditAddItem } from '#shared/utils/location-audit'
+import { isCompleteChassisNumber, validateContainerNumber } from '#shared/utils/iso6346'
 
 export type LocationAuditAction = 'add' | 'move' | 'delete'
 
@@ -40,15 +41,130 @@ async function loadLocation(db: Database, auth: AuthContext, locationId: string)
   return location!
 }
 
+async function addAuditItem(
+  db: Database,
+  auth: AuthContext,
+  locationId: string,
+  item: LocationAuditAddItem,
+): Promise<void> {
+  if (item.kind === 'BARE_CHASSIS') {
+    if (!isCompleteChassisNumber(item.chassisNumber)) {
+      throw createError({ statusCode: 422, statusMessage: 'A chassis number is four letters then six digits.' })
+    }
+    await addChassisAtLocation(db, auth, {
+      eventId: crypto.randomUUID(),
+      locationId,
+      chassisNumber: item.chassisNumber,
+    })
+    return
+  }
+
+  const validation = validateContainerNumber(item.containerNumber)
+  if (!validation.structureValid || !validation.normalized) {
+    throw createError({ statusCode: 422, statusMessage: 'Not a container number.' })
+  }
+  await addContainerAtLocation(db, auth, {
+    eventId: crypto.randomUUID(),
+    locationId,
+    containerNumber: validation.normalized,
+    containerType: item.containerType,
+    equipmentType: item.equipmentType,
+    isLoaded: false,
+    chassisNumber: item.chassisNumber?.trim() || null,
+  })
+}
+
+async function pullFromUncategorized(
+  db: Database,
+  auth: AuthContext,
+  destinationId: string,
+  input: {
+    containerIds?: string[]
+    chassisIds?: string[]
+  },
+  failed: LocationAuditFailure[],
+): Promise<number> {
+  const hold = await ensureUncategorizedLocation(db, auth.companyId)
+  if (hold.id === destinationId) {
+    throw createError({ statusCode: 422, statusMessage: 'That equipment is already in Uncategorized.' })
+  }
+
+  let succeeded = 0
+  const containerIds = [...new Set(input.containerIds ?? [])]
+  const chassisIds = [...new Set(input.chassisIds ?? [])]
+
+  for (const containerId of containerIds) {
+    const [row] = await db.select().from(containers).where(eq(containers.id, containerId)).limit(1)
+    const number = row?.number
+    try {
+      assertTenant(auth, row, 'Container')
+      if (row!.deletedAt) {
+        throw createError({ statusCode: 404, statusMessage: 'Container not found.' })
+      }
+      if (row!.currentLocationId !== hold.id) {
+        throw createError({
+          statusCode: 409,
+          statusMessage: 'That container is not in Uncategorized.',
+        })
+      }
+      await moveContainerToLocation(db, auth, {
+        eventId: crypto.randomUUID(),
+        containerId,
+        destinationLocationId: destinationId,
+      })
+      succeeded += 1
+    }
+    catch (error) {
+      failed.push({
+        id: containerId,
+        number,
+        message: failureMessage(error, 'Could not add that container.'),
+      })
+    }
+  }
+
+  for (const chassisId of chassisIds) {
+    const [row] = await db.select().from(chassis).where(eq(chassis.id, chassisId)).limit(1)
+    const number = row?.number
+    try {
+      assertTenant(auth, row, 'Chassis')
+      if (row!.deletedAt) {
+        throw createError({ statusCode: 404, statusMessage: 'Chassis not found.' })
+      }
+      if (row!.currentLocationId !== hold.id) {
+        throw createError({
+          statusCode: 409,
+          statusMessage: 'That chassis is not in Uncategorized.',
+        })
+      }
+      await addChassisAtLocation(db, auth, {
+        eventId: crypto.randomUUID(),
+        locationId: destinationId,
+        chassisNumber: row!.number,
+      })
+      succeeded += 1
+    }
+    catch (error) {
+      failed.push({
+        id: chassisId,
+        number,
+        message: failureMessage(error, 'Could not add that chassis.'),
+      })
+    }
+  }
+
+  return succeeded
+}
+
 export async function runLocationAudit(
   db: Database,
   auth: AuthContext,
   input: {
     locationId: string
     action: LocationAuditAction
-    containerNumbers?: string[]
-    containerType?: ContainerType
-    equipmentType?: EquipmentType
+    items?: LocationAuditAddItem[]
+    uncategorizedContainerIds?: string[]
+    uncategorizedChassisIds?: string[]
     containerIds?: string[]
     destinationLocationId?: string
   },
@@ -58,41 +174,34 @@ export async function runLocationAudit(
   let succeeded = 0
 
   if (input.action === 'add') {
-    const type = input.containerType
-    const equipmentType = input.equipmentType
-    if (!type || !equipmentType) {
-      throw createError({ statusCode: 422, statusMessage: 'Choose container type and size.' })
-    }
-    const numbers = [...new Set((input.containerNumbers ?? []).map(value => value.trim()).filter(Boolean))]
-      .slice(0, LOCATION_AUDIT_MAX)
-    if (!numbers.length) {
-      throw createError({ statusCode: 422, statusMessage: 'Paste at least one container number.' })
+    const items = (input.items ?? []).slice(0, LOCATION_AUDIT_MAX)
+    const holdBoxes = [...new Set(input.uncategorizedContainerIds ?? [])]
+    const holdChassis = [...new Set(input.uncategorizedChassisIds ?? [])]
+    if (!items.length && !holdBoxes.length && !holdChassis.length) {
+      throw createError({ statusCode: 422, statusMessage: 'Add at least one container or chassis.' })
     }
 
-    for (const raw of numbers) {
-      const validation = validateContainerNumber(raw)
-      if (!validation.structureValid || !validation.normalized) {
-        failed.push({ number: raw, message: 'Not a container number.' })
-        continue
-      }
+    for (const item of items) {
+      const fallbackNumber = item.kind === 'BARE_CHASSIS' ? item.chassisNumber : item.containerNumber
       try {
-        await addContainerAtLocation(db, auth, {
-          eventId: crypto.randomUUID(),
-          locationId: location.id,
-          containerNumber: validation.normalized,
-          containerType: type,
-          equipmentType,
-          isLoaded: false,
-        })
+        await addAuditItem(db, auth, location.id, item)
         succeeded += 1
       }
       catch (error) {
         failed.push({
-          number: formatContainerNumber(validation.normalized) || validation.normalized,
-          message: failureMessage(error, 'Could not add that container.'),
+          number: fallbackNumber,
+          message: failureMessage(error, 'Could not add that equipment.'),
         })
       }
     }
+
+    succeeded += await pullFromUncategorized(
+      db,
+      auth,
+      location.id,
+      { containerIds: holdBoxes, chassisIds: holdChassis },
+      failed,
+    )
   }
   else if (input.action === 'move') {
     const destinationId = input.destinationLocationId
@@ -155,7 +264,7 @@ export async function runLocationAudit(
             statusMessage: 'That container is not at this location.',
           })
         }
-        await softDeleteContainer(db, auth, containerId)
+        await retireContainer(db, auth, containerId)
         succeeded += 1
       }
       catch (error) {
