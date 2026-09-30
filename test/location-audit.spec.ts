@@ -37,6 +37,10 @@ describe('locationAuditSteps', () => {
     expect(locationAuditSteps('move')).toEqual(['action', 'pick', 'destination', 'confirm'])
   })
 
+  it('skips destination when only Uncategorized units are coming onto this yard', () => {
+    expect(locationAuditSteps('move', { holdOnly: true })).toEqual(['action', 'pick', 'confirm'])
+  })
+
   it('deletes selected boxes after confirm', () => {
     expect(locationAuditSteps('delete')).toEqual(['action', 'pick', 'confirm'])
   })
