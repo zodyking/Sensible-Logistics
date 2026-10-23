@@ -56,18 +56,22 @@ describe('formatLocationExportList', () => {
       '1. CT: BSIU818594',
       '   Chassis: TRAC 123456',
       '   20ft Tropical',
+      '   Empty',
       '',
       '2. CT: ZCSU842461',
       '   Chassis: DCLI 784521',
       '   40ft ZIM',
+      '   Empty',
       '',
       '3. CT: CMAU718500',
       '   Chassis: FLEXI 459872',
       '   40ft CMA CGM',
+      '   Empty',
       '',
       '4. CT: KOSU826227',
       '   Chassis: TRAC 337194',
       '   40ft King Ocean',
+      '   Empty',
       '',
       'Bare Chassis',
       '',
@@ -91,6 +95,7 @@ describe('formatLocationExportList', () => {
       '',
       '1. CT: MSCU4521894',
       '   20ft Tropical',
+      '   Empty',
     ].join('\n'))
   })
 
@@ -126,6 +131,7 @@ describe('formatLocationExportList', () => {
       '1. CT: BSIU818594',
       '   Chassis: TRAC 123456',
       '   20ft Tropical',
+      '   Empty',
       '',
       'Bare Chassis',
       '',
@@ -141,15 +147,12 @@ describe('formatLocationExportList', () => {
     })).toBe('Jersey Yard')
   })
 
-  it('appends a notes section with the person who left each note', () => {
+  it('lists loaded or empty under the size and type', () => {
     expect(formatLocationExportList({
       locationName: 'Jersey Yard',
       containers: [
-        { number: 'MSCU4521894', containerType: 'TROPICAL', equipmentType: 'DRY_20' },
-      ],
-      notes: [
-        { body: 'Gate is blocked until Friday', authorName: 'Alex Rivera' },
-        { body: 'Need a 40ft chassis', authorName: 'Jordan Lee' },
+        { number: 'MSCU4521894', containerType: 'TROPICAL', equipmentType: 'DRY_20', isLoaded: true },
+        { number: 'BSIU818594', containerType: 'ZIM', equipmentType: 'DRY_40', isLoaded: false },
       ],
     })).toBe([
       'Jersey Yard',
@@ -158,6 +161,42 @@ describe('formatLocationExportList', () => {
       '',
       '1. CT: MSCU4521894',
       '   20ft Tropical',
+      '   Loaded',
+      '',
+      '2. CT: BSIU818594',
+      '   40ft ZIM',
+      '   Empty',
+    ].join('\n'))
+  })
+
+  it('omits notes unless includeNotes is turned on', () => {
+    const input = {
+      locationName: 'Jersey Yard',
+      containers: [
+        { number: 'MSCU4521894', containerType: 'TROPICAL', equipmentType: 'DRY_20' },
+      ],
+      notes: [
+        { body: 'Gate is blocked until Friday', authorName: 'Alex Rivera' },
+        { body: 'Need a 40ft chassis', authorName: 'Jordan Lee' },
+      ],
+    }
+    expect(formatLocationExportList(input)).toBe([
+      'Jersey Yard',
+      '',
+      'Containers',
+      '',
+      '1. CT: MSCU4521894',
+      '   20ft Tropical',
+      '   Empty',
+    ].join('\n'))
+    expect(formatLocationExportList({ ...input, includeNotes: true })).toBe([
+      'Jersey Yard',
+      '',
+      'Containers',
+      '',
+      '1. CT: MSCU4521894',
+      '   20ft Tropical',
+      '   Empty',
       '',
       'Notes',
       '',

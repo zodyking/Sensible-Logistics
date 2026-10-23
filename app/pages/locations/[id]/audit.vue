@@ -288,7 +288,9 @@ function pickDestination(id: string) {
 }
 
 const showNewEquipment = computed(() => {
-  const busy = cards.value.some(card => card.stage === 'numbers' || card.stage === 'classify' || card.stage === 'kind')
+  const busy = cards.value.some(card =>
+    card.stage === 'numbers' || card.stage === 'classify' || card.stage === 'load' || card.stage === 'kind',
+  )
   return !busy
 })
 
@@ -352,6 +354,12 @@ function cardIssue(card: EquipmentCard, index: number): string {
     if (validation.structureValid && (!card.containerType || !card.equipmentType)) {
       return 'Choose a type and size.'
     }
+    if (validation.structureValid && card.isLoaded === null) {
+      return 'Choose empty or loaded.'
+    }
+    if (card.isLoaded && !card.sealNumber.trim()) {
+      return 'Enter a seal number for a loaded container.'
+    }
     return ''
   }
   const key = auditAddItemIdentityKey(item)
@@ -362,7 +370,7 @@ function cardIssue(card: EquipmentCard, index: number): string {
 }
 
 const cardsReady = computed(() =>
-  !cards.value.some(card => card.stage === 'numbers' || card.stage === 'classify'),
+  !cards.value.some(card => card.stage === 'numbers' || card.stage === 'classify' || card.stage === 'load'),
 )
 const addCount = computed(() => newItems.value.length)
 
@@ -983,7 +991,7 @@ async function onCardPhoto(cardId: string, dataUrl: string) {
             <template v-if="item.kind === 'CONTAINER'">
               {{ CONTAINER_TYPE_LABELS[item.containerType] }}
               · {{ pickupEquipmentSizeLabel(item.equipmentType) }}
-              · Empty
+              · {{ item.isLoaded ? 'Loaded' : 'Empty' }}
               <template v-if="item.chassisNumber">
                 · {{ formatChassisNumber(item.chassisNumber) }}
               </template>

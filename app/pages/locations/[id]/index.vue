@@ -113,15 +113,19 @@ function stepNoteReview(step: 1 | -1) {
   reviewIndex.value = locationNoteReviewIndex(reviewIndex.value, notes.value.length, step)
 }
 
+const includeExportNotes = ref(false)
+
 const exportText = computed(() => formatLocationExportList({
   locationName: data.value?.location.name ?? '',
   containers: data.value?.containers ?? [],
   chassis: data.value?.chassis ?? [],
   notes: notes.value,
+  includeNotes: includeExportNotes.value,
 }))
 
 function openExport() {
   menuOpen.value = false
+  includeExportNotes.value = false
   exportOpen.value = true
 }
 
@@ -650,8 +654,10 @@ async function confirmDelete() {
       />
 
       <LocationExportSheet
+        v-model:include-notes="includeExportNotes"
         :open="exportOpen"
         :text="exportText"
+        :note-count="notes.length"
         @close="exportOpen = false"
       />
     </template>

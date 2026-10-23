@@ -20,6 +20,7 @@ export type LocationExportContainer = {
   containerType?: ContainerType | string | null
   equipmentType?: EquipmentType | string | null
   chassisNumber?: string | null
+  isLoaded?: boolean | null
 }
 
 export type LocationExportChassis = {
@@ -112,6 +113,7 @@ function comboLines(item: LocationExportContainer): string[] | null {
   if (chassis) lines.push(`${toCapitalCase('chassis')}: ${chassis}`)
   const type = typeEntry(item)
   if (type) lines.push(type)
+  lines.push(item.isLoaded ? 'Loaded' : 'Empty')
   return lines
 }
 
@@ -158,13 +160,15 @@ function notesSection(notes: readonly LocationExportNote[]): string | null {
 
 /**
  * Share text for a location: containers first, then bare chassis, then notes.
- * Empty sections are omitted. Container units are separated by a blank line.
+ * Notes are omitted unless includeNotes is true. Empty sections are omitted.
+ * Container units are separated by a blank line.
  */
 export function formatLocationExportList(input: {
   locationName: string
   containers?: readonly LocationExportContainer[] | null
   chassis?: readonly LocationExportChassis[] | null
   notes?: readonly LocationExportNote[] | null
+  includeNotes?: boolean
 }): string {
   const name = input.locationName.trim()
   const containers = input.containers ?? []
@@ -179,7 +183,9 @@ export function formatLocationExportList(input: {
   if (combos) parts.push(combos)
   const bare = bareSection(input.chassis ?? [], occupied)
   if (bare) parts.push(bare)
-  const notes = notesSection(input.notes ?? [])
-  if (notes) parts.push(notes)
+  if (input.includeNotes) {
+    const notes = notesSection(input.notes ?? [])
+    if (notes) parts.push(notes)
+  }
   return parts.join('\n\n')
 }

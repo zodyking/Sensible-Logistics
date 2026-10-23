@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { shareTripSms } from '~/utils/share-trip-sms'
 
+const includeNotes = defineModel<boolean>('includeNotes', { default: false })
+
 const props = defineProps<{
   open: boolean
   text: string
+  noteCount?: number
 }>()
 
 const emit = defineEmits<{ close: [] }>()
@@ -21,6 +24,11 @@ watch(
     copied.value = false
   },
 )
+
+function onIncludeNotes(event: Event) {
+  const target = event.target
+  if (target instanceof HTMLInputElement) includeNotes.value = target.checked
+}
 
 async function share() {
   if (!props.text || sharing.value) return
@@ -59,6 +67,25 @@ async function share() {
     <p class="sms-share-lead">
       The list is copied first, then your phone’s share sheet opens so you can send it to a conversation.
     </p>
+    <fieldset
+      v-if="noteCount"
+      class="sms-doc-picker location-export-notes"
+    >
+      <legend>Yard notes</legend>
+      <label class="sms-doc-pick">
+        <input
+          type="checkbox"
+          :checked="includeNotes"
+          :disabled="sharing"
+          data-testid="location-export-include-notes"
+          @change="onIncludeNotes"
+        >
+        <span>
+          Include notes
+          <small class="location-export-notes-count">{{ noteCount }} on this yard</small>
+        </span>
+      </label>
+    </fieldset>
     <pre
       class="sms-preview"
       data-testid="location-export-preview"

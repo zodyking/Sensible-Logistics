@@ -19,6 +19,7 @@ import {
 import {
   auditCardBackStage,
   auditCardClassifyReady,
+  auditCardLoadReady,
   auditCardNextStage,
   auditCardNumbersReady,
   auditCardTitle,
@@ -53,6 +54,7 @@ const title = computed(() => auditCardTitle(draft.value))
 const backStage = computed(() => auditCardBackStage(draft.value))
 const nextStage = computed(() => auditCardNextStage(draft.value))
 const numbersReady = computed(() => auditCardNumbersReady(draft.value))
+const loadReady = computed(() => auditCardLoadReady(draft.value))
 
 const containerInvalid = computed(() => {
   if (draft.value.kind !== 'CONTAINER') return false
@@ -78,7 +80,7 @@ const summaryMeta = computed(() => {
   const parts = [
     draft.value.containerType ? CONTAINER_TYPE_LABELS[draft.value.containerType] : null,
     draft.value.equipmentType ? pickupEquipmentSizeLabel(draft.value.equipmentType) : null,
-    'Empty',
+    draft.value.isLoaded === true ? 'Loaded' : 'Empty',
     draft.value.chassisNumber ? formatChassisNumber(draft.value.chassisNumber) : null,
   ]
   return parts.filter(Boolean).join(' · ')
@@ -111,17 +113,37 @@ function pickKind(kind: LocationAuditEquipmentKind) {
     stage: 'numbers',
     containerType: kind === 'CONTAINER' ? draft.value.containerType : null,
     equipmentType: kind === 'CONTAINER' ? draft.value.equipmentType : null,
+    isLoaded: kind === 'CONTAINER' ? draft.value.isLoaded : null,
+    sealNumber: kind === 'CONTAINER' ? draft.value.sealNumber : '',
   }
 }
 
 function pickType(type: ContainerType) {
   const next = { ...draft.value, containerType: type }
-  draft.value = auditCardClassifyReady(next) ? { ...next, stage: 'done' } : next
+  draft.value = auditCardClassifyReady(next) ? { ...next, stage: 'load' } : next
 }
 
 function pickSize(size: PickupEquipmentSize) {
   const next = { ...draft.value, equipmentType: size }
-  draft.value = auditCardClassifyReady(next) ? { ...next, stage: 'done' } : next
+  draft.value = auditCardClassifyReady(next) ? { ...next, stage: 'load' } : next
+}
+
+function pickLoad(loaded: boolean) {
+  draft.value = {
+    ...draft.value,
+    isLoaded: loaded,
+    sealNumber: loaded ? draft.value.sealNumber : '',
+    stage: loaded ? 'load' : 'done',
+  }
+}
+
+function setSealNumber(value: string) {
+  draft.value = { ...draft.value, sealNumber: value }
+}
+
+function onSealInput(event: Event) {
+  const target = event.target
+  if (target instanceof HTMLInputElement) setSealNumber(target.value)
 }
 </script>
 
@@ -341,6 +363,60 @@ function pickSize(size: PickupEquipmentSize) {
         </div>
       </template>
 
+      <template v-else-if="draft.stage === 'load'">
+        <div class="wiz-status">
+          <button
+            type="button"
+            class="wiz-status-btn"
+            :aria-pressed="draft.isLoaded === false"
+            @click="pickLoad(false)"
+          >
+            <span
+              class="wiz-status-mark"
+              aria-hidden="true"
+            >E</span>
+            <span class="wiz-status-name">Empty</span>
+          </button>
+          <button
+            type="button"
+            class="wiz-status-btn"
+            :aria-pressed="draft.isLoaded === true"
+            @click="pickLoad(true)"
+          >
+            <span
+              class="wiz-status-mark"
+              aria-hidden="true"
+            >L</span>
+            <span class="wiz-status-name">Load</span>
+          </button>
+        </div>
+        <div
+          v-if="draft.isLoaded === true"
+          class="wiz-row"
+        >
+          <label
+            class="wiz-row-label"
+            :for="`audit-seal-${draft.id}`"
+          >Seal</label>
+          <input
+            :id="`audit-seal-${draft.id}`"
+            class="input mono"
+            :value="draft.sealNumber"
+            placeholder="required"
+            autocapitalize="characters"
+            autocomplete="off"
+            required
+            @input="onSealInput"
+          >
+        </div>
+        <p
+          v-if="draft.isLoaded === true"
+          class="audit-eq-hint"
+        >
+          A loaded container keeps its seal on the record.
+        </p>
+      </template>
+
       <DevicePhotoInput
         v-if="draft.stage === 'numbers'"
         class="audit-eq-scan"
@@ -349,10 +425,10 @@ function pickSize(size: PickupEquipmentSize) {
         @photo="emit('photo', $event)"
       />
       <button
-        v-if="draft.stage === 'numbers'"
+        v-if="draft.stage === 'numbers' || (draft.stage === 'load' && draft.isLoaded === true)"
         type="button"
         class="audit-eq-card-next"
-        :disabled="!numbersReady"
+        :disabled="draft.stage === 'numbers' ? !numbersReady : !loadReady"
         @click="goNext"
       >
         Next

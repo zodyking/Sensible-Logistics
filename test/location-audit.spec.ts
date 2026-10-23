@@ -56,7 +56,7 @@ describe('audit equipment cards', () => {
     expect(auditEquipmentItemFromDraft(card)).toBeNull()
   })
 
-  it('advances kind to numbers, then a box to type and size', () => {
+  it('advances kind to numbers, then a box to type, size, and load', () => {
     const started = draft({ kind: 'CONTAINER', stage: 'kind' })
     expect(auditCardNextStage(started)).toBe('numbers')
     const numbered = draft({
@@ -67,6 +67,16 @@ describe('audit equipment cards', () => {
     expect(auditCardNumbersReady(numbered)).toBe(true)
     expect(auditCardNextStage(numbered)).toBe('classify')
     expect(auditCardBackStage({ ...numbered, stage: 'classify' })).toBe('numbers')
+    const classified = draft({
+      kind: 'CONTAINER',
+      stage: 'classify',
+      containerNumber: 'MSCU4521894',
+      containerType: 'TROPICAL',
+      equipmentType: 'DRY_40',
+    })
+    expect(auditCardNextStage(classified)).toBe('load')
+    expect(auditCardBackStage({ ...classified, stage: 'load' })).toBe('classify')
+    expect(auditCardTitle({ ...classified, stage: 'load' })).toBe('Load')
   })
 
   it('finishes a bare chassis after the plate, skipping type', () => {
@@ -79,18 +89,46 @@ describe('audit equipment cards', () => {
     expect(auditCardBackStage({ ...card, stage: 'done' })).toBe('numbers')
   })
 
-  it('accepts a box with type, size, and an optional chassis', () => {
+  it('accepts a box with type, size, load, and an optional chassis', () => {
     expect(auditEquipmentItemFromDraft(draft({
       containerNumber: 'MSCU4521894',
       chassisNumber: 'TRAC481029',
       containerType: 'TROPICAL',
       equipmentType: 'DRY_40',
+      isLoaded: false,
     }))).toEqual({
       kind: 'CONTAINER',
       containerNumber: 'MSCU4521894',
       chassisNumber: 'TRAC481029',
       containerType: 'TROPICAL',
       equipmentType: 'DRY_40',
+      isLoaded: false,
+      sealNumber: null,
+    })
+  })
+
+  it('requires a seal when the box is loaded', () => {
+    expect(auditEquipmentItemFromDraft(draft({
+      containerNumber: 'MSCU4521894',
+      containerType: 'TROPICAL',
+      equipmentType: 'DRY_40',
+      isLoaded: true,
+    }))).toBeNull()
+    expect(auditEquipmentItemFromDraft(draft({
+      containerNumber: 'MSCU4521894',
+      containerType: 'TROPICAL',
+      equipmentType: 'DRY_40',
+      isLoaded: true,
+      sealNumber: 'SEAL4411',
+      stage: 'load',
+    }))).toEqual({
+      kind: 'CONTAINER',
+      containerNumber: 'MSCU4521894',
+      chassisNumber: null,
+      containerType: 'TROPICAL',
+      equipmentType: 'DRY_40',
+      isLoaded: true,
+      sealNumber: 'SEAL4411',
     })
   })
 
@@ -116,11 +154,14 @@ describe('audit equipment cards', () => {
       containerNumber: 'MSCU4521894',
       containerType: 'ZIM',
       equipmentType: 'DRY_20',
+      isLoaded: false,
     })
     const copy = draft({
       containerNumber: 'MSCU 452189-4',
       containerType: 'CMA',
       equipmentType: 'DRY_40',
+      isLoaded: true,
+      sealNumber: 'SEAL9',
     })
     const extra = draft({
       kind: 'BARE_CHASSIS',
@@ -133,6 +174,8 @@ describe('audit equipment cards', () => {
         chassisNumber: null,
         containerType: 'ZIM',
         equipmentType: 'DRY_20',
+        isLoaded: false,
+        sealNumber: null,
       },
       {
         kind: 'BARE_CHASSIS',

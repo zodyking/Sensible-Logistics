@@ -71,7 +71,8 @@ async function addAuditItem(
     containerNumber: validation.normalized,
     containerType: item.containerType,
     equipmentType: item.equipmentType,
-    isLoaded: false,
+    isLoaded: item.isLoaded,
+    sealNumber: item.sealNumber,
     chassisNumber: item.chassisNumber?.trim() || null,
     releaseHeldChassis: true,
   })

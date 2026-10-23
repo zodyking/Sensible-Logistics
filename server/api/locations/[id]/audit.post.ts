@@ -11,6 +11,8 @@ const addItemSchema = z.discriminatedUnion('kind', [
     chassisNumber: z.string().trim().max(40).optional().nullable(),
     containerType: z.enum(CONTAINER_TYPES),
     equipmentType: z.enum(PICKUP_EQUIPMENT_SIZES),
+    isLoaded: z.boolean(),
+    sealNumber: z.string().trim().max(40).optional().nullable(),
   }),
   z.object({
     kind: z.literal('BARE_CHASSIS'),
