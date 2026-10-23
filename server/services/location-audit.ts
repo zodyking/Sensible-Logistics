@@ -56,6 +56,7 @@ async function addAuditItem(
       eventId: crypto.randomUUID(),
       locationId,
       chassisNumber: item.chassisNumber,
+      releaseHeldChassis: true,
     })
     return
   }
@@ -72,6 +73,7 @@ async function addAuditItem(
     equipmentType: item.equipmentType,
     isLoaded: false,
     chassisNumber: item.chassisNumber?.trim() || null,
+    releaseHeldChassis: true,
   })
 }
 

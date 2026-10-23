@@ -40,15 +40,19 @@ export function useChassisReleasePrompt() {
     })
   }
 
-  async function releaseIfNeeded(item: ChassisHolder, keepContainerId?: string | null) {
+  async function confirmIfNeeded(item: ChassisHolder, keepContainerId?: string | null) {
     if (!chassisNeedsRelease(item.currentContainerId, keepContainerId)) return true
-
-    const ok = await ask({
+    return ask({
       chassisId: item.id,
       chassisNumber: item.number,
       containerNumber: item.currentContainerNumber || '',
     })
-    if (!ok) return false
+  }
+
+  async function releaseIfNeeded(item: ChassisHolder, keepContainerId?: string | null) {
+    if (!await confirmIfNeeded(item, keepContainerId)) return false
+
+    if (!chassisNeedsRelease(item.currentContainerId, keepContainerId)) return true
 
     releasing.value = true
     try {
@@ -60,5 +64,5 @@ export function useChassisReleasePrompt() {
     }
   }
 
-  return { conflict, releasing, promptText, decide, releaseIfNeeded }
+  return { conflict, releasing, promptText, decide, confirmIfNeeded, releaseIfNeeded }
 }

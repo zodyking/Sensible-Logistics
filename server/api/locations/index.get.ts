@@ -5,6 +5,7 @@ import { displayContainers, mapContainerFromRow } from '../../services/placement
 import { requireAuth } from '../../utils/session'
 import { countContainersByType, emptyTypeCounts, LOCATION_TYPES } from '#shared/utils/domain'
 import type { GeoJsonPolygon } from '#shared/utils/geo'
+import { equipmentSearchNeedle } from '#shared/utils/location-search'
 
 const querySchema = z.object({
   q: z.string().trim().max(120).optional(),
@@ -24,14 +25,27 @@ export default defineEventHandler(async (event) => {
   const filters = [eq(locations.companyId, auth.companyId), isNull(locations.deletedAt)]
   if (!query.includeUncategorized) filters.push(eq(locations.isUncategorized, false))
   if (query.type) filters.push(eq(locations.type, query.type))
+  const mark = query.q ? equipmentSearchNeedle(query.q) : ''
+  const equipmentHits = query.q && mark
+    ? await loadEquipmentHits(db, auth.companyId, mark)
+    : []
+  const equipmentLocationIds = [...new Set(
+    equipmentHits.map(item => item.locationId).filter((id): id is string => Boolean(id)),
+  )]
+
   if (query.q) {
     const needle = `%${query.q.toLowerCase()}%`
-    filters.push(or(
+    const textMatch = or(
       sql`lower(${locations.name}) like ${needle}`,
       sql`lower(coalesce(${locations.addressLine1}, '')) like ${needle}`,
       sql`lower(coalesce(${locations.city}, '')) like ${needle}`,
       sql`lower(coalesce(${locations.locationCode}, '')) like ${needle}`,
-    )!)
+    )!
+    filters.push(
+      equipmentLocationIds.length
+        ? or(textMatch, inArray(locations.id, equipmentLocationIds))!
+        : textMatch,
+    )
   }
 
   const rows = await db
@@ -106,7 +120,9 @@ export default defineEventHandler(async (event) => {
         availableChassis: chassisByLocation.get(row.id) ?? 0,
         typeCounts: emptyTypeCounts(),
         containers: [],
+        matchedNumbers: numbersAtLocation(equipmentHits, row.id),
       })),
+      equipment: equipmentHits,
     }
   }
 
@@ -194,8 +210,90 @@ export default defineEventHandler(async (event) => {
       availableChassis: chassisByLocation.get(row.id) ?? 0,
       typeCounts: countContainersByType(mapped),
       containers: mapped,
+      matchedNumbers: numbersAtLocation(equipmentHits, row.id),
     }
   })
 
-  return { items }
+  return { items, equipment: equipmentHits }
 })
+
+type LocationEquipmentHit = {
+  kind: 'CONTAINER' | 'CHASSIS'
+  id: string
+  number: string
+  locationId: string | null
+  locationName: string | null
+  containerType: string | null
+  equipmentType: string | null
+  isLoaded: boolean | null
+}
+
+function numbersAtLocation(hits: LocationEquipmentHit[], locationId: string): string[] {
+  return hits.filter(item => item.locationId === locationId).map(item => item.number)
+}
+
+async function loadEquipmentHits(
+  db: ReturnType<typeof useDb>,
+  companyId: string,
+  mark: string,
+): Promise<LocationEquipmentHit[]> {
+  const needle = `%${mark}%`
+  const boxes = await db
+    .select({
+      id: containers.id,
+      number: containers.number,
+      locationId: containers.currentLocationId,
+      locationName: locations.name,
+      containerType: containers.containerType,
+      equipmentType: containers.equipmentType,
+      isLoaded: containers.isLoaded,
+    })
+    .from(containers)
+    .leftJoin(locations, eq(locations.id, containers.currentLocationId))
+    .where(and(
+      eq(containers.companyId, companyId),
+      isNull(containers.deletedAt),
+      sql`${containers.activePoolState} <> 'INACTIVE'`,
+      sql`${containers.numberNormalized} like ${needle}`,
+    ))
+    .limit(20)
+
+  const units = await db
+    .select({
+      id: chassis.id,
+      number: chassis.number,
+      locationId: chassis.currentLocationId,
+      locationName: locations.name,
+    })
+    .from(chassis)
+    .leftJoin(locations, eq(locations.id, chassis.currentLocationId))
+    .where(and(
+      eq(chassis.companyId, companyId),
+      isNull(chassis.deletedAt),
+      sql`${chassis.numberNormalized} like ${needle}`,
+    ))
+    .limit(20)
+
+  return [
+    ...boxes.map(row => ({
+      kind: 'CONTAINER' as const,
+      id: row.id,
+      number: row.number,
+      locationId: row.locationId,
+      locationName: row.locationName,
+      containerType: row.containerType,
+      equipmentType: row.equipmentType,
+      isLoaded: row.isLoaded,
+    })),
+    ...units.map(row => ({
+      kind: 'CHASSIS' as const,
+      id: row.id,
+      number: row.number,
+      locationId: row.locationId,
+      locationName: row.locationName,
+      containerType: null,
+      equipmentType: null,
+      isLoaded: null,
+    })),
+  ]
+}

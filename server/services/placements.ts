@@ -194,6 +194,8 @@ export interface AddContainerAtLocationInput {
   sealNumber?: string | null
   chassisNumber?: string | null
   placement?: GeoPlacementInput | null
+  /** Audit / yard count: unhang this chassis from another box first. */
+  releaseHeldChassis?: boolean
 }
 
 async function findOrCreateChassis(
@@ -241,6 +243,8 @@ async function findOrCreateChassis(
   return { unit: created!, created: true }
 }
 
+const LIVE_ADD_TRIP_STATUSES = ['PICKUP_IN_PROGRESS', 'IN_TRANSIT', 'DROPOFF_IN_PROGRESS'] as const
+
 async function parkChassisAtLocation(
   tx: DbExecutor,
   auth: AuthContext,
@@ -249,24 +253,70 @@ async function parkChassisAtLocation(
     locationId: string
     containerId: string | null
     now: Date
+    releaseHeld?: boolean
   },
 ) {
-  if (input.unit.currentContainerId && input.unit.currentContainerId !== input.containerId) {
+  const holderId = input.unit.currentContainerId
+  if (holderId && holderId !== input.containerId) {
     const [box] = await tx
       .select({ number: containers.number, numberNormalized: containers.numberNormalized })
       .from(containers)
-      .where(eq(containers.id, input.unit.currentContainerId))
+      .where(eq(containers.id, holderId))
       .limit(1)
     const raw = box?.numberNormalized ?? box?.number ?? ''
     const label = formatContainerNumber(raw) || raw || 'another container'
-    throw createError({
-      statusCode: 409,
-      statusMessage: `That chassis is already attached to container number ${label}.`,
-      data: {
-        currentContainerId: input.unit.currentContainerId,
-        currentContainerNumber: raw || null,
-      },
-    })
+    if (!input.releaseHeld) {
+      throw createError({
+        statusCode: 409,
+        statusMessage: `That chassis is already attached to container number ${label}.`,
+        data: {
+          currentContainerId: holderId,
+          currentContainerNumber: raw || null,
+        },
+      })
+    }
+
+    const [live] = await tx
+      .select({ id: trips.id })
+      .from(trips)
+      .where(and(
+        eq(trips.companyId, auth.companyId),
+        eq(trips.chassisId, input.unit.id),
+        inArray(trips.status, [...LIVE_ADD_TRIP_STATUSES]),
+      ))
+      .limit(1)
+    if (live) {
+      throw createError({
+        statusCode: 409,
+        statusMessage: 'That chassis is on a live trip. Finish or cancel the movement first.',
+      })
+    }
+
+    await tx
+      .update(chassis)
+      .set({
+        currentContainerId: null,
+        status: 'AVAILABLE',
+        updatedAt: input.now,
+      })
+      .where(and(eq(chassis.id, input.unit.id), eq(chassis.companyId, auth.companyId)))
+
+    if (box) {
+      await recordEvent(
+        tx,
+        {
+          id: crypto.randomUUID(),
+          companyId: auth.companyId,
+          containerId: holderId,
+          eventType: 'CHASSIS_DETACH',
+          actorUserId: auth.userId,
+          actorDriverId: auth.driverId,
+          chassisId: input.unit.id,
+          payload: { releasedChassisId: input.unit.id, source: 'audit-override' },
+        },
+        { currentChassisId: null },
+      )
+    }
   }
   if (input.unit.status === 'IN_USE' && !input.containerId) {
     throw createError({
@@ -285,8 +335,6 @@ async function parkChassisAtLocation(
     })
     .where(and(eq(chassis.id, input.unit.id), eq(chassis.companyId, auth.companyId)))
 }
-
-const LIVE_ADD_TRIP_STATUSES = ['PICKUP_IN_PROGRESS', 'IN_TRANSIT', 'DROPOFF_IN_PROGRESS'] as const
 
 /** Drop leftover live trips so an on-site add can record the box where it sits. */
 async function closeLiveTripsForContainer(
@@ -524,6 +572,7 @@ export async function addContainerAtLocation(
         locationId: location.id,
         containerId: container.id,
         now,
+        releaseHeld: Boolean(input.releaseHeldChassis),
       })
     }
     else {
@@ -538,7 +587,7 @@ export async function addContainerAtLocation(
 export async function addChassisAtLocation(
   db: Database,
   auth: AuthContext,
-  input: { eventId: string, locationId: string, chassisNumber: string },
+  input: { eventId: string, locationId: string, chassisNumber: string, releaseHeldChassis?: boolean },
 ): Promise<{ chassis: typeof chassis.$inferSelect, created: boolean, replayed: boolean }> {
   return db.transaction(async (tx) => {
     const location = await loadLocation(tx, auth, input.locationId)
@@ -554,6 +603,7 @@ export async function addChassisAtLocation(
       locationId: location.id,
       containerId: null,
       now,
+      releaseHeld: Boolean(input.releaseHeldChassis),
     })
 
     await recordEvent(tx, {
