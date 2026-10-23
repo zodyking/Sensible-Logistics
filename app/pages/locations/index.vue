@@ -48,8 +48,8 @@ function addressLine(item: {
       <input
         v-model="search"
         type="search"
-        placeholder="Search location or customer…"
-        aria-label="Search locations"
+        placeholder="Search location, customer, container, or chassis…"
+        aria-label="Search locations, containers, and chassis"
       >
     </div>
 

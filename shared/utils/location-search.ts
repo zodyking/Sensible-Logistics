@@ -5,6 +5,19 @@ export type LocationSearchFields = {
   city?: string | null
   state?: string | null
   locationCode?: string | null
+  /** Container or chassis numbers that already matched this site. */
+  matchedNumbers?: readonly string[] | null
+}
+
+/** Painted container / chassis digits used for inventory search. */
+export function equipmentSearchNeedle(query: string): string {
+  return query.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
+}
+
+export function equipmentNumberMatchesQuery(number: string | null | undefined, query: string): boolean {
+  const needle = equipmentSearchNeedle(query)
+  if (!needle) return false
+  return (number ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').includes(needle)
 }
 
 /** Empty or whitespace-only query matches every location. */
@@ -21,7 +34,8 @@ export function locationMatchesQuery(location: LocationSearchFields, query: stri
     .filter((part): part is string => Boolean(part?.trim()))
     .join(' ')
     .toLowerCase()
-  return haystack.includes(needle)
+  if (haystack.includes(needle)) return true
+  return (location.matchedNumbers ?? []).some(number => equipmentNumberMatchesQuery(number, query))
 }
 
 export function filterLocations<T extends LocationSearchFields>(items: readonly T[], query: string): T[] {

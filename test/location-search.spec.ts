@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import { filterLocations, locationMatchesQuery } from '../shared/utils/location-search'
+import {
+  equipmentSearchNeedle,
+  filterLocations,
+  locationMatchesQuery,
+} from '../shared/utils/location-search'
 
 const yard = {
   name: 'Hialeah Yard',
@@ -26,6 +30,20 @@ describe('locationMatchesQuery', () => {
   it('rejects a query that hits none of the fields', () => {
     expect(locationMatchesQuery(yard, 'Savannah')).toBe(false)
   })
+
+  it('matches a container or chassis number parked at the location', () => {
+    const withBox = { ...yard, matchedNumbers: ['BSIU8643865', 'AIMZ481221'] }
+    expect(locationMatchesQuery(withBox, 'BSIU 864386-5')).toBe(true)
+    expect(locationMatchesQuery(withBox, 'aimz')).toBe(true)
+    expect(locationMatchesQuery(yard, 'BSIU8643865')).toBe(false)
+  })
+})
+
+describe('equipmentSearchNeedle', () => {
+  it('strips punctuation so a painted number matches the stored form', () => {
+    expect(equipmentSearchNeedle('BSIU 864386-5')).toBe('BSIU8643865')
+    expect(equipmentSearchNeedle('  aimz-481221  ')).toBe('AIMZ481221')
+  })
 })
 
 describe('filterLocations', () => {
@@ -40,5 +58,13 @@ describe('filterLocations', () => {
 
   it('keeps only locations that match the search', () => {
     expect(filterLocations(items, 'port').map(item => item.name)).toEqual(['PortMiami'])
+  })
+
+  it('keeps a location when the query matches equipment parked there', () => {
+    const mixed = [
+      ...items,
+      { name: 'Jersey Yard', city: 'Linden', matchedNumbers: ['BSIU8643865'] },
+    ]
+    expect(filterLocations(mixed, 'BSIU864386-5').map(item => item.name)).toEqual(['Jersey Yard'])
   })
 })

@@ -88,7 +88,15 @@ const destinationId = ref<string | null>(null)
 const destinationSearch = ref('')
 const step = ref<LocationAuditStep>('action')
 const submitting = ref(false)
+const checkingChassis = ref(false)
 const errorMessage = ref('')
+const {
+  conflict: chassisConflict,
+  releasing: chassisReleasing,
+  promptText: chassisConflictText,
+  decide: decideChassisRelease,
+  releaseIfNeeded,
+} = useChassisReleasePrompt()
 
 watch(step, scrollWizardToTop)
 
@@ -445,9 +453,49 @@ function markingKey(value: string | undefined) {
   return (value || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
 }
 
+async function releaseHeldChassisForAdd() {
+  const seen = new Set<string>()
+  for (const item of newItems.value) {
+    const plate = item.chassisNumber
+    if (!plate) continue
+    const key = markingKey(plate)
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    const found = await $fetch<{
+      item: {
+        id: string
+        number: string
+        currentContainerId?: string | null
+        currentContainerNumber?: string | null
+      }
+    }>('/api/chassis', {
+      method: 'POST',
+      body: { number: plate },
+    })
+    const sameBox = item.kind === 'CONTAINER'
+      && markingKey(found.item.currentContainerNumber || '') === markingKey(item.containerNumber)
+    const keepId = sameBox ? found.item.currentContainerId : null
+    if (!await releaseIfNeeded(found.item, keepId)) return false
+  }
+  return true
+}
+
 async function confirm() {
-  if (submitting.value || !canAdvance.value || !action.value) return
+  if (submitting.value || checkingChassis.value || chassisReleasing.value || !canAdvance.value || !action.value) return
   errorMessage.value = ''
+  if (action.value === 'add') {
+    checkingChassis.value = true
+    try {
+      if (!await releaseHeldChassisForAdd()) return
+    }
+    catch (error) {
+      errorMessage.value = apiErrorMessage(error, 'Could not check the chassis.')
+      return
+    }
+    finally {
+      checkingChassis.value = false
+    }
+  }
   submitting.value = true
   try {
     if (action.value === 'check' && !missingCount.value) {
@@ -1081,10 +1129,10 @@ async function onCardPhoto(cardId: string, dataUrl: string) {
         v-if="step === 'confirm'"
         type="button"
         class="wiz-next"
-        :disabled="submitting || !canAdvance"
+        :disabled="submitting || checkingChassis || chassisReleasing || Boolean(chassisConflict) || !canAdvance"
         @click="confirm"
       >
-        {{ submitting ? 'Saving…' : confirmVerb }}
+        {{ submitting || checkingChassis || chassisReleasing ? 'Saving…' : confirmVerb }}
       </button>
       <button
         v-else-if="showNext"
@@ -1096,5 +1144,16 @@ async function onCardPhoto(cardId: string, dataUrl: string) {
         Next
       </button>
     </div>
+
+    <ChassisReleaseSheet
+      :open="Boolean(chassisConflict)"
+      title="Chassis already attached"
+      :message="chassisConflictText"
+      cancel-label="Keep it there"
+      confirm-label="Use it here"
+      :busy="chassisReleasing"
+      @close="decideChassisRelease(false)"
+      @confirm="decideChassisRelease(true)"
+    />
   </section>
 </template>
