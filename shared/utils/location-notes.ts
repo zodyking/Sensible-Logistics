@@ -24,3 +24,9 @@ export function locationNoteAuthorName(user: LocationNoteAuthor): string {
   if (full) return full
   return [user.firstName, user.lastName].filter(part => part?.trim()).join(' ').trim() || 'Someone'
 }
+
+/** Step through a review deck. Stops at the ends instead of wrapping. */
+export function locationNoteReviewIndex(current: number, total: number, step: 1 | -1): number {
+  if (total <= 0) return 0
+  return Math.min(total - 1, Math.max(0, current + step))
+}
