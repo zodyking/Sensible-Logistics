@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm'
 import { locations } from '../../database/schema'
 import { latestSnapshotsForContainers, listOpenCsxReleases } from '../../services/csx-releases'
 import { listOnSiteChassis, listOnSiteContainers } from '../../services/location-equipment'
+import { listLocationNotes } from '../../services/location-notes'
 import { locationIdsAtSameAddress } from '../../services/location-sites'
 import { assertTenant, requireAuth } from '../../utils/session'
 import { countContainersByType, emptyTypeCounts } from '#shared/utils/domain'
@@ -62,5 +63,6 @@ export default defineEventHandler(async (event) => {
     chassis: chassisRows,
     csxReleases: await listOpenCsxReleases(db, auth.companyId, locationIds),
     csxSnapshots: await latestSnapshotsForContainers(db, auth.companyId, mapped.map(item => item.id)),
+    notes: await listLocationNotes(db, auth, id),
   }
 })

@@ -140,4 +140,32 @@ describe('formatLocationExportList', () => {
       chassis: [],
     })).toBe('Jersey Yard')
   })
+
+  it('appends a notes section with the person who left each note', () => {
+    expect(formatLocationExportList({
+      locationName: 'Jersey Yard',
+      containers: [
+        { number: 'MSCU4521894', containerType: 'TROPICAL', equipmentType: 'DRY_20' },
+      ],
+      notes: [
+        { body: 'Gate is blocked until Friday', authorName: 'Alex Rivera' },
+        { body: 'Need a 40ft chassis', authorName: 'Jordan Lee' },
+      ],
+    })).toBe([
+      'Jersey Yard',
+      '',
+      'Containers',
+      '',
+      '1. CT: MSCU4521894',
+      '   20ft Tropical',
+      '',
+      'Notes',
+      '',
+      '1. Gate is blocked until Friday',
+      '   Alex Rivera',
+      '',
+      '2. Need a 40ft chassis',
+      '   Jordan Lee',
+    ].join('\n'))
+  })
 })
