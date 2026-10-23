@@ -655,6 +655,51 @@
     letter-spacing: 0;
   }
 
+  .loc-notes-head {
+    align-items: center;
+  }
+
+  .loc-note {
+    padding: var(--s4);
+    margin-bottom: var(--s3);
+  }
+
+  .loc-note-body {
+    margin: 0 0 var(--s3);
+    color: var(--color-ink-900);
+    font-size: var(--text-base);
+    line-height: 1.45;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .loc-note-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s3);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: var(--color-ink-500);
+  }
+
+  .loc-note-delete {
+    flex-shrink: 0;
+    min-height: 44px;
+    padding: 0 var(--s2);
+    border: 0;
+    background: none;
+    color: var(--color-err-600);
+    font-size: var(--text-sm);
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .loc-note-delete:disabled {
+    color: var(--color-ink-400);
+    cursor: not-allowed;
+  }
+
   .mono {
     font-family: var(--font-mono);
     letter-spacing: 0.02em;

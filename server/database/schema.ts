@@ -394,6 +394,21 @@ export const locations = pgTable('locations', {
     .where(sql`is_uncategorized = true and deleted_at is null`),
 ])
 
+/** Yard board notes. Live rows expire one calendar month after they are left. */
+export const locationNotes = pgTable('location_notes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  companyId: uuid('company_id').notNull().references(() => companies.id, { onDelete: 'cascade' }),
+  locationId: uuid('location_id').notNull().references(() => locations.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+  authorName: text('author_name').notNull(),
+  body: text('body').notNull(),
+  createdAt: utc('created_at').notNull().defaultNow(),
+  expiresAt: utc('expires_at').notNull(),
+}, t => [
+  index('location_notes_location_idx').on(t.locationId, t.expiresAt),
+  index('location_notes_company_idx').on(t.companyId),
+])
+
 export const locationZones = pgTable('location_zones', {
   id: uuid('id').primaryKey().defaultRandom(),
   companyId: uuid('company_id').notNull().references(() => companies.id, { onDelete: 'cascade' }),
@@ -987,6 +1002,7 @@ export type CompanyMembership = typeof companyMemberships.$inferSelect
 export type Driver = typeof drivers.$inferSelect
 export type Truck = typeof trucks.$inferSelect
 export type Location = typeof locations.$inferSelect
+export type LocationNote = typeof locationNotes.$inferSelect
 export type YardLayout = typeof yardLayouts.$inferSelect
 export type YardFeature = typeof yardFeatures.$inferSelect
 export type YardSlot = typeof yardSlots.$inferSelect

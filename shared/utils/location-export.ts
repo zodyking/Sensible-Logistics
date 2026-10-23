@@ -26,8 +26,14 @@ export type LocationExportChassis = {
   number: string
 }
 
+export type LocationExportNote = {
+  body: string
+  authorName: string
+}
+
 const CONTAINER_TITLE = 'Containers'
 const BARE_TITLE = 'Bare Chassis'
+const NOTES_TITLE = 'Notes'
 
 /** First letter up, remainder lower — for section titles. */
 export function toSentenceCase(value: string): string {
@@ -136,14 +142,29 @@ function bareSection(
   return `${BARE_TITLE}\n\n${blocks.join('\n')}`
 }
 
+function notesSection(notes: readonly LocationExportNote[]): string | null {
+  const blocks: string[] = []
+  for (const item of notes) {
+    const body = item.body.trim()
+    if (!body) continue
+    const lines = [body]
+    const author = item.authorName.trim()
+    if (author) lines.push(author)
+    blocks.push(numberedBlock(blocks.length + 1, lines))
+  }
+  if (!blocks.length) return null
+  return `${NOTES_TITLE}\n\n${blocks.join('\n\n')}`
+}
+
 /**
- * Share text for a location: containers first, then bare chassis.
+ * Share text for a location: containers first, then bare chassis, then notes.
  * Empty sections are omitted. Container units are separated by a blank line.
  */
 export function formatLocationExportList(input: {
   locationName: string
   containers?: readonly LocationExportContainer[] | null
   chassis?: readonly LocationExportChassis[] | null
+  notes?: readonly LocationExportNote[] | null
 }): string {
   const name = input.locationName.trim()
   const containers = input.containers ?? []
@@ -158,5 +179,7 @@ export function formatLocationExportList(input: {
   if (combos) parts.push(combos)
   const bare = bareSection(input.chassis ?? [], occupied)
   if (bare) parts.push(bare)
+  const notes = notesSection(input.notes ?? [])
+  if (notes) parts.push(notes)
   return parts.join('\n\n')
 }

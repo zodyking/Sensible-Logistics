@@ -2,6 +2,7 @@
 import { CONTAINER_TYPE_LABELS, EQUIPMENT_TYPE_SHORT, LOCATION_TYPE_LABELS } from '#shared/utils/domain'
 import { formatChassisNumber, formatContainerNumber } from '#shared/utils/iso6346'
 import { formatLocationExportList } from '#shared/utils/location-export'
+import { LOCATION_NOTE_BODY_MAX } from '#shared/utils/location-notes'
 import { formatPhoneDisplay, toE164 } from '#shared/utils/phone'
 import { SHIPCSX_CHECK_TIMEOUT_MS } from '#shared/utils/csx-lookup'
 import { shipcsxPublicError } from '#shared/utils/shipcsx-status'
@@ -60,6 +61,12 @@ useHead({ title: () => data.value?.location.name ?? 'Location' })
 const menuOpen = ref(false)
 const exportOpen = ref(false)
 const confirmOpen = ref(false)
+const notesMenuOpen = ref(false)
+const addNoteOpen = ref(false)
+const noteBody = ref('')
+const savingNote = ref(false)
+const deletingNoteId = ref('')
+const noteError = ref('')
 const deleting = ref(false)
 const actionError = ref('')
 
@@ -77,15 +84,62 @@ function openEdit() {
   navigateTo(`/locations/${locationId.value}/edit`)
 }
 
+const notes = computed(() => data.value?.notes ?? [])
+
 const exportText = computed(() => formatLocationExportList({
   locationName: data.value?.location.name ?? '',
   containers: data.value?.containers ?? [],
   chassis: data.value?.chassis ?? [],
+  notes: notes.value,
 }))
 
 function openExport() {
   menuOpen.value = false
   exportOpen.value = true
+}
+
+function openAddNote() {
+  notesMenuOpen.value = false
+  noteError.value = ''
+  noteBody.value = ''
+  addNoteOpen.value = true
+}
+
+async function saveNote() {
+  if (savingNote.value || !noteBody.value.trim()) return
+  savingNote.value = true
+  noteError.value = ''
+  try {
+    await $fetch(`/api/locations/${locationId.value}/notes`, {
+      method: 'POST',
+      body: { body: noteBody.value },
+    })
+    addNoteOpen.value = false
+    noteBody.value = ''
+    await refresh()
+  }
+  catch (err) {
+    noteError.value = apiErrorMessage(err, 'Could not save the note.')
+  }
+  finally {
+    savingNote.value = false
+  }
+}
+
+async function deleteNote(noteId: string) {
+  if (deletingNoteId.value) return
+  deletingNoteId.value = noteId
+  noteError.value = ''
+  try {
+    await $fetch(`/api/locations/${locationId.value}/notes/${noteId}`, { method: 'DELETE' })
+    await refresh()
+  }
+  catch (err) {
+    noteError.value = apiErrorMessage(err, 'Could not delete that note.')
+  }
+  finally {
+    deletingNoteId.value = ''
+  }
 }
 
 function requestDelete() {
@@ -357,6 +411,57 @@ async function confirmDelete() {
         </div>
       </template>
 
+      <div class="section-label loc-notes-head">
+        <span>Notes · {{ notes.length }}</span>
+        <button
+          type="button"
+          class="icon-btn"
+          aria-label="Note actions"
+          aria-haspopup="menu"
+          :aria-expanded="notesMenuOpen"
+          @click="notesMenuOpen = true"
+        >
+          ⋮
+        </button>
+      </div>
+      <p
+        v-if="noteError && !addNoteOpen"
+        class="banner err"
+        role="alert"
+      >
+        <span aria-hidden="true">✕</span>
+        <span>{{ noteError }}</span>
+      </p>
+      <template v-if="notes.length">
+        <article
+          v-for="item in notes"
+          :key="item.id"
+          class="card loc-note"
+        >
+          <p class="loc-note-body">
+            {{ item.body }}
+          </p>
+          <div class="loc-note-meta">
+            <span>{{ item.authorName }} · {{ formatRelative(item.createdAt) }}</span>
+            <button
+              v-if="item.mine"
+              type="button"
+              class="loc-note-delete"
+              :disabled="deletingNoteId === item.id"
+              @click="deleteNote(item.id)"
+            >
+              {{ deletingNoteId === item.id ? 'Removing…' : 'Delete' }}
+            </button>
+          </div>
+        </article>
+      </template>
+      <EmptyState
+        v-else
+        glyph="✎"
+        title="No notes yet"
+        description="Leave a note for the yard. Each one expires after one month."
+      />
+
       <BottomSheet
         :open="menuOpen"
         title="Location"
@@ -446,6 +551,64 @@ async function confirmDelete() {
             @click="confirmDelete"
           >
             {{ deleting ? 'Deleting…' : 'Delete' }}
+          </button>
+        </div>
+      </BottomSheet>
+
+      <BottomSheet
+        :open="notesMenuOpen"
+        title="Notes"
+        @close="notesMenuOpen = false"
+      >
+        <button
+          type="button"
+          class="menu-row"
+          @click="openAddNote"
+        >
+          Add note
+        </button>
+      </BottomSheet>
+
+      <BottomSheet
+        :open="addNoteOpen"
+        title="Add note"
+        @close="addNoteOpen = false"
+      >
+        <p
+          v-if="noteError"
+          class="banner err"
+          role="alert"
+        >
+          <span aria-hidden="true">✕</span>
+          <span>{{ noteError }}</span>
+        </p>
+        <label class="field">
+          <span>Note</span>
+          <textarea
+            v-model="noteBody"
+            class="textarea"
+            rows="4"
+            :maxlength="LOCATION_NOTE_BODY_MAX"
+            placeholder="What should the next person on this yard know?"
+          />
+          <small class="field-hint">Expires after one month. Anyone on the company can read it.</small>
+        </label>
+        <div class="sheet-actions">
+          <button
+            type="button"
+            class="btn-cancel"
+            :disabled="savingNote"
+            @click="addNoteOpen = false"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="btn-save"
+            :disabled="savingNote || !noteBody.trim()"
+            @click="saveNote"
+          >
+            {{ savingNote ? 'Saving…' : 'Save note' }}
           </button>
         </div>
       </BottomSheet>
