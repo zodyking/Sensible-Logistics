@@ -3,6 +3,7 @@ import {
   locationNoteAuthorName,
   locationNoteExpiresAt,
   locationNoteIsLive,
+  locationNoteReviewIndex,
 } from '../shared/utils/location-notes'
 
 describe('locationNoteExpiresAt', () => {
@@ -17,6 +18,15 @@ describe('locationNoteIsLive', () => {
     const expires = new Date('2026-03-01T00:00:00.000Z')
     expect(locationNoteIsLive(expires, new Date('2026-02-28T23:59:59.000Z'))).toBe(true)
     expect(locationNoteIsLive(expires, new Date('2026-03-01T00:00:00.000Z'))).toBe(false)
+  })
+})
+
+describe('locationNoteReviewIndex', () => {
+  it('steps through the deck and stops at the ends', () => {
+    expect(locationNoteReviewIndex(0, 3, 1)).toBe(1)
+    expect(locationNoteReviewIndex(2, 3, 1)).toBe(2)
+    expect(locationNoteReviewIndex(0, 3, -1)).toBe(0)
+    expect(locationNoteReviewIndex(0, 0, 1)).toBe(0)
   })
 })
 

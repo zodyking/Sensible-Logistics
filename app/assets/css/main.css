@@ -700,6 +700,12 @@
     cursor: not-allowed;
   }
 
+  .loc-note-review {
+    margin-bottom: 0;
+    border: 1px solid var(--color-line-200);
+    box-shadow: none;
+  }
+
   .mono {
     font-family: var(--font-mono);
     letter-spacing: 0.02em;

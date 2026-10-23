@@ -2,7 +2,7 @@
 import { CONTAINER_TYPE_LABELS, EQUIPMENT_TYPE_SHORT, LOCATION_TYPE_LABELS } from '#shared/utils/domain'
 import { formatChassisNumber, formatContainerNumber } from '#shared/utils/iso6346'
 import { formatLocationExportList } from '#shared/utils/location-export'
-import { LOCATION_NOTE_BODY_MAX } from '#shared/utils/location-notes'
+import { LOCATION_NOTE_BODY_MAX, locationNoteReviewIndex } from '#shared/utils/location-notes'
 import { formatPhoneDisplay, toE164 } from '#shared/utils/phone'
 import { SHIPCSX_CHECK_TIMEOUT_MS } from '#shared/utils/csx-lookup'
 import { shipcsxPublicError } from '#shared/utils/shipcsx-status'
@@ -85,6 +85,33 @@ function openEdit() {
 }
 
 const notes = computed(() => data.value?.notes ?? [])
+const reviewOpen = ref(false)
+const reviewIndex = ref(0)
+const reviewForId = ref('')
+
+watch(
+  [locationId, notes],
+  ([id, list]) => {
+    if (reviewForId.value === id) {
+      if (!list.length) reviewOpen.value = false
+      else if (reviewIndex.value >= list.length) reviewIndex.value = list.length - 1
+      return
+    }
+    if (!data.value || data.value.location.id !== id) return
+    reviewForId.value = id
+    reviewIndex.value = 0
+    reviewOpen.value = list.length > 0
+  },
+  { immediate: true },
+)
+
+function closeNoteReview() {
+  reviewOpen.value = false
+}
+
+function stepNoteReview(step: 1 | -1) {
+  reviewIndex.value = locationNoteReviewIndex(reviewIndex.value, notes.value.length, step)
+}
 
 const exportText = computed(() => formatLocationExportList({
   locationName: data.value?.location.name ?? '',
@@ -612,6 +639,15 @@ async function confirmDelete() {
           </button>
         </div>
       </BottomSheet>
+
+      <LocationNotesReviewSheet
+        :open="reviewOpen"
+        :notes="notes"
+        :index="reviewIndex"
+        @close="closeNoteReview"
+        @back="stepNoteReview(-1)"
+        @next="stepNoteReview(1)"
+      />
 
       <LocationExportSheet
         :open="exportOpen"
