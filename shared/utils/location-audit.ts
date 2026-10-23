@@ -1,5 +1,6 @@
 import type { ContainerType, PickupEquipmentSize, TripKind } from './domain'
 import { isCompleteChassisNumber, maskChassisInput, validateContainerNumber } from './iso6346'
+import { missingLoadedSeal, sealForLoad } from './seal'
 
 export const LOCATION_AUDIT_ACTIONS = ['check', 'add', 'move', 'delete'] as const
 export type LocationAuditAction = (typeof LOCATION_AUDIT_ACTIONS)[number]
@@ -29,7 +30,7 @@ export type LocationAuditStep = (typeof LOCATION_AUDIT_STEPS)[number]
 
 export const LOCATION_AUDIT_MAX = 80
 
-export const AUDIT_EQUIPMENT_STAGES = ['kind', 'numbers', 'classify', 'done'] as const
+export const AUDIT_EQUIPMENT_STAGES = ['kind', 'numbers', 'classify', 'load', 'done'] as const
 export type AuditEquipmentStage = (typeof AUDIT_EQUIPMENT_STAGES)[number]
 
 export type LocationAuditEquipmentKind = Extract<TripKind, 'CONTAINER' | 'BARE_CHASSIS'>
@@ -58,6 +59,8 @@ export type LocationAuditEquipmentDraft = {
   chassisNumber: string
   containerType: ContainerType | null
   equipmentType: PickupEquipmentSize | null
+  isLoaded: boolean | null
+  sealNumber: string
 }
 
 export type LocationAuditAddContainerItem = {
@@ -66,6 +69,8 @@ export type LocationAuditAddContainerItem = {
   chassisNumber?: string | null
   containerType: ContainerType
   equipmentType: PickupEquipmentSize
+  isLoaded: boolean
+  sealNumber?: string | null
 }
 
 export type LocationAuditAddChassisItem = {
@@ -86,6 +91,8 @@ export function createAuditEquipmentDraft(
     chassisNumber: '',
     containerType: null,
     equipmentType: null,
+    isLoaded: null,
+    sealNumber: '',
   }
 }
 
@@ -102,9 +109,15 @@ export function auditCardClassifyReady(draft: LocationAuditEquipmentDraft): bool
   return draft.kind === 'CONTAINER' && Boolean(draft.containerType && draft.equipmentType)
 }
 
+export function auditCardLoadReady(draft: LocationAuditEquipmentDraft): boolean {
+  if (draft.kind !== 'CONTAINER' || draft.isLoaded === null) return false
+  return !missingLoadedSeal(draft.isLoaded, draft.sealNumber)
+}
+
 export function auditCardTitle(draft: LocationAuditEquipmentDraft): string {
   if (draft.stage === 'numbers') return draft.kind === 'BARE_CHASSIS' ? 'Chassis' : 'Numbers'
   if (draft.stage === 'classify') return 'Type and size'
+  if (draft.stage === 'load') return 'Load'
   if (draft.stage === 'done') return draft.kind === 'BARE_CHASSIS' ? 'Chassis' : 'Container'
   return 'Equipment'
 }
@@ -112,7 +125,8 @@ export function auditCardTitle(draft: LocationAuditEquipmentDraft): string {
 export function auditCardBackStage(draft: LocationAuditEquipmentDraft): AuditEquipmentStage | null {
   if (draft.stage === 'numbers') return 'kind'
   if (draft.stage === 'classify') return 'numbers'
-  if (draft.stage === 'done') return draft.kind === 'BARE_CHASSIS' ? 'numbers' : 'classify'
+  if (draft.stage === 'load') return 'classify'
+  if (draft.stage === 'done') return draft.kind === 'BARE_CHASSIS' ? 'numbers' : 'load'
   return null
 }
 
@@ -121,7 +135,8 @@ export function auditCardNextStage(draft: LocationAuditEquipmentDraft): AuditEqu
   if (draft.stage === 'numbers' && auditCardNumbersReady(draft)) {
     return draft.kind === 'CONTAINER' ? 'classify' : 'done'
   }
-  if (draft.stage === 'classify' && auditCardClassifyReady(draft)) return 'done'
+  if (draft.stage === 'classify' && auditCardClassifyReady(draft)) return 'load'
+  if (draft.stage === 'load' && auditCardLoadReady(draft)) return 'done'
   return null
 }
 
@@ -140,12 +155,16 @@ export function auditEquipmentItemFromDraft(
   if (!validation.structureValid || !validation.normalized) return null
   if (draft.chassisNumber && !isCompleteChassisNumber(draft.chassisNumber)) return null
   if (!draft.containerType || !draft.equipmentType) return null
+  if (draft.isLoaded === null) return null
+  if (missingLoadedSeal(draft.isLoaded, draft.sealNumber)) return null
   return {
     kind: 'CONTAINER',
     containerNumber: validation.normalized,
     chassisNumber: draft.chassisNumber ? maskChassisInput(draft.chassisNumber) : null,
     containerType: draft.containerType,
     equipmentType: draft.equipmentType,
+    isLoaded: draft.isLoaded,
+    sealNumber: sealForLoad(draft.isLoaded, draft.sealNumber),
   }
 }
 
