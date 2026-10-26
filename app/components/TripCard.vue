@@ -8,6 +8,7 @@ import {
 } from '#shared/utils/domain'
 import type { ContainerType, EquipmentType, TripKind, TripStatus } from '#shared/utils/domain'
 import { formatChassisNumber, formatContainerNumber } from '#shared/utils/iso6346'
+import { canEditTripSeal, isSealDoubleTap } from '#shared/utils/trip-seal'
 import { isBareChassisTrip, tripEquipmentTitle } from '#shared/utils/trip-title'
 
 const props = defineProps<{
@@ -26,7 +27,7 @@ const props = defineProps<{
   status?: TripStatus | null
 }>()
 
-const emit = defineEmits<{ changeDropoff: [] }>()
+const emit = defineEmits<{ changeDropoff: [], editSeal: [] }>()
 
 const isBareChassis = computed(() => isBareChassisTrip({
   kind: props.tripKind,
@@ -62,6 +63,36 @@ const liveStatus = computed(() => {
   if (!props.status || props.status === 'COMPLETED') return null
   return props.status
 })
+
+const sealEditable = computed(() => canEditTripSeal({
+  kind: props.tripKind,
+  status: props.status,
+  isLoaded: props.isLoaded,
+}))
+
+let lastSealTap = 0
+let suppressSealClick = false
+
+function onSealTap(event: Event) {
+  if (!sealEditable.value) return
+  const now = Date.now()
+  if (isSealDoubleTap(lastSealTap, now)) {
+    event.preventDefault()
+    event.stopPropagation()
+    lastSealTap = 0
+    suppressSealClick = true
+    emit('editSeal')
+    return
+  }
+  lastSealTap = now
+}
+
+function onSealClick(event: Event) {
+  if (!suppressSealClick) return
+  event.preventDefault()
+  event.stopPropagation()
+  suppressSealClick = false
+}
 </script>
 
 <template>
@@ -112,7 +143,14 @@ const liveStatus = computed(() => {
           />
           <b v-else>{{ displayChassis }}</b>
         </div>
-        <div class="trip-fact">
+        <div
+          class="trip-fact"
+          :class="{ 'trip-fact-seal': sealEditable }"
+          :role="sealEditable ? 'group' : undefined"
+          :aria-label="sealEditable ? 'Seal. Double tap to edit.' : undefined"
+          @pointerup.capture="onSealTap"
+          @click.capture="onSealClick"
+        >
           <small>Seal</small>
           <CopyMarking
             v-if="!isBareChassis && sealNumber"

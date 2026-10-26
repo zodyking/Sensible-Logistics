@@ -9,6 +9,7 @@ import {
   TRIP_STATUS_LABELS,
 } from '#shared/utils/domain'
 import { formatChassisNumber, formatContainerNumber } from '#shared/utils/iso6346'
+import { canEditTripSeal, isSealDoubleTap } from '#shared/utils/trip-seal'
 import { tripSmsAction } from '#shared/utils/trip-sms'
 import { isBareChassisTrip, tripEquipmentTitle } from '#shared/utils/trip-title'
 import { visibleTimelineEntries } from '#shared/utils/timeline'
@@ -17,7 +18,7 @@ import { invalidateTripLists } from '~/utils/trip-lists'
 const route = useRoute()
 const tripId = computed(() => String(route.params.id))
 
-const { data, status, error } = await useFetch(() => `/api/trips/${tripId.value}`)
+const { data, status, error, refresh } = await useFetch(() => `/api/trips/${tripId.value}`)
 
 useHead({ title: () => data.value?.trip.reference ?? 'Trip' })
 
@@ -50,6 +51,35 @@ const dropoffStamp = computed(() => data.value?.trip.droppedOffAt ?? data.value?
 const durationLabel = computed(() => formatDurationBetween(pickupStamp.value, dropoffStamp.value))
 const smsOpen = ref(false)
 const contactsOpen = ref(false)
+const sealEditOpen = ref(false)
+const sealEditable = computed(() => canEditTripSeal({
+  kind: data.value?.trip.kind,
+  status: data.value?.trip.status,
+  isLoaded: data.value?.trip.isLoaded,
+}))
+let lastSealTap = 0
+let suppressSealClick = false
+
+function onSealTap(event: Event) {
+  if (!sealEditable.value) return
+  const now = Date.now()
+  if (isSealDoubleTap(lastSealTap, now)) {
+    event.preventDefault()
+    event.stopPropagation()
+    lastSealTap = 0
+    suppressSealClick = true
+    sealEditOpen.value = true
+    return
+  }
+  lastSealTap = now
+}
+
+function onSealClick(event: Event) {
+  if (!suppressSealClick) return
+  event.preventDefault()
+  event.stopPropagation()
+  suppressSealClick = false
+}
 const canSendSms = computed(() => Boolean(tripSmsAction(data.value?.trip.status)))
 const timeline = computed(() => visibleTimelineEntries(data.value?.timeline ?? []))
 
@@ -220,6 +250,9 @@ const dropoffPlace = computed(() => {
           <div
             v-if="!isBareChassis"
             class="trip-spec-row"
+            :class="{ 'trip-fact-seal': sealEditable }"
+            @pointerup.capture="onSealTap"
+            @click.capture="onSealClick"
           >
             <dt>Seal</dt>
             <dd>
@@ -383,6 +416,14 @@ const dropoffPlace = computed(() => {
         :origin="data.origin"
         :destination="data.destination"
         @close="contactsOpen = false"
+      />
+
+      <TripSealSheet
+        :open="sealEditOpen"
+        :trip-id="data.trip.id"
+        :seal-number="data.trip.sealNumber"
+        @close="sealEditOpen = false"
+        @saved="refresh"
       />
 
       <BottomSheet

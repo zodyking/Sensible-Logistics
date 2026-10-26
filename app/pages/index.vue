@@ -51,6 +51,16 @@ function clearDashboard() {
 const sheet = ref<'documents' | 'sms' | 'contacts' | 'cancel' | null>(null)
 const cancelling = ref(false)
 const cancelError = ref('')
+const sealEdit = ref<{ tripId: string, sealNumber: string | null } | null>(null)
+
+function openSealEdit(tripId: string, sealNumber: string | null | undefined) {
+  sealEdit.value = { tripId, sealNumber: sealNumber ?? null }
+}
+
+async function onSealSaved() {
+  sealEdit.value = null
+  await refresh()
+}
 
 const inSwap = computed(() => Boolean(active.value && swapPartner.value))
 
@@ -219,6 +229,7 @@ async function confirmCancelTrip() {
         :status="displayTrip.trip.status"
         :can-change-dropoff="Boolean(active)"
         @change-dropoff="navigateTo(`/trips/${displayTrip.trip.id}/destination`)"
+        @edit-seal="openSealEdit(displayTrip.trip.id, displayTrip.trip.sealNumber)"
       />
 
       <template v-if="swapPartner">
@@ -238,6 +249,7 @@ async function confirmCancelTrip() {
           :status="swapPartner.trip.status"
           :can-change-dropoff="swapPartner.trip.status !== 'PICKUP_IN_PROGRESS'"
           @change-dropoff="navigateTo(`/trips/${swapPartner.trip.id}/destination`)"
+          @edit-seal="openSealEdit(swapPartner.trip.id, swapPartner.trip.sealNumber)"
         />
       </template>
 
@@ -454,6 +466,14 @@ async function confirmCancelTrip() {
       :origin="displayTrip?.origin"
       :destination="displayTrip?.destination"
       @close="sheet = null"
+    />
+
+    <TripSealSheet
+      :open="Boolean(sealEdit)"
+      :trip-id="sealEdit?.tripId ?? ''"
+      :seal-number="sealEdit?.sealNumber"
+      @close="sealEdit = null"
+      @saved="onSealSaved"
     />
 
     <BottomSheet

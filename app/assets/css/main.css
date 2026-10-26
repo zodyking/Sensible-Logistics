@@ -1082,6 +1082,10 @@
     text-align: right;
   }
 
+  .trip-fact-seal {
+    cursor: pointer;
+  }
+
   .route-strip {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
