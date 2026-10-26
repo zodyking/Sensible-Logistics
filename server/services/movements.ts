@@ -1193,6 +1193,75 @@ async function completeBareChassisDropoff(
   return { trip: updatedTrip!, container: null, replayed: false }
 }
 
+export interface CorrectTripSealInput {
+  eventId: string
+  tripId: string
+  sealNumber: string
+}
+
+/** Fix the seal on a live loaded trip. Updates the trip and the container. */
+export async function correctTripSeal(
+  db: Database,
+  auth: AuthContext & { driverId: string },
+  input: CorrectTripSealInput,
+): Promise<{ trip: Trip, container: Container | null, replayed: boolean }> {
+  return db.transaction(async (tx) => {
+    if (await eventExists(tx, auth.companyId, input.eventId)) {
+      const replayed = await loadTripByEvent(tx, auth.companyId, input.eventId)
+      if (replayed) return { ...replayed, replayed: true }
+    }
+
+    const trip = await loadOwnedTrip(tx, auth, input.tripId)
+    if (!(LIVE_TRIP_STATUSES as readonly string[]).includes(trip.status)) {
+      throw createError({ statusCode: 409, statusMessage: 'Seal can only be edited on an active trip.' })
+    }
+    if (trip.kind === 'BARE_CHASSIS' || !trip.containerId) {
+      throw createError({ statusCode: 422, statusMessage: 'Seal is only for a loaded container.' })
+    }
+    if (!trip.isLoaded) {
+      throw createError({ statusCode: 422, statusMessage: 'Seal can be edited on a loaded container.' })
+    }
+
+    const sealNumber = sealForLoadedContainer(true, input.sealNumber)
+    const now = new Date()
+
+    await recordEvent(
+      tx,
+      {
+        id: input.eventId,
+        companyId: auth.companyId,
+        containerId: trip.containerId,
+        eventType: 'CORRECTION',
+        occurredAt: now,
+        actorUserId: auth.userId,
+        actorDriverId: auth.driverId,
+        tripId: trip.id,
+        locationId: trip.destinationLocationId ?? trip.originLocationId,
+        chassisId: trip.chassisId,
+        payload: { sealNumber, previousSealNumber: trip.sealNumber },
+        notes: 'Seal corrected from the trip card.',
+      },
+      {
+        isLoaded: true,
+        sealNumber,
+      },
+    )
+
+    const [updatedTrip] = await tx
+      .update(trips)
+      .set({
+        sealNumber,
+        updatedAt: now,
+        version: sql`${trips.version} + 1`,
+      })
+      .where(eq(trips.id, trip.id))
+      .returning()
+
+    const [container] = await tx.select().from(containers).where(eq(containers.id, trip.containerId)).limit(1)
+    return { trip: updatedTrip!, container: container ?? null, replayed: false }
+  })
+}
+
 export interface AttachContainerInput {
   eventId: string
   tripId: string

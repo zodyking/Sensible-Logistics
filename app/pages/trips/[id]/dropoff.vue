@@ -4,7 +4,7 @@ import { describeArrival, isSwapEmptyArrival } from '#shared/utils/trip-arrive'
 const route = useRoute()
 const tripId = computed(() => String(route.params.id))
 
-const { data, error, status } = await useFetch(() => `/api/trips/${tripId.value}`)
+const { data, error, status, refresh } = await useFetch(() => `/api/trips/${tripId.value}`)
 
 useHead({ title: 'Arrive' })
 
@@ -12,6 +12,7 @@ const retainChassis = ref<boolean | null>(null)
 const notes = ref('')
 const submitting = ref(false)
 const errorMessage = ref('')
+const sealEditOpen = ref(false)
 
 const destination = computed(() => data.value?.destination ?? null)
 const hasChassis = computed(() => Boolean(data.value?.trip.chassisId))
@@ -121,6 +122,15 @@ async function arrive() {
         :origin-name="data.origin?.name"
         :destination-name="destination?.name"
         :status="data.trip.status"
+        @edit-seal="sealEditOpen = true"
+      />
+
+      <TripSealSheet
+        :open="sealEditOpen"
+        :trip-id="data.trip.id"
+        :seal-number="data.trip.sealNumber"
+        @close="sealEditOpen = false"
+        @saved="refresh"
       />
 
       <template v-if="hasChassis">
