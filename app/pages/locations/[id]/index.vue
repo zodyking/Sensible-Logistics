@@ -2,6 +2,7 @@
 import { CONTAINER_TYPE_LABELS, EQUIPMENT_TYPE_SHORT, LOCATION_TYPE_LABELS } from '#shared/utils/domain'
 import { formatChassisNumber, formatContainerNumber } from '#shared/utils/iso6346'
 import { formatLocationExportList } from '#shared/utils/location-export'
+import { downloadLocationDirectoryCsv } from '~/utils/download-text'
 import { LOCATION_NOTE_BODY_MAX, locationNoteReviewIndex } from '#shared/utils/location-notes'
 import { formatPhoneDisplay, toE164 } from '#shared/utils/phone'
 import { SHIPCSX_CHECK_TIMEOUT_MS } from '#shared/utils/csx-lookup'
@@ -129,6 +130,17 @@ function openExport() {
   exportOpen.value = true
 }
 
+async function exportSiteCsv() {
+  menuOpen.value = false
+  actionError.value = ''
+  try {
+    await downloadLocationDirectoryCsv(locationId.value)
+  }
+  catch (err) {
+    actionError.value = apiErrorMessage(err, 'Could not export this location.')
+  }
+}
+
 function openAddNote() {
   notesMenuOpen.value = false
   noteError.value = ''
@@ -248,6 +260,14 @@ async function confirmDelete() {
           :size="20"
         />
         <span>{{ subtitle }}</span>
+      </p>
+      <p
+        v-if="actionError"
+        class="banner err"
+        role="alert"
+      >
+        <span aria-hidden="true">✕</span>
+        <span>{{ actionError }}</span>
       </p>
       <div
         v-if="data.location.mainPhone || data.location.contactPhone"
@@ -504,6 +524,14 @@ async function confirmDelete() {
           @click="openExport"
         >
           Export list
+        </button>
+        <button
+          v-if="!data.location.isUncategorized"
+          type="button"
+          class="menu-row"
+          @click="exportSiteCsv"
+        >
+          Export site CSV
         </button>
         <button
           type="button"

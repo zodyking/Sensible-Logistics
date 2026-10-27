@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { formatPhoneDisplay } from '#shared/utils/phone'
+import { downloadLocationDirectoryCsv } from '~/utils/download-text'
 
 useHead({ title: 'Customers & locations' })
 
@@ -21,6 +22,24 @@ const { data, status, error } = await useFetch('/api/locations', {
     includeUncategorized: '1',
   })),
 })
+
+const exporting = ref(false)
+const exportError = ref('')
+
+async function exportCsv() {
+  if (exporting.value) return
+  exporting.value = true
+  exportError.value = ''
+  try {
+    await downloadLocationDirectoryCsv()
+  }
+  catch (err) {
+    exportError.value = apiErrorMessage(err, 'Could not export locations.')
+  }
+  finally {
+    exporting.value = false
+  }
+}
 
 function addressLine(item: {
   addressLine1: string | null
@@ -55,10 +74,26 @@ function addressLine(item: {
 
     <NuxtLink
       :to="{ path: '/locations/new', query: { returnTo: '/locations' } }"
-      class="btn-dark mb-4 w-full"
+      class="btn-dark mb-3 w-full"
     >
       Add a location
     </NuxtLink>
+    <button
+      type="button"
+      class="btn-ghost mb-4 w-full"
+      :disabled="exporting"
+      @click="exportCsv"
+    >
+      {{ exporting ? 'Exporting…' : 'Export CSV' }}
+    </button>
+    <p
+      v-if="exportError"
+      class="banner err"
+      role="alert"
+    >
+      <span aria-hidden="true">✕</span>
+      <span>{{ exportError }}</span>
+    </p>
 
     <div
       v-if="status === 'pending'"

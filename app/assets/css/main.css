@@ -1330,6 +1330,18 @@
     border-bottom: none;
   }
 
+  .rowlist button.row {
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    font: inherit;
+  }
+
+  .rowlist button.row:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
   a.row:active,
   button.row:active {
     background: var(--color-blue-50);

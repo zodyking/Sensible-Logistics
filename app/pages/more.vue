@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { roleLabel } from '#shared/utils/domain'
+import { downloadLocationDirectoryCsv } from '~/utils/download-text'
 
 useHead({ title: 'More' })
 
@@ -21,6 +22,8 @@ const signingOut = ref(false)
 const systemCode = ref('')
 const codeBusy = ref(false)
 const codeFlash = ref('')
+const exportingLocations = ref(false)
+const exportFlash = ref('')
 
 const showConnections = computed(() => unlocked.value.includes('CONNECTIONS'))
 const showReset = computed(() => unlocked.value.includes('RESET'))
@@ -46,6 +49,22 @@ async function submitCode() {
   }
   finally {
     codeBusy.value = false
+  }
+}
+
+async function exportLocations() {
+  if (exportingLocations.value) return
+  exportingLocations.value = true
+  exportFlash.value = ''
+  try {
+    await downloadLocationDirectoryCsv()
+    exportFlash.value = 'Saved'
+  }
+  catch (error) {
+    exportFlash.value = apiErrorMessage(error, 'Could not export locations.')
+  }
+  finally {
+    exportingLocations.value = false
   }
 }
 
@@ -102,6 +121,23 @@ const buildLabel = computed(() => {
           ›
         </div>
       </NuxtLink>
+      <button
+        type="button"
+        class="row"
+        :disabled="exportingLocations"
+        @click="exportLocations"
+      >
+        <div
+          class="row-ico"
+          aria-hidden="true"
+        >
+          ⇩
+        </div>
+        <div class="row-main">
+          <b>Export locations</b>
+          <small>{{ exportFlash || 'Name, address, phones, and contacts as CSV' }}</small>
+        </div>
+      </button>
       <NuxtLink
         v-if="showConnections"
         to="/connections"
