@@ -6,11 +6,17 @@ const { data: profile, refresh: refreshProfile } = await useFetch('/api/account'
 
 const firstName = ref('')
 const lastName = ref('')
+const cdlNumber = ref('')
+const cdlState = ref('')
+const truckVin = ref('')
 
 watch(profile, (value) => {
   if (!value) return
   firstName.value = value.firstName
   lastName.value = value.lastName
+  cdlNumber.value = value.driver?.cdlNumber ?? ''
+  cdlState.value = value.driver?.cdlState ?? ''
+  truckVin.value = value.driver?.truckVin ?? ''
 }, { immediate: true })
 
 const nameDirty = computed(() => {
@@ -22,7 +28,18 @@ const nameDirty = computed(() => {
 const savingName = ref(false)
 const nameError = ref('')
 const nameFieldErrors = ref<Record<string, string>>({})
+const savingDriver = ref(false)
+const driverError = ref('')
 const flash = ref('')
+const isDriver = computed(() => Boolean(profile.value?.driver) || user.value?.role === 'DRIVER')
+
+const driverDirty = computed(() => {
+  const driver = profile.value?.driver
+  if (!driver && !isDriver.value) return false
+  return cdlNumber.value.trim() !== (driver?.cdlNumber ?? '')
+    || cdlState.value.trim().toUpperCase() !== (driver?.cdlState ?? '')
+    || truckVin.value.trim().toUpperCase() !== (driver?.truckVin ?? '')
+})
 
 type Sheet = 'email' | 'password' | 'phone' | null
 const sheet = ref<Sheet>(null)
@@ -91,6 +108,29 @@ async function saveName() {
   }
   finally {
     savingName.value = false
+  }
+}
+
+async function saveDriver() {
+  if (savingDriver.value || !driverDirty.value) return
+  savingDriver.value = true
+  driverError.value = ''
+  try {
+    await $fetch('/api/account/driver', {
+      method: 'PATCH',
+      body: {
+        cdlNumber: cdlNumber.value,
+        cdlState: cdlState.value,
+        truckVin: truckVin.value,
+      },
+    })
+    await afterSave('CDL and truck saved. They fill the daily time card.')
+  }
+  catch (error) {
+    driverError.value = apiErrorMessage(error, 'Could not save CDL or truck.')
+  }
+  finally {
+    savingDriver.value = false
   }
 }
 
@@ -252,6 +292,67 @@ async function savePhone() {
         {{ savingName ? 'Saving…' : 'Save name' }}
       </button>
     </form>
+
+    <template v-if="isDriver">
+      <p class="section-label">
+        Time card
+      </p>
+      <form
+        class="card p-4"
+        novalidate
+        @submit.prevent="saveDriver"
+      >
+        <p
+          v-if="driverError"
+          class="banner err"
+          role="alert"
+        >
+          <span aria-hidden="true">✕</span>
+          <span>{{ driverError }}</span>
+        </p>
+        <p class="field-hint mb-3">
+          CDL stays blank on the sheet until you enter a number. Truck VIN fills Truck / Unit #; you can still change the truck for one day on that day’s card.
+        </p>
+        <div class="settings-name-grid">
+          <label class="field">
+            <span>CDL number</span>
+            <input
+              v-model="cdlNumber"
+              class="input mono"
+              autocomplete="off"
+              maxlength="30"
+            >
+          </label>
+          <label class="field">
+            <span>CDL state</span>
+            <input
+              v-model="cdlState"
+              class="input mono"
+              autocomplete="off"
+              maxlength="2"
+              placeholder="NY"
+            >
+          </label>
+        </div>
+        <label class="field">
+          <span>Truck VIN</span>
+          <input
+            v-model="truckVin"
+            class="input mono"
+            autocomplete="off"
+            maxlength="24"
+            placeholder="Used as truck / unit # on the time card"
+          >
+        </label>
+        <button
+          class="btn-dark"
+          type="submit"
+          :disabled="savingDriver || !driverDirty"
+        >
+          {{ savingDriver ? 'Saving…' : 'Save CDL and truck' }}
+        </button>
+      </form>
+    </template>
 
     <p class="section-label">
       Contact

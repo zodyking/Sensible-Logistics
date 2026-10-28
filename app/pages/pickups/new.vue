@@ -17,6 +17,7 @@ import {
 import { driverOcrMessage } from '#shared/utils/ocr-parse'
 import { rememberTripPhoto } from '~/utils/trip-share-files'
 import { invalidateTripLists } from '~/utils/trip-lists'
+import { attachDeviceGps } from '~/utils/device-gps'
 
 useHead({ title: 'New pickup' })
 
@@ -734,7 +735,7 @@ async function startPickup() {
 
     const result = await $fetch('/api/pickups/start', {
       method: 'POST',
-      body,
+      body: await attachDeviceGps(body),
     })
     tripId.value = result.trip.id
   }
@@ -795,14 +796,14 @@ async function confirm() {
     await withLoader(async () => {
       await $fetch(`/api/trips/${tripId.value}/confirm`, {
         method: 'POST',
-        body: {
+        body: await attachDeviceGps({
           eventId: crypto.randomUUID(),
           chassisId: chassisId.value,
           destinationLocationId: destinationLocationId.value,
           isLoaded: pickupKind.value === 'CONTAINER' ? (swapMode.value || isLoaded.value === true) : false,
           sealNumber: pickupKind.value === 'CONTAINER' && (swapMode.value || isLoaded.value === true) ? (sealNumber.value.trim() || null) : null,
           notes: notes.value || null,
-        },
+        }),
       })
       if (capturedPhoto.value) {
         await rememberTripPhoto(tripId.value, capturedPhoto.value, {

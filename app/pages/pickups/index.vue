@@ -18,11 +18,16 @@ const { data, status, error, refresh } = await useFetch('/api/trips', {
 
 onMounted(() => {
   void refresh()
+  void refreshTimeCards()
 })
 onActivated(() => {
   void refresh()
+  void refreshTimeCards()
 })
 const { data: taskData } = await useFetch('/api/tasks')
+const { data: timeCardData, refresh: refreshTimeCards } = await useFetch('/api/time-cards', {
+  query: { limit: 90 },
+})
 
 const todayIso = computed(() => toLocalIsoDate(new Date()) ?? '')
 
@@ -208,6 +213,22 @@ async function resolveGap(gap: TripGap, resolution: GapResolution) {
   }
 }
 
+const timeCardsByDate = computed(() => {
+  const map = new Map<string, { stopCount: number, totalOnDutyHours: string, status: string }>()
+  for (const item of timeCardData.value?.items ?? []) {
+    map.set(item.workDate, item)
+  }
+  return map
+})
+
+function timeCardHint(iso: string) {
+  const card = timeCardsByDate.value.get(iso)
+  if (!card) return 'Time card'
+  if (card.totalOnDutyHours) return `Time card · ${card.totalOnDutyHours}`
+  if (card.stopCount) return `Time card · ${card.stopCount}`
+  return 'Time card'
+}
+
 function calendarDayLabel(cell: { iso: string, hasTrip: boolean, selected: boolean, today: boolean }) {
   const date = formatDayHeading(cell.iso, todayIso.value)
   const parts = [date]
@@ -325,11 +346,19 @@ function calendarDayLabel(cell: { iso: string, hasTrip: boolean, selected: boole
               class="day-block"
             >
               <div class="day-label">
-                <span>{{ day.label }}</span>
-                <small
-                  v-if="day.summary"
-                  class="day-summary"
-                >{{ day.summary }}</small>
+                <div class="day-label-text">
+                  <span>{{ day.label }}</span>
+                  <small
+                    v-if="day.summary"
+                    class="day-summary"
+                  >{{ day.summary }}</small>
+                </div>
+                <NuxtLink
+                  class="time-card-link"
+                  :to="`/pickups/time-card/${day.iso}`"
+                >
+                  {{ timeCardHint(day.iso) }}
+                </NuxtLink>
               </div>
               <DayWorkCard
                 :tasks="day.tasks"
@@ -408,8 +437,19 @@ function calendarDayLabel(cell: { iso: string, hasTrip: boolean, selected: boole
         <div class="cal-day-panel">
           <div class="section-label">
             <span>{{ selectedDayLabel }}</span>
-            <span v-if="selectedDaySummary">{{ selectedDaySummary }}</span>
+            <NuxtLink
+              class="time-card-link"
+              :to="`/pickups/time-card/${selectedIso}`"
+            >
+              {{ timeCardHint(selectedIso) }}
+            </NuxtLink>
           </div>
+          <p
+            v-if="selectedDaySummary"
+            class="day-summary mb-3"
+          >
+            {{ selectedDaySummary }}
+          </p>
 
           <DayWorkCard
             :tasks="selectedDayTasks"
