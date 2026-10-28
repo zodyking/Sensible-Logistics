@@ -76,7 +76,11 @@ export type TimeCardTripInput = {
   chassisNumber?: string | null
   customer?: string | null
   originName?: string | null
+  originCity?: string | null
+  originState?: string | null
   destinationName?: string | null
+  destinationCity?: string | null
+  destinationState?: string | null
   originLocationId?: string | null
   destinationLocationId?: string | null
   createdAt: Date | string
@@ -87,6 +91,8 @@ export type TimeCardTripInput = {
 export type TimeCardSite = {
   id: string
   name: string
+  city?: string | null
+  state?: string | null
   latitude: number | null
   longitude: number | null
 }
@@ -141,6 +147,19 @@ export function onDutyHoursLabel(timeIn: string, timeOut: string): string {
   return `${hours}:${String(minutes).padStart(2, '0')}`
 }
 
+/** `Queens Yard, Jamaica, NY` — city and state follow the site name. */
+export function formatTimeCardLocation(
+  name: string | null | undefined,
+  city?: string | null,
+  state?: string | null,
+): string {
+  const title = name?.trim() || ''
+  const place = [city?.trim(), state?.trim()].filter(Boolean).join(', ')
+  if (!title) return place
+  if (!place) return title
+  return `${title}, ${place}`
+}
+
 function equipmentLabel(trip: TimeCardTripInput): string {
   if (trip.kind === 'BARE_CHASSIS') return trip.chassisNumber?.trim() || 'chassis'
   return trip.containerNumber?.trim() || 'container'
@@ -166,7 +185,7 @@ export function stopsFromTrips(trips: readonly TimeCardTripInput[], timeZone: st
   for (const trip of trips) {
     const mark = equipmentLabel(trip)
     const load = loadWord(trip)
-    const origin = trip.originName?.trim()
+    const origin = formatTimeCardLocation(trip.originName, trip.originCity, trip.originState)
     const created = asDate(trip.createdAt)
     const picked = asDate(trip.pickedUpAt)
     if (origin && created) {
@@ -182,7 +201,7 @@ export function stopsFromTrips(trips: readonly TimeCardTripInput[], timeZone: st
       })
     }
     const dropped = asDate(trip.droppedOffAt)
-    const dest = trip.destinationName?.trim()
+    const dest = formatTimeCardLocation(trip.destinationName, trip.destinationCity, trip.destinationState)
     if (dropped && dest) {
       stops.push({
         key: `TRIP:${trip.id}:DROPOFF`,
@@ -356,12 +375,22 @@ export function routeCustomerFromTrips(trips: readonly TimeCardTripInput[]): str
   return names.join(' / ')
 }
 
+/** Every chassis used that day, in trip order, unique. */
 export function trailerFromTrips(trips: readonly TimeCardTripInput[]): string {
-  for (const trip of [...trips].reverse()) {
+  const ordered = [...trips].sort((a, b) => {
+    const aAt = asDate(a.createdAt)?.getTime() ?? 0
+    const bAt = asDate(b.createdAt)?.getTime() ?? 0
+    return aAt - bAt || a.id.localeCompare(b.id)
+  })
+  const seen = new Set<string>()
+  const plates: string[] = []
+  for (const trip of ordered) {
     const plate = trip.chassisNumber?.trim()
-    if (plate) return plate
+    if (!plate || seen.has(plate)) continue
+    seen.add(plate)
+    plates.push(plate)
   }
-  return ''
+  return plates.join(', ')
 }
 
 export function emptyTimeCardStops(): TimeCardStop[] {
@@ -397,11 +426,16 @@ export function timeCardPdfFileName(workDate: string): string {
   return `time-card-${workDate}.pdf`
 }
 
+/** Blank unless the driver profile actually has a CDL number. */
 export function cdlLabel(number?: string | null, state?: string | null): string {
   const id = number?.trim() || ''
+  if (!id) return ''
   const st = state?.trim() || ''
-  if (id && st) return `${id} / ${st}`
-  return id || st
+  return st ? `${id} / ${st}` : id
+}
+
+export function normalizeVin(value: string | null | undefined): string {
+  return String(value || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase()
 }
 
 export function normalizeTimeCardClock(value: string): string {
@@ -436,7 +470,7 @@ export function sanitizeTimeCardStop(input: Partial<TimeCardStop> | null | undef
     key,
     timeIn: normalizeTimeCardClock(String(input.timeIn || '')),
     timeOut: normalizeTimeCardClock(String(input.timeOut || '')),
-    location: String(input.location || '').trim().slice(0, 80),
+    location: String(input.location || '').trim().slice(0, 120),
     activity: String(input.activity || '').trim().slice(0, 80),
     source,
     tripId: input.tripId ? String(input.tripId).slice(0, 80) : null,
@@ -485,7 +519,7 @@ export function annotatePingsWithSites(
     return {
       ...ping,
       locationId: site?.id ?? null,
-      locationName: site?.name ?? null,
+      locationName: site ? formatTimeCardLocation(site.name, site.city, site.state) : null,
     }
   })
 }

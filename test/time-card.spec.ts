@@ -3,17 +3,20 @@ import { PDFDocument } from 'pdf-lib'
 import {
   applyHeaderOverrides,
   blankTimeCardHeader,
+  cdlLabel,
   formatTimeCardClock,
   formatTimeCardDate,
+  formatTimeCardLocation,
   mergeIncomingPing,
   mergeTimeCardStops,
   onDutyHoursLabel,
   shiftTotals,
   stopsFromPings,
   stopsFromTrips,
+  trailerFromTrips,
   zonedDayRange,
 } from '../shared/utils/time-card'
-import { timeCardDrawPlan, timeCardPdfY, timeCardRowTopY } from '../shared/utils/time-card-layout'
+import { clipTimeCardText, timeCardDrawPlan, timeCardPdfY, timeCardRowTopY } from '../shared/utils/time-card-layout'
 import { fillTimeCardPdf } from '../server/services/time-card-pdf'
 
 const ZONE = 'America/New_York'
@@ -46,7 +49,11 @@ describe('stopsFromTrips', () => {
         containerNumber: 'BSIU9761081',
         chassisNumber: 'AIMZ481203',
         originName: 'Queens Yard',
+        originCity: 'Jamaica',
+        originState: 'NY',
         destinationName: 'Whisky',
+        destinationCity: 'Brooklyn',
+        destinationState: 'NY',
         originLocationId: 'loc-q',
         destinationLocationId: 'loc-w',
         createdAt: '2026-10-28T11:00:00.000Z',
@@ -59,7 +66,7 @@ describe('stopsFromTrips', () => {
         key: 'TRIP:trip-1:PICKUP',
         timeIn: '07:00',
         timeOut: '07:20',
-        location: 'Queens Yard',
+        location: 'Queens Yard, Jamaica, NY',
         activity: 'Pickup BSIU9761081 · Loaded',
         source: 'TRIP',
         tripId: 'trip-1',
@@ -69,7 +76,7 @@ describe('stopsFromTrips', () => {
         key: 'TRIP:trip-1:DROPOFF',
         timeIn: '11:05',
         timeOut: '11:05',
-        location: 'Whisky',
+        location: 'Whisky, Brooklyn, NY',
         activity: 'Drop-off BSIU9761081 · Loaded',
         source: 'TRIP',
         tripId: 'trip-1',
@@ -126,6 +133,38 @@ describe('mergeTimeCardStops', () => {
     const merged = mergeTimeCardStops([...auto, ...gps], saved)
     expect(merged).toHaveLength(1)
     expect(merged[0]?.timeOut).toBe('07:45')
+  })
+})
+
+describe('formatTimeCardLocation', () => {
+  it('appends city and state after the site name', () => {
+    expect(formatTimeCardLocation('Queens Yard', 'Jamaica', 'NY')).toBe('Queens Yard, Jamaica, NY')
+    expect(formatTimeCardLocation('Whisky', null, 'NY')).toBe('Whisky, NY')
+    expect(formatTimeCardLocation('Maher Terminals')).toBe('Maher Terminals')
+  })
+})
+
+describe('trailerFromTrips', () => {
+  it('lists every chassis in trip order and skips repeats', () => {
+    expect(trailerFromTrips([
+      { id: 'a', chassisNumber: 'AIMZ481203', createdAt: '2026-10-28T11:00:00.000Z' },
+      { id: 'b', chassisNumber: 'DCLI220144', createdAt: '2026-10-28T13:00:00.000Z' },
+      { id: 'c', chassisNumber: 'AIMZ481203', createdAt: '2026-10-28T15:00:00.000Z' },
+    ])).toBe('AIMZ481203, DCLI220144')
+  })
+})
+
+describe('cdlLabel', () => {
+  it('stays blank without a CDL number', () => {
+    expect(cdlLabel(null, 'NY')).toBe('')
+    expect(cdlLabel('  ', 'NY')).toBe('')
+    expect(cdlLabel('1234567', 'NY')).toBe('1234567 / NY')
+  })
+})
+
+describe('clipTimeCardText', () => {
+  it('uses three dots when the trailer line is too long', () => {
+    expect(clipTimeCardText('AIMZ481203, DCLI220144, FLXI907712', 24)).toBe('AIMZ481203, DCLI22014...')
   })
 })
 

@@ -17,7 +17,7 @@ const HEADER: Record<string, { x: number, topY: number, size?: number, max?: num
   driverName: { x: 94, topY: 103, max: 36 },
   date: { x: 346, topY: 103, max: 28 },
   truckUnit: { x: 98, topY: 118.2, max: 34 },
-  trailerNumber: { x: 356, topY: 118.2, max: 32 },
+  trailerNumber: { x: 356, topY: 118.2, size: 8, max: 46 },
   cdl: { x: 97, topY: 133.5, max: 34 },
   employeeId: { x: 372, topY: 133.5, max: 28 },
   dispatcher: { x: 88, topY: 148.7, max: 36 },
@@ -55,7 +55,8 @@ export function timeCardPdfY(topY: number): number {
 export function clipTimeCardText(value: string, maxChars: number): string {
   const text = value.replace(/\s+/g, ' ').trim()
   if (text.length <= maxChars) return text
-  return text.slice(0, Math.max(0, maxChars))
+  if (maxChars <= 3) return text.slice(0, Math.max(0, maxChars))
+  return `${text.slice(0, maxChars - 3)}...`
 }
 
 export function timeCardRowTopY(index: number): number {
@@ -82,7 +83,7 @@ export function timeCardDrawPlan(header: TimeCardHeader, stops: TimeCardStop[]):
     const topY = timeCardRowTopY(index)
     const timeIn = op(COL.timeIn, topY, stop.timeIn, 5, 8)
     const timeOut = op(COL.timeOut, topY, stop.timeOut, 5, 8)
-    const location = op(COL.location, topY, stop.location, 42, 8)
+    const location = op(COL.location, topY, stop.location, 52, 8)
     const activity = op(COL.activity, topY, stop.activity, 38, 8)
     for (const drawn of [timeIn, timeOut, location, activity]) {
       if (drawn) ops.push(drawn)

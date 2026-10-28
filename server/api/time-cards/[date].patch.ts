@@ -7,7 +7,7 @@ const stopSchema = z.object({
   key: z.string().trim().min(1).max(80),
   timeIn: z.string().trim().max(8).optional().default(''),
   timeOut: z.string().trim().max(8).optional().default(''),
-  location: z.string().trim().max(80).optional().default(''),
+  location: z.string().trim().max(120).optional().default(''),
   activity: z.string().trim().max(80).optional().default(''),
   source: z.enum(['TRIP', 'GPS', 'MANUAL']).optional(),
   tripId: z.string().trim().max(80).nullish(),

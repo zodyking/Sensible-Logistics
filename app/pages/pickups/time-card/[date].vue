@@ -199,11 +199,12 @@ function openPdf(download = false) {
             >
           </label>
           <label class="field">
-            <span>Truck / unit #</span>
+            <span>Truck VIN</span>
             <input
               v-model="header.truckUnit"
-              class="input"
+              class="input mono"
             >
+            <small class="field-hint">Change this if you ran a different truck today.</small>
           </label>
           <label class="field">
             <span>Trailer #</span>
@@ -211,12 +212,14 @@ function openPdf(download = false) {
               v-model="header.trailerNumber"
               class="input"
             >
+            <small class="field-hint">Every chassis from today’s trips. Long lists shorten with … on the PDF.</small>
           </label>
           <label class="field">
             <span>CDL # / state</span>
             <input
               v-model="header.cdl"
               class="input"
+              placeholder="Add in Settings if blank"
             >
           </label>
           <label class="field">

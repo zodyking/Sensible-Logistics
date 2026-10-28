@@ -129,6 +129,8 @@ async function loadSites(db: DbExecutor, companyId: string): Promise<TimeCardSit
     .select({
       id: locations.id,
       name: locations.name,
+      city: locations.city,
+      state: locations.state,
       latitude: locations.latitude,
       longitude: locations.longitude,
     })
@@ -141,6 +143,8 @@ async function loadSites(db: DbExecutor, companyId: string): Promise<TimeCardSit
   return rows.map(row => ({
     id: row.id,
     name: row.name,
+    city: row.city,
+    state: row.state,
     latitude: parseCoord(row.latitude),
     longitude: parseCoord(row.longitude),
   }))
@@ -167,7 +171,11 @@ async function loadDayTrips(
       originLocationId: trips.originLocationId,
       destinationLocationId: trips.destinationLocationId,
       originName: origin.name,
+      originCity: origin.city,
+      originState: origin.state,
       destinationName: destination.name,
+      destinationCity: destination.city,
+      destinationState: destination.state,
       containerNumber: containers.number,
       chassisNumber: chassis.number,
     })
@@ -203,7 +211,11 @@ async function loadDayTrips(
       originLocationId: row.originLocationId,
       destinationLocationId: row.destinationLocationId,
       originName: row.originName,
+      originCity: row.originCity,
+      originState: row.originState,
       destinationName: row.destinationName,
+      destinationCity: row.destinationCity,
+      destinationState: row.destinationState,
       containerNumber: row.containerNumber,
       chassisNumber: row.chassisNumber,
     }))
@@ -274,32 +286,19 @@ async function loadDriverHeaderBits(
     .where(eq(drivers.id, auth.driverId))
     .limit(1)
 
-  let truckUnit = ''
+  let truckVin = ''
   if (driver?.preferredTruckId) {
     const [truck] = await db
-      .select({ unitNumber: trucks.unitNumber })
+      .select({ vin: trucks.vin })
       .from(trucks)
       .where(eq(trucks.id, driver.preferredTruckId))
       .limit(1)
-    truckUnit = truck?.unitNumber?.trim() || ''
+    truckVin = truck?.vin?.trim() || ''
   }
-
-  const firstTripTruck = dayTrips.length
-    ? await db
-        .select({ unitNumber: trucks.unitNumber, tripId: trips.id })
-        .from(trips)
-        .innerJoin(trucks, eq(trucks.id, trips.truckId))
-        .where(and(
-          eq(trips.companyId, auth.companyId),
-          eq(trips.driverId, auth.driverId),
-        ))
-        .limit(40)
-    : []
-  const tripTruck = firstTripTruck.find(row => dayTrips.some(trip => trip.id === row.tripId))
 
   return {
     driverName: [driver?.firstName, driver?.lastName].filter(Boolean).join(' ').trim() || auth.fullName,
-    truckUnit: tripTruck?.unitNumber?.trim() || truckUnit,
+    truckUnit: truckVin,
     trailerNumber: trailerFromTrips(dayTrips),
     cdl: cdlLabel(driver?.cdlNumber, driver?.cdlState),
     employeeId: driver?.driverCode?.trim() || '',
