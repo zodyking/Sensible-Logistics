@@ -440,6 +440,10 @@ export function timeCardPdfFileName(workDate: string): string {
   return `time-card-${workDate}.pdf`
 }
 
+export function timeCardTemplateDocxFileName(): string {
+  return 'Sensible-Logistics-short-haul-time-card.docx'
+}
+
 /** Blank unless the driver profile actually has a CDL number. */
 export function cdlLabel(number?: string | null, state?: string | null): string {
   const id = number?.trim() || ''

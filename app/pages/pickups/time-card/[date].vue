@@ -8,7 +8,8 @@ import {
   type TimeCardStop,
 } from '#shared/utils/time-card'
 import { toLocalIsoDate } from '#shared/utils/trip-days'
-import { downloadBlobFile, openBlobInNewTab } from '~/utils/download-text'
+import { downloadBlobFile } from '~/utils/download-text'
+import { fetchBinaryFile, isPdfBytes } from '~/utils/fetch-file'
 
 const route = useRoute()
 const workDate = computed(() => {
@@ -34,6 +35,7 @@ const saveError = ref('')
 const savedFlash = ref('')
 const pdfError = ref('')
 const pdfBusy = ref<'view' | 'download' | ''>('')
+const pdfBytes = ref<Uint8Array | null>(null)
 
 watch(() => data.value?.card, (card) => {
   if (!card || saving.value) return
@@ -85,17 +87,29 @@ async function save() {
   }
 }
 
+function closePdf() {
+  pdfBytes.value = null
+}
+
+function downloadPdfBytes(bytes: Uint8Array) {
+  downloadBlobFile(
+    new Blob([bytes], { type: 'application/pdf' }),
+    timeCardPdfFileName(workDate.value),
+  )
+}
+
 async function openPdf(download = false) {
   if (pdfBusy.value) return
   pdfBusy.value = download ? 'download' : 'view'
   pdfError.value = ''
   try {
-    const blob = await $fetch<Blob>(`/api/time-cards/${workDate.value}/pdf`, {
-      responseType: 'blob',
-    })
-    const fileName = timeCardPdfFileName(workDate.value)
-    if (download) downloadBlobFile(blob, fileName)
-    else openBlobInNewTab(blob, fileName)
+    const bytes = await fetchBinaryFile(
+      `/api/time-cards/${workDate.value}/pdf`,
+      'application/pdf',
+    )
+    if (!isPdfBytes(bytes)) throw new Error('The server did not return a PDF.')
+    if (download) downloadPdfBytes(bytes)
+    else pdfBytes.value = bytes
   }
   catch (err) {
     pdfError.value = apiErrorMessage(err, 'Could not open the time card PDF.')
@@ -426,5 +440,14 @@ async function openPdf(download = false) {
         </div>
       </form>
     </template>
+
+    <ClientOnly>
+      <TimeCardPdfPreview
+        v-if="pdfBytes"
+        :bytes="pdfBytes"
+        @close="closePdf"
+        @download="downloadPdfBytes(pdfBytes)"
+      />
+    </ClientOnly>
   </section>
 </template>
