@@ -1,5 +1,8 @@
 <script setup lang="ts">
+import { timeCardTemplateDocxFileName } from '#shared/utils/time-card'
 import { formatPhoneDisplay, formatPhoneInput } from '#shared/utils/phone'
+import { downloadBlobFile } from '~/utils/download-text'
+import { fetchBinaryFile, isDocxBytes } from '~/utils/fetch-file'
 
 const { user, fetch: refreshSession } = useUserSession()
 const { data: profile, refresh: refreshProfile } = await useFetch('/api/account')
@@ -32,6 +35,36 @@ const savingDriver = ref(false)
 const driverError = ref('')
 const flash = ref('')
 const isDriver = computed(() => Boolean(profile.value?.driver) || user.value?.role === 'DRIVER')
+const exportingTemplate = ref(false)
+const templateFlash = ref('')
+const templateError = ref('')
+
+async function exportWordTemplate() {
+  if (exportingTemplate.value) return
+  exportingTemplate.value = true
+  templateFlash.value = ''
+  templateError.value = ''
+  try {
+    const bytes = await fetchBinaryFile(
+      '/api/time-cards/template',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    )
+    if (!isDocxBytes(bytes)) throw new Error('The server did not return a Word file.')
+    downloadBlobFile(
+      new Blob([bytes], {
+        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      }),
+      timeCardTemplateDocxFileName(),
+    )
+    templateFlash.value = 'Saved to this phone'
+  }
+  catch (err) {
+    templateError.value = apiErrorMessage(err, 'Could not download the Word template.')
+  }
+  finally {
+    exportingTemplate.value = false
+  }
+}
 
 const driverDirty = computed(() => {
   const driver = profile.value?.driver
@@ -353,6 +386,43 @@ async function savePhone() {
         </button>
       </form>
     </template>
+
+    <p
+      v-if="!isDriver"
+      class="section-label"
+    >
+      Time card
+    </p>
+    <p
+      v-if="templateError"
+      class="banner err"
+      role="alert"
+    >
+      <span aria-hidden="true">✕</span>
+      <span>{{ templateError }}</span>
+    </p>
+    <div
+      class="card rowlist"
+      :class="{ 'mt-3': isDriver }"
+    >
+      <button
+        type="button"
+        class="row"
+        :disabled="exportingTemplate"
+        @click="exportWordTemplate"
+      >
+        <div
+          class="row-ico"
+          aria-hidden="true"
+        >
+          ⇩
+        </div>
+        <div class="row-main">
+          <b>Blank card for Word</b>
+          <small>{{ templateFlash || 'Exact two-page template, empty, as a Word file' }}</small>
+        </div>
+      </button>
+    </div>
 
     <p class="section-label">
       Contact

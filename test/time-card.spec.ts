@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { PDFDocument } from 'pdf-lib'
 import {
@@ -256,6 +257,15 @@ describe('coerceTimeCardPdfBytes', () => {
     expect(Array.from(coerceTimeCardPdfBytes(raw.toString('latin1'))?.subarray(0, 4) ?? [])).toEqual(magic)
     expect(coerceTimeCardPdfBytes({ type: 'Buffer', data: [...raw] })?.byteLength).toBe(raw.byteLength)
     expect(coerceTimeCardPdfBytes('not a pdf')).toBeNull()
+  })
+})
+
+describe('blank Word template', () => {
+  it('ships a Word file of the exact two-page printed card', () => {
+    const bytes = readFileSync('server/assets/forms/short-haul-time-card.docx')
+    expect(bytes[0]).toBe(0x50)
+    expect(bytes[1]).toBe(0x4B)
+    expect(bytes.byteLength).toBeGreaterThan(50_000)
   })
 })
 
