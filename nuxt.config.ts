@@ -1,4 +1,8 @@
+import { cpSync, existsSync, mkdirSync } from 'node:fs'
+import { join } from 'node:path'
 import tailwindcss from '@tailwindcss/vite'
+
+const TIME_CARD_TEMPLATE = 'short-haul-time-card.pdf'
 
 export default defineNuxtConfig({
 
@@ -108,6 +112,15 @@ export default defineNuxtConfig({
       baseName: 'time-card-forms',
       dir: './server/assets/forms',
     }],
+    hooks: {
+      compiled(nitro) {
+        const src = join(nitro.options.rootDir, 'server/assets/forms', TIME_CARD_TEMPLATE)
+        if (!existsSync(src)) return
+        const destDir = join(nitro.options.output.serverDir, 'assets/forms')
+        mkdirSync(destDir, { recursive: true })
+        cpSync(src, join(destDir, TIME_CARD_TEMPLATE))
+      },
+    },
     // Camera JPEGs are sent as data URLs (~1.3× the binary). 1 MB drops them.
     maxRequestBodySize: 20 * 1024 * 1024,
     // Do not set `externals.traceInclude: ['playwright']`. Nitro already

@@ -17,7 +17,7 @@ import {
   zonedDayRange,
 } from '../shared/utils/time-card'
 import { clipTimeCardText, timeCardDrawPlan, timeCardPdfY, timeCardRowTopY } from '../shared/utils/time-card-layout'
-import { fillTimeCardPdf } from '../server/services/time-card-pdf'
+import { coerceTimeCardPdfBytes, fillTimeCardPdf } from '../server/services/time-card-pdf'
 
 const ZONE = 'America/New_York'
 
@@ -244,6 +244,18 @@ describe('timeCardDrawPlan', () => {
     expect(plan.some(op => op.text === '07:00' && op.topY > 640)).toBe(false)
     expect(plan.some(op => op.text === 'Pat Driver' && op.topY > 700)).toBe(false)
     expect(timeCardPdfY(103)).toBe(792 - 103 + 2)
+  })
+})
+
+describe('coerceTimeCardPdfBytes', () => {
+  it('accepts buffers, typed arrays, and latin1 PDF strings', () => {
+    const raw = Buffer.from('%PDF-1.4 demo')
+    const magic = [0x25, 0x50, 0x44, 0x46]
+    expect(Array.from(coerceTimeCardPdfBytes(raw)?.subarray(0, 4) ?? [])).toEqual(magic)
+    expect(coerceTimeCardPdfBytes(new Uint8Array(raw))?.byteLength).toBe(raw.byteLength)
+    expect(Array.from(coerceTimeCardPdfBytes(raw.toString('latin1'))?.subarray(0, 4) ?? [])).toEqual(magic)
+    expect(coerceTimeCardPdfBytes({ type: 'Buffer', data: [...raw] })?.byteLength).toBe(raw.byteLength)
+    expect(coerceTimeCardPdfBytes('not a pdf')).toBeNull()
   })
 })
 
