@@ -982,6 +982,27 @@ export const csxShipmentSnapshots = pgTable('csx_shipment_snapshots', {
   index('csx_shipment_snapshots_company_idx').on(t.companyId, t.checkedAt),
 ])
 
+/* ============================================================
+   Daily FMCSA short-haul time card (one row per driver per work date)
+   ============================================================ */
+
+export const driverTimeCards = pgTable('driver_time_cards', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  companyId: uuid('company_id').notNull().references(() => companies.id, { onDelete: 'cascade' }),
+  driverId: uuid('driver_id').notNull().references(() => drivers.id, { onDelete: 'cascade' }),
+  workDate: date('work_date').notNull(),
+  status: text('status').notNull().default('OPEN'),
+  stops: jsonb('stops').$type<unknown[]>().notNull().default([]),
+  pings: jsonb('pings').$type<unknown[]>().notNull().default([]),
+  header: jsonb('header').$type<Record<string, string>>().notNull().default({}),
+  headerOverrides: jsonb('header_overrides').$type<string[]>().notNull().default([]),
+  createdAt: utc('created_at').notNull().defaultNow(),
+  updatedAt: utc('updated_at').notNull().defaultNow(),
+}, t => [
+  uniqueIndex('driver_time_cards_driver_date_key').on(t.driverId, t.workDate),
+  index('driver_time_cards_company_idx').on(t.companyId, t.workDate),
+])
+
 export const csxPollState = pgTable('csx_poll_state', {
   id: uuid('id').primaryKey().defaultRandom(),
   companyId: uuid('company_id').notNull().references(() => companies.id, { onDelete: 'cascade' }),
@@ -1017,6 +1038,7 @@ export type DocumentRecord = typeof documents.$inferSelect
 export type OcrResult = typeof ocrResults.$inferSelect
 export type SmsInboundEndpoint = typeof smsInboundEndpoints.$inferSelect
 export type DispatchTask = typeof dispatchTasks.$inferSelect
+export type DriverTimeCard = typeof driverTimeCards.$inferSelect
 
 export type NewContainer = typeof containers.$inferInsert
 export type NewContainerEvent = typeof containerEvents.$inferInsert

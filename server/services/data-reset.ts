@@ -7,6 +7,7 @@ import {
   damageReports,
   dispatchTasks,
   documents,
+  driverTimeCards,
   drivers,
   locations,
   ocrResults,
@@ -76,6 +77,7 @@ export async function clearResetTarget(
         activeMovementId: null,
         currentDriverId: null,
       }).where(eq(containers.companyId, companyId))
+      await tx.delete(driverTimeCards).where(eq(driverTimeCards.companyId, companyId))
       const rows = await tx.delete(trips).where(eq(trips.companyId, companyId)).returning({ id: trips.id })
       return { deleted: rows.length }
     }

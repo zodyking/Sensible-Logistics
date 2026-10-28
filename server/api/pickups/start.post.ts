@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { startPickup } from '../../services/movements'
+import { syncTodayTimeCardQuietly } from '../../services/time-cards'
 import { requireDriver } from '../../utils/session'
 import { CONTAINER_TYPES, EQUIPMENT_TYPES, TRIP_KINDS } from '#shared/utils/domain'
 
@@ -40,5 +41,8 @@ export default defineEventHandler(async (event) => {
   const auth = await requireDriver(event)
   const body = await readValidatedJson(event, schema)
 
-  return startPickup(useDb(), auth, body)
+  const db = useDb()
+  const result = await startPickup(db, auth, body)
+  await syncTodayTimeCardQuietly(db, auth, result.trip.createdAt)
+  return result
 })

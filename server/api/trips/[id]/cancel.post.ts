@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { cancelPickup } from '../../../services/movements'
+import { syncTodayTimeCardQuietly } from '../../../services/time-cards'
 import { requireDriver } from '../../../utils/session'
 
 const schema = z.object({
@@ -17,5 +18,8 @@ export default defineEventHandler(async (event) => {
   }
 
   const body = await readValidatedJson(event, schema)
-  return cancelPickup(useDb(), auth, { ...body, tripId })
+  const db = useDb()
+  const result = await cancelPickup(db, auth, { ...body, tripId })
+  await syncTodayTimeCardQuietly(db, auth)
+  return result
 })

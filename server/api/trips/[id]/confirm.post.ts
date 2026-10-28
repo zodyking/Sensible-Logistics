@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { confirmPickup } from '../../../services/movements'
 import { attachOpenTasksToTrip, companyTimezone } from '../../../services/tasks'
+import { syncTodayTimeCardQuietly } from '../../../services/time-cards'
 import { requireDriver } from '../../../utils/session'
 import { calendarDateInZone } from '#shared/utils/sms-task'
 
@@ -44,5 +45,6 @@ export default defineEventHandler(async (event) => {
   catch (error) {
     console.warn('[tasks] could not attach dispatch tasks after pickup', error)
   }
+  await syncTodayTimeCardQuietly(db, auth, result.trip.pickedUpAt ?? result.trip.createdAt)
   return result
 })

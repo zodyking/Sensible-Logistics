@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { describeArrival, isSwapEmptyArrival } from '#shared/utils/trip-arrive'
+import { attachDeviceGps } from '~/utils/device-gps'
 
 const route = useRoute()
 const tripId = computed(() => String(route.params.id))
@@ -48,12 +49,12 @@ async function arrive() {
     await withLoader(async () => {
       await $fetch(`/api/trips/${tripId.value}/dropoff`, {
         method: 'POST',
-        body: {
+        body: await attachDeviceGps({
           eventId: crypto.randomUUID(),
           destinationLocationId: destination.value.id,
           retainChassis: retainChassis.value === true,
           notes: notes.value || null,
-        },
+        }),
       })
       await navigateTo('/')
     })
