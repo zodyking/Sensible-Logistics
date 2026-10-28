@@ -19,6 +19,7 @@ import { parseCoord } from '#shared/utils/geo'
 import {
   annotatePingsWithSites,
   applyHeaderOverrides,
+  blankTimeCardFooter,
   blankTimeCardHeader,
   cdlLabel,
   headerOverrideFields,
@@ -28,7 +29,6 @@ import {
   mergeTimeCardStops,
   routeCustomerFromTrips,
   sanitizeTimeCardStop,
-  shiftTotals,
   stopsFromPings,
   stopsFromTrips,
   TIME_CARD_HEADER_FIELDS,
@@ -424,28 +424,21 @@ export async function syncDriverTimeCard(
     [],
   )
   const stops = mergeTimeCardStops(auto, asStops(row.stops))
-  const totals = shiftTotals(stops)
   const bits = await loadDriverHeaderBits(db, driverAuth, dayTrips)
   const savedHeader = asHeader(row.header, workDate)
   const autoHeader: TimeCardHeader = {
     ...blankTimeCardHeader(workDate),
     ...bits,
-    ...totals,
-    signedName: savedHeader.signedName,
-    signedDate: savedHeader.signedDate,
-    preceding7DayHours: savedHeader.preceding7DayHours,
     startOdometer: savedHeader.startOdometer,
     endOdometer: savedHeader.endOdometer,
     dispatcher: savedHeader.dispatcher,
   }
   const header = {
     ...applyHeaderOverrides(autoHeader, savedHeader, asOverrides(row.headerOverrides)),
-    ...totals,
     date: blankTimeCardHeader(workDate).date,
-    signedName: savedHeader.signedName,
-    signedDate: savedHeader.signedDate,
+    ...blankTimeCardFooter(),
   }
-  const status: TimeCardStatus = header.signedName.trim() ? 'COMPLETED' : 'OPEN'
+  const status: TimeCardStatus = 'OPEN'
   const now = new Date()
 
   const [updated] = await db
@@ -547,7 +540,6 @@ export async function patchDriverTimeCard(
         .slice(0, TIME_CARD_STOP_MAX)
     : asStops(row.stops)
   const stops = mergeTimeCardStops(auto, markStopCorrections(submittedStops, auto))
-  const totals = shiftTotals(stops)
 
   const savedHeader = asHeader(row.header, workDate)
   const submittedHeader = body.header ?? {}
@@ -555,13 +547,9 @@ export async function patchDriverTimeCard(
   const autoHeader: TimeCardHeader = {
     ...blankTimeCardHeader(workDate),
     ...bits,
-    ...totals,
-    signedName: typeof submittedHeader.signedName === 'string' ? submittedHeader.signedName.trim().slice(0, 80) : savedHeader.signedName,
-    signedDate: typeof submittedHeader.signedDate === 'string' ? submittedHeader.signedDate.trim().slice(0, 20) : savedHeader.signedDate,
     startOdometer: savedHeader.startOdometer,
     endOdometer: savedHeader.endOdometer,
     dispatcher: savedHeader.dispatcher,
-    preceding7DayHours: savedHeader.preceding7DayHours,
   }
   const mergedSubmitted: Partial<TimeCardHeader> = {}
   for (const field of TIME_CARD_HEADER_FIELDS) {
@@ -572,15 +560,10 @@ export async function patchDriverTimeCard(
   const overrides = headerOverrideFields(autoHeader, { ...savedHeader, ...mergedSubmitted })
   const header = {
     ...applyHeaderOverrides(autoHeader, { ...savedHeader, ...mergedSubmitted }, overrides),
-    ...totals,
     date: blankTimeCardHeader(workDate).date,
-    signedName: autoHeader.signedName,
-    signedDate: autoHeader.signedDate,
+    ...blankTimeCardFooter(),
   }
-  if (header.signedName && !header.signedDate) {
-    header.signedDate = blankTimeCardHeader(workDate).date
-  }
-  const status: TimeCardStatus = header.signedName.trim() ? 'COMPLETED' : 'OPEN'
+  const status: TimeCardStatus = 'OPEN'
 
   const [updated] = await db
     .update(driverTimeCards)

@@ -38,6 +38,9 @@ const SIGN = {
   signedDate: { x: 325, topY: 731.2, max: 10 },
 }
 
+/** Shift totals and signature stay empty on the printed card until that section is built. */
+export const TIME_CARD_FILL_FOOTER = false
+
 const ROW0_TOP = 220
 const ROW_H = 15.85
 const COL = {
@@ -90,16 +93,17 @@ export function timeCardDrawPlan(header: TimeCardHeader, stops: TimeCardStop[]):
     }
   })
 
-  for (const [field, slot] of Object.entries(TOTALS)) {
-    const value = header[field as keyof TimeCardHeader] ?? ''
-    const drawn = op(slot.x, slot.topY, value, slot.max ?? 12, 9)
-    if (drawn) ops.push(drawn)
+  if (TIME_CARD_FILL_FOOTER) {
+    for (const [field, slot] of Object.entries(TOTALS)) {
+      const value = header[field as keyof TimeCardHeader] ?? ''
+      const drawn = op(slot.x, slot.topY, value, slot.max ?? 12, 9)
+      if (drawn) ops.push(drawn)
+    }
+    const signedName = op(SIGN.signedName.x, SIGN.signedName.topY, header.signedName, SIGN.signedName.max, 9)
+    const signedDate = op(SIGN.signedDate.x, SIGN.signedDate.topY, header.signedDate, SIGN.signedDate.max, 9)
+    if (signedName) ops.push(signedName)
+    if (signedDate) ops.push(signedDate)
   }
-
-  const signedName = op(SIGN.signedName.x, SIGN.signedName.topY, header.signedName, SIGN.signedName.max, 9)
-  const signedDate = op(SIGN.signedDate.x, SIGN.signedDate.topY, header.signedDate, SIGN.signedDate.max, 9)
-  if (signedName) ops.push(signedName)
-  if (signedDate) ops.push(signedDate)
 
   return ops
 }
