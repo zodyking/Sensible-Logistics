@@ -47,8 +47,10 @@ export function coerceTimeCardPdfBytes(raw: unknown): Uint8Array | null {
 export function timeCardTemplateDiskPaths(): string[] {
   return [
     join(process.cwd(), 'server/assets/forms', TEMPLATE_NAME),
+    join(process.cwd(), '.output/server/assets/forms', TEMPLATE_NAME),
     join(process.cwd(), 'assets/forms', TEMPLATE_NAME),
     join('/app/server/assets/forms', TEMPLATE_NAME),
+    join('/app/.output/server/assets/forms', TEMPLATE_NAME),
   ]
 }
 
