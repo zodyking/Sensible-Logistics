@@ -26,9 +26,6 @@ const schema = z.object({
     routeCustomer: z.string().trim().max(80).optional(),
     startOdometer: z.string().trim().max(20).optional(),
     endOdometer: z.string().trim().max(20).optional(),
-    preceding7DayHours: z.string().trim().max(20).optional(),
-    signedName: z.string().trim().max(80).optional(),
-    signedDate: z.string().trim().max(20).optional(),
   }).optional(),
   stops: z.array(stopSchema).max(TIME_CARD_STOP_MAX).optional(),
 })

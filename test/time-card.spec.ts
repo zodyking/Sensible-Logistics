@@ -225,6 +225,10 @@ describe('timeCardDrawPlan', () => {
     const header = blankTimeCardHeader('2026-10-28')
     header.driverName = 'Pat Driver'
     header.reportForDuty = '07:00'
+    header.releasedFromDuty = '17:05'
+    header.totalOnDutyHours = '10:05'
+    header.signedName = 'Pat Driver'
+    header.signedDate = '10/28/2026'
     const plan = timeCardDrawPlan(header, [
       {
         key: 'TRIP:1:PICKUP',
@@ -237,6 +241,8 @@ describe('timeCardDrawPlan', () => {
     ])
     expect(plan.some(op => op.text === 'Pat Driver' && op.topY === 103)).toBe(true)
     expect(plan.some(op => op.text === 'Queens Yard' && op.topY === timeCardRowTopY(0))).toBe(true)
+    expect(plan.some(op => op.text === '07:00' && op.topY > 640)).toBe(false)
+    expect(plan.some(op => op.text === 'Pat Driver' && op.topY > 700)).toBe(false)
     expect(timeCardPdfY(103)).toBe(792 - 103 + 2)
   })
 })
@@ -246,6 +252,12 @@ describe('fillTimeCardPdf', () => {
     const header = blankTimeCardHeader('2026-10-28')
     header.driverName = 'Pat Driver'
     header.truckUnit = '12'
+    header.reportForDuty = '07:00'
+    header.releasedFromDuty = '17:05'
+    header.totalOnDutyHours = '10:05'
+    header.preceding7DayHours = '42:00'
+    header.signedName = 'Pat Driver'
+    header.signedDate = '10/28/2026'
     const bytes = await fillTimeCardPdf(header, [
       {
         key: 'TRIP:1:PICKUP',

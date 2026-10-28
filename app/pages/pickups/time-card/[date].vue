@@ -132,16 +132,8 @@ function openPdf(download = false) {
             <b>{{ formatWorkDate(workDate) }}</b>
           </div>
           <div>
-            <small>On duty</small>
-            <b>{{ header.totalOnDutyHours || '—' }}</b>
-          </div>
-          <div>
-            <small>Report</small>
-            <b class="mono">{{ header.reportForDuty || '—' }}</b>
-          </div>
-          <div>
-            <small>Released</small>
-            <b class="mono">{{ header.releasedFromDuty || '—' }}</b>
+            <small>Stops</small>
+            <b>{{ stopCount }}</b>
           </div>
         </div>
 
@@ -321,34 +313,6 @@ function openPdf(download = false) {
         >
           Add stop
         </button>
-
-        <label class="field">
-          <span>Preceding 7 days on-duty hours</span>
-          <input
-            v-model="header.preceding7DayHours"
-            class="input"
-            inputmode="decimal"
-          >
-        </label>
-
-        <div class="settings-name-grid">
-          <label class="field">
-            <span>Driver signature</span>
-            <input
-              v-model="header.signedName"
-              class="input"
-              autocomplete="name"
-            >
-          </label>
-          <label class="field">
-            <span>Signature date</span>
-            <input
-              v-model="header.signedDate"
-              class="input"
-              placeholder="10/28/2026"
-            >
-          </label>
-        </div>
 
         <button
           type="submit"

@@ -24,7 +24,6 @@ export const TIME_CARD_HEADER_FIELDS = [
   'routeCustomer',
   'startOdometer',
   'endOdometer',
-  'preceding7DayHours',
 ] as const
 export type TimeCardHeaderField = (typeof TIME_CARD_HEADER_FIELDS)[number]
 
@@ -413,6 +412,21 @@ export function blankTimeCardHeader(workDate: string): TimeCardHeader {
     routeCustomer: '',
     startOdometer: '',
     endOdometer: '',
+    reportForDuty: '',
+    releasedFromDuty: '',
+    totalOnDutyHours: '',
+    preceding7DayHours: '',
+    signedName: '',
+    signedDate: '',
+  }
+}
+
+/** Shift totals and signature stay empty until that section is built. */
+export function blankTimeCardFooter(): Pick<
+  TimeCardHeader,
+  'reportForDuty' | 'releasedFromDuty' | 'totalOnDutyHours' | 'preceding7DayHours' | 'signedName' | 'signedDate'
+> {
+  return {
     reportForDuty: '',
     releasedFromDuty: '',
     totalOnDutyHours: '',

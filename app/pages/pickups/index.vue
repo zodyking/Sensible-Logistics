@@ -224,7 +224,6 @@ const timeCardsByDate = computed(() => {
 function timeCardHint(iso: string) {
   const card = timeCardsByDate.value.get(iso)
   if (!card) return 'Time card'
-  if (card.totalOnDutyHours) return `Time card · ${card.totalOnDutyHours}`
   if (card.stopCount) return `Time card · ${card.stopCount}`
   return 'Time card'
 }
