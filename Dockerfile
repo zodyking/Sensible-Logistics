@@ -68,6 +68,7 @@ RUN groupadd --system --gid 1001 nodejs \
 WORKDIR /app
 
 COPY --from=builder --chown=nuxt:nodejs /app/.output ./.output
+COPY --from=builder --chown=nuxt:nodejs /app/server/assets/forms /app/server/assets/forms
 COPY --from=builder --chown=nuxt:nodejs /migrator ./migrator
 COPY --chown=nuxt:nodejs drizzle ./migrator/drizzle
 COPY --chown=nuxt:nodejs docker/migrate.mjs ./migrator/migrate.mjs
